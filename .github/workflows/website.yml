@@ -38,6 +38,22 @@ jobs:
         with:
           path: web/dist
 
+  relay:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workers/nomad-relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/nomad-relay/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Test the live relay
+        run: npm test
+
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
