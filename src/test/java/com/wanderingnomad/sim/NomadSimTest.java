@@ -163,16 +163,16 @@ public class NomadSimTest
         NomadSim sim = NomadSim.start(3);
         Circle misthalin = circle(sim, "misthalin");
         Circle karamja = circle(sim, "karamja");
-        assertEquals(8, misthalin.radiusMin(), 1e-9);
+        assertEquals(12, misthalin.radiusMin(), 1e-9);
         assertNotNull(sim.setDiaryTiers("karamja", 4));
-        assertEquals(24, karamja.radiusMin(), 1e-9);
-        assertEquals(40, karamja.radiusMax(), 1e-9);
+        assertEquals(28, karamja.radiusMin(), 1e-9);
+        assertEquals(48, karamja.radiusMax(), 1e-9);
         // Two diaries: each tier is worth half as much.
         sim.setDiaryTiers("misthalin", 4);
-        assertEquals(16, misthalin.radiusMin(), 1e-9);
+        assertEquals(20, misthalin.radiusMin(), 1e-9);
         sim.setDiaryTiers("misthalin", 8);
-        assertEquals(24, misthalin.radiusMin(), 1e-9);
-        assertEquals(40, misthalin.radiusMax(), 1e-9);
+        assertEquals(28, misthalin.radiusMin(), 1e-9);
+        assertEquals(48, misthalin.radiusMax(), 1e-9);
         assertNull("no change, no message", sim.setDiaryTiers("misthalin", 8));
     }
 

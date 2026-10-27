@@ -3,9 +3,9 @@
 A RuneLite plugin for **Nomad UIM**: Ultimate Ironman, but everything you do happens inside circles that drift across Gielinor.
 
 - **The Main circle** is where you start, over Lumbridge. It roams the whole world, turns back at the coast, and from a port it can sail a ferry or charter route (any route once Sailing is unlocked).
-- **Eight region circles** (Kandarin, Fremennik, Asgarnia, Misthalin, the Desert, Morytania, the Wilderness and Karamja) each wander inside their own kingdom only.
+- **Eight region circles** (Kandarin, Fremennik, Asgarnia, Misthalin, the Desert, Morytania, the Wilderness and Karamja) each patrol their own kingdom, three times as fast as Main, and never follow it.
 - **Crossing:** where Main touches a region circle, you can cross into it. The only way out of a region circle is back into Main. If Main moves on, you're stranded until it comes back, and your circle edges toward the border nearest it.
-- **Achievement Diaries** grow their region's circle: from 8–24 tiles up to 24–40 with every tier done.
+- **Achievement Diaries** grow their region's circle: from 12–32 tiles up to 28–48 with every tier done.
 - **Outside your circle**, it drifts 5x faster and shrinks a tile a minute.
 - **The volcano** (Fight Caves and Inferno) only counts while you're in Main and Main covers it.
 

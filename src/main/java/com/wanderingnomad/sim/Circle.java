@@ -9,9 +9,9 @@ public final class Circle
     public static final int MAIN_MIN = 12;
     public static final int MAIN_MAX = 48;
     public static final int MAIN_START = 24;
-    public static final int REGION_MIN = 8;
-    public static final int REGION_MAX = 24;
-    public static final int REGION_START = 16;
+    public static final int REGION_MIN = 12;
+    public static final int REGION_MAX = 32;
+    public static final int REGION_START = 20;
 
     /** Null for the Main circle. */
     String regionId;

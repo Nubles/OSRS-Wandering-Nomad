@@ -11,7 +11,8 @@ import java.util.List;
  *
  * <p>The laws, as the design doc states them:
  * <ul>
- * <li>Drift: each circle moves about 15 tiles per played hour on a slowly wandering heading.</li>
+ * <li>Drift: Main moves about 15 tiles per played hour and region circles about 45, each on its own slowly
+ * wandering heading.</li>
  * <li>Breathe: the radius eases toward a new target now and then, and sometimes pulses by 8.</li>
  * <li>Cross: from Main you may cross into a region circle it touches; from a region circle only
  * back into Main. A region circle never leaves its kingdom.</li>
@@ -24,8 +25,9 @@ import java.util.List;
 public final class NomadSim
 {
     public static final int MAIN = 0;
-    /** Tiles per played minute. */
+    /** Tiles per played minute: Main roams slowly, region circles patrol their kingdom three times as fast. */
     static final double DRIFT = 15.0 / 60.0;
+    static final double REGION_DRIFT = 45.0 / 60.0;
     static final double SAIL_SPEED = 3;
     static final double VOYAGE_CHANCE = 0.35;
     static final double RETARGET_CHANCE = 1.0 / 240;
@@ -33,8 +35,7 @@ public final class NomadSim
     static final double PULSE_CHANCE = 1.0 / 1500;
     static final int PULSE = 8;
     static final int OUTSIDE_SPEEDUP = 5;
-    /** How hard a region circle leans toward Main: gently while Main visits, firmly when you're stranded. */
-    static final double VISIT_PULL = 0.012;
+    /** How hard your region circle leans toward Main once you're stranded in it. */
     static final double STRANDED_PULL = 0.05;
 
     int seed;
@@ -152,7 +153,7 @@ public final class NomadSim
     /**
      * Records the diary tiers finished for a region and grows its circle to match: each tier
      * adds 4 tiles to both ends of the range, divided by the region's number of diaries, so a
-     * region with every tier done ranges 24 to 40. Returns a log line when the circle grew.
+     * region with every tier done ranges 28 to 48. Returns a log line when the circle grew.
      */
     public String setDiaryTiers(String regionId, int tiers)
     {
@@ -208,21 +209,10 @@ public final class NomadSim
         {
             Circle c = circles.get(j);
             boolean yours = j == bound;
-            Circle toward = null;
-            double pull = 0;
-            if (!c.isMain())
-            {
-                if (yours && stranded)
-                {
-                    toward = main;
-                    pull = STRANDED_PULL;
-                }
-                else if (!c.touches(main) && c.region().contains(main.x, main.y))
-                {
-                    toward = main;
-                    pull = VISIT_PULL;
-                }
-            }
+            // Region circles wander on their own; only yours leans toward Main, and only once you're stranded.
+            boolean pulled = yours && stranded && !c.isMain();
+            Circle toward = pulled ? main : null;
+            double pull = pulled ? STRANDED_PULL : 0;
             move(c, rng, yours && out ? OUTSIDE_SPEEDUP : 1, yours, toward, pull, log);
         }
         minutes++;
@@ -279,7 +269,7 @@ public final class NomadSim
             {
                 steer(c, 3150, 3350, 0.05);
             }
-            double v = DRIFT * speedup;
+            double v = (c.isMain() ? DRIFT : REGION_DRIFT) * speedup;
             double nx = c.x + Math.cos(c.heading) * v;
             double ny = c.y + Math.sin(c.heading) * v;
             boolean ok = c.isMain() ? Geography.onLand(nx, ny) : c.region().contains(nx, ny);
@@ -291,7 +281,7 @@ public final class NomadSim
             }
             else if (!c.isMain())
             {
-                boolean waitingForMain = yours && toward != null && pull == STRANDED_PULL && stranded();
+                boolean waitingForMain = toward != null;
                 if (!waitingForMain) c.heading += turn(rng);
                 if (yours && waitingForMain && !c.waiting)
                 {
