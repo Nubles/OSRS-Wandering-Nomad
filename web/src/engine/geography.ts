@@ -99,6 +99,50 @@ export class Geography {
     return this.world.land(x, y);
   }
 
+  private pockets: Int32Array | null = null;
+
+  private pocketField(): Int32Array {
+    return (this.pockets ??= pocketField(this.world));
+  }
+
+  /** How many cells of walking it is from a tile out to open land: 0 in open land, -1 at sea or on an island. */
+  pocketDepth(x: number, y: number): number {
+    const w = this.world;
+    const col = Math.floor((x - w.x0) / w.cell);
+    const row = Math.floor((y - w.y0) / w.cell);
+    if (col < 0 || row < 0 || col >= w.cols || row >= w.rows) return -1;
+    return this.pocketField()[row * w.cols + col];
+  }
+
+  /**
+   * In a pocket of land (a peninsula, a cove behind a narrow neck), a point a few cells along the
+   * shortest walk out to open land; null in open land or where no walk leads out (an island).
+   * Open land is a cell with at least 70% land within 32 tiles of it.
+   */
+  wayOut(x: number, y: number, lookahead: number): Tile | null {
+    const w = this.world;
+    const field = this.pocketField();
+    let col = Math.floor((x - w.x0) / w.cell);
+    let row = Math.floor((y - w.y0) / w.cell);
+    if (col < 0 || row < 0 || col >= w.cols || row >= w.rows || field[row * w.cols + col] <= 0) return null;
+    for (let step = 0; step < lookahead; step++) {
+      const here = field[row * w.cols + col];
+      if (here === 0) break;
+      for (const [dc, dr] of NEIGHBOURS) {
+        const c = col + dc;
+        const r = row + dr;
+        if (c < 0 || r < 0 || c >= w.cols || r >= w.rows) continue;
+        const there = field[r * w.cols + c];
+        if (there >= 0 && there < here) {
+          col = c;
+          row = r;
+          break;
+        }
+      }
+    }
+    return { x: w.x0 + (col + 0.5) * w.cell, y: w.y0 + (row + 0.5) * w.cell };
+  }
+
   inRegion(r: Region, x: number, y: number): boolean {
     return this.world.kingdom(x, y) === r.index && this.world.land(x, y);
   }
@@ -179,4 +223,56 @@ export class Geography {
 /** Distance as sqrt(dx² + dy²), which every platform rounds the same way (Math.hypot does not). */
 export function dist(dx: number, dy: number): number {
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+const OPEN_RADIUS = 8;
+const OPEN_SHARE = 0.7;
+
+/** Steps (in cells) from each land cell to the nearest open land: 0 in open land, -1 for water or no way out. */
+function pocketField(w: World): Int32Array {
+  const { cols, rows, cell, x0, y0 } = w;
+  const land = new Uint8Array(cols * rows);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) land[r * cols + c] = w.land(x0 + (c + 0.5) * cell, y0 + (r + 0.5) * cell) ? 1 : 0;
+  // Summed-area table for land counts in a square window.
+  const sat = new Int32Array((cols + 1) * (rows + 1));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      sat[(r + 1) * (cols + 1) + c + 1] = land[r * cols + c] + sat[r * (cols + 1) + c + 1] + sat[(r + 1) * (cols + 1) + c] - sat[r * (cols + 1) + c];
+    }
+  }
+  const window = (2 * OPEN_RADIUS + 1) ** 2;
+  const field = new Int32Array(cols * rows).fill(-1);
+  const queue = new Int32Array(cols * rows);
+  let head = 0;
+  let tail = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!land[r * cols + c]) continue;
+      const c0 = Math.max(0, c - OPEN_RADIUS);
+      const r0 = Math.max(0, r - OPEN_RADIUS);
+      const c1 = Math.min(cols, c + OPEN_RADIUS + 1);
+      const r1 = Math.min(rows, r + OPEN_RADIUS + 1);
+      const count = sat[r1 * (cols + 1) + c1] - sat[r0 * (cols + 1) + c1] - sat[r1 * (cols + 1) + c0] + sat[r0 * (cols + 1) + c0];
+      if (count >= window * OPEN_SHARE) {
+        field[r * cols + c] = 0;
+        queue[tail++] = r * cols + c;
+      }
+    }
+  }
+  while (head < tail) {
+    const i = queue[head++];
+    const r = Math.floor(i / cols);
+    const c = i - r * cols;
+    for (const [dc, dr] of NEIGHBOURS) {
+      const cc = c + dc;
+      const rr = r + dr;
+      if (cc < 0 || rr < 0 || cc >= cols || rr >= rows) continue;
+      const j = rr * cols + cc;
+      if (!land[j] || field[j] >= 0) continue;
+      field[j] = field[i] + 1;
+      queue[tail++] = j;
+    }
+  }
+  return field;
 }

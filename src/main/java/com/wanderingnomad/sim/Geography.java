@@ -116,6 +116,29 @@ public final class Geography
         return null;
     }
 
+    private static Pockets pockets;
+
+    private static Pockets pockets()
+    {
+        if (pockets == null) pockets = new Pockets(WORLD);
+        return pockets;
+    }
+
+    /** How many cells of walking it is from a tile out to open land: 0 in open land, -1 at sea or on an island. */
+    public static int pocketDepth(double x, double y)
+    {
+        return pockets().depth(x, y);
+    }
+
+    /**
+     * In a pocket of land (a peninsula, a cove behind a narrow neck), a point a few cells along the
+     * shortest walk out to open land, as {x, y}; null in open land or where no walk leads out.
+     */
+    public static double[] wayOut(double x, double y, int lookahead)
+    {
+        return pockets().wayOut(x, y, lookahead);
+    }
+
     /** Any land the Main circle may drift over, islands included. */
     public static boolean onLand(double x, double y)
     {
