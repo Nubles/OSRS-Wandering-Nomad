@@ -194,8 +194,32 @@ public class NomadSimTest
     public void routesBeforeAndAfterSailing()
     {
         assertTrue(Geography.routesFrom("Port Sarim", false).contains("Musa Point"));
-        assertFalse(Geography.routesFrom("Musa Point", false).contains("Port Phasmatys"));
+        assertTrue(Geography.routesFrom("Port Sarim", false).contains("Port Piscarilius"));
+        assertFalse(Geography.routesFrom("Musa Point", false).contains("Rellekka"));
         assertEquals(Geography.PORTS.size() - 1, Geography.routesFrom("Musa Point", true).size());
+    }
+
+    @Test
+    public void realMapLandmarks()
+    {
+        assertEquals("misthalin", Geography.regionAt(3222, 3218).id);
+        assertEquals("asgarnia", Geography.regionAt(2965, 3378).id);
+        assertEquals("karamja", Geography.regionAt(Geography.VOLCANO.x, Geography.VOLCANO.y).id);
+        assertEquals("morytania", Geography.regionAt(3494, 3483).id);
+        assertEquals("kourend", Geography.regionAt(1640, 3670).id);
+        assertEquals("varlamore", Geography.regionAt(1680, 3100).id);
+        // Open sea between Port Sarim and Karamja.
+        assertFalse(Geography.onLand(2990, 3100));
+        // The River Lum is folded into the land, so circles cross it.
+        assertTrue(Geography.onLand(3241, 3226));
+        for (Geography.Port p : Geography.PORTS)
+        {
+            assertTrue(p.name + " is off the land", Geography.onLand(p.tile.x, p.tile.y));
+        }
+        for (Region r : Geography.REGIONS)
+        {
+            assertTrue(r.name + " starts outside itself", r.contains(r.home().x, r.home().y));
+        }
     }
 
     private static int touchingRegion(NomadSim sim)

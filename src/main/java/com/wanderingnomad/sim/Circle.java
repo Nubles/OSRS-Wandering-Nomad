@@ -56,8 +56,8 @@ public final class Circle
     {
         Circle c = new Circle();
         c.regionId = r.id;
-        c.x = r.home.x;
-        c.y = r.home.y;
+        c.x = r.home().x;
+        c.y = r.home().y;
         c.heading = heading;
         c.radius = c.radiusTarget = REGION_START;
         c.radiusMin = REGION_MIN;

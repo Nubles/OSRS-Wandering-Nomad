@@ -14,10 +14,10 @@ import java.util.List;
  * <li>Drift: Main moves about 15 tiles per played hour and region circles about 45, each on its own slowly
  * wandering heading.</li>
  * <li>Breathe: the radius eases toward a new target now and then, and sometimes pulses by 8.</li>
- * <li>Cross: from Main you may cross into a region circle it touches; from a region circle only
- * back into Main. A region circle never leaves its kingdom.</li>
- * <li>Shore: Main stays over land and turns at the coast, except at a port, where it may sail a
- * ferry or charter route (any route once Sailing is unlocked).</li>
+ * <li>Cross: from Main you may cross into any of the eleven region circles it touches; from a region
+ * circle only back into Main. A region circle never leaves its kingdom.</li>
+ * <li>Shore: Main stays over land and turns at the coast. While a port is inside it, it may board a
+ * quest-free boat to another port (any port once Sailing is unlocked).</li>
  * <li>Outside: while you stand outside your circle it drifts 5x faster and shrinks a tile a
  * minute.</li>
  * </ul>
@@ -29,7 +29,8 @@ public final class NomadSim
     static final double DRIFT = 15.0 / 60.0;
     static final double REGION_DRIFT = 45.0 / 60.0;
     static final double SAIL_SPEED = 3;
-    static final double VOYAGE_CHANCE = 0.35;
+    /** Per minute while a port is inside Main: about a 50% chance of sailing within an hour. */
+    static final double BOARD_CHANCE = 1.0 / 90;
     static final double RETARGET_CHANCE = 1.0 / 240;
     static final double RADIUS_EASE = 1.0 / 60;
     static final double PULSE_CHANCE = 1.0 / 1500;
@@ -165,7 +166,7 @@ public final class NomadSim
             if (clamped == c.tiers) return null;
             boolean grew = clamped > c.tiers;
             c.tiers = clamped;
-            double bonus = 4.0 * clamped / r.diaries.size();
+            double bonus = r.diaries.isEmpty() ? 0 : 4.0 * clamped / r.diaries.size();
             double shift = Circle.REGION_MIN + bonus - c.radiusMin;
             c.radiusMin += shift;
             c.radiusMax += shift;
@@ -265,10 +266,6 @@ public final class NomadSim
             {
                 steer(c, toward.x, toward.y, pull);
             }
-            else if (c.isMain() && (c.x < 2470 || c.x > 3780 || c.y < 2950 || c.y > 3900))
-            {
-                steer(c, 3150, 3350, 0.05);
-            }
             double v = (c.isMain() ? DRIFT : REGION_DRIFT) * speedup;
             double nx = c.x + Math.cos(c.heading) * v;
             double ny = c.y + Math.sin(c.heading) * v;
@@ -296,36 +293,11 @@ public final class NomadSim
             }
             else
             {
-                Geography.Port port = null;
-                for (Geography.Port p : Geography.PORTS)
-                {
-                    if (c.contains(p.tile.x, p.tile.y))
-                    {
-                        port = p;
-                        break;
-                    }
-                }
-                List<String> routes = port == null ? Collections.<String>emptyList()
-                    : Geography.routesFrom(port.name, sailingUnlocked);
-                if (port != null && !routes.isEmpty() && rng.next() < VOYAGE_CHANCE)
-                {
-                    String to = routes.get((int) (rng.next() * routes.size()));
-                    Geography.Port dest = Geography.port(to);
-                    c.x = port.tile.x;
-                    c.y = port.tile.y;
-                    c.voyage = new Circle.Voyage();
-                    c.voyage.to = to;
-                    c.voyage.tx = dest.tile.x;
-                    c.voyage.ty = dest.tile.y;
-                    log.add("The Main circle boarded a ship at " + port.name + ", bound for " + to + ".");
-                }
-                else
-                {
-                    c.heading += turn(rng);
-                    if (yours && !c.atEdge) log.add("Your circle hit the coast and turned back inland.");
-                    c.atEdge = true;
-                }
+                c.heading += turn(rng);
+                if (yours && !c.atEdge) log.add("Your circle hit the coast and turned back inland.");
+                c.atEdge = true;
             }
+            if (c.isMain()) maybeBoard(c, rng, log);
         }
 
         if (rng.next() < RETARGET_CHANCE)
@@ -347,6 +319,32 @@ public final class NomadSim
             c.pulse = 45;
         }
         if (c.pulse > 0) c.pulse--;
+    }
+
+    /** While a port sits inside Main, each minute there's a small chance Main boards a boat from it. */
+    private void maybeBoard(Circle c, Rng rng, List<String> log)
+    {
+        Geography.Port port = null;
+        for (Geography.Port p : Geography.PORTS)
+        {
+            if (c.contains(p.tile.x, p.tile.y))
+            {
+                port = p;
+                break;
+            }
+        }
+        if (port == null || rng.next() >= BOARD_CHANCE) return;
+        List<String> routes = Geography.routesFrom(port.name, sailingUnlocked);
+        if (routes.isEmpty()) return;
+        String to = routes.get((int) (rng.next() * routes.size()));
+        Geography.Port dest = Geography.port(to);
+        c.x = port.tile.x;
+        c.y = port.tile.y;
+        c.voyage = new Circle.Voyage();
+        c.voyage.to = to;
+        c.voyage.tx = dest.tile.x;
+        c.voyage.ty = dest.tile.y;
+        log.add("The Main circle boarded a boat at " + port.name + ", bound for " + to + ".");
     }
 
     private static double turn(Rng rng)
