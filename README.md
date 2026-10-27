@@ -50,3 +50,17 @@ npm test             # engine tests, including the shared vectors
 ```
 
 Pushes to `main` deploy the website to GitHub Pages (`.github/workflows/website.yml`). `python3 scripts/build_world.py --site-map` rebuilds the website's map image (`web/public/map.jpg`) alongside `world.dat`.
+
+## Live view
+
+Turning on **Share live** in the plugin sends the run code to a small Cloudflare Worker in `workers/nomad-relay/` about every five minutes (sooner after a crossing or event). Anyone with the link `#/live/<code>` on the website watches the circles move between updates. The relay keeps only the latest run code for seven days and stores a hash of the write token, never the token.
+
+Deploy it once from `workers/nomad-relay/`:
+
+```
+npx wrangler kv namespace create LIVE   # paste the id into wrangler.toml
+npx wrangler@latest deploy
+```
+
+If the workers.dev URL isn't `https://nomad-relay.fatelocked.workers.dev`, update `LiveShare.RELAY` in the plugin and set `VITE_RELAY_URL` for the website build.
+

@@ -32,14 +32,17 @@ class NomadPanel extends PluginPanel
     private final Runnable onNewRun;
     private final Runnable onViewOnWebsite;
     private final Runnable onCopyRunCode;
+    private final Runnable onCopyLiveLink;
     private final JLabel title = new JLabel();
     private final JLabel detail = new JLabel();
     private final JPanel crossings = new JPanel(new GridLayout(0, 1, 0, 4));
     private final JLabel diary = new JLabel();
     private final JTextArea logArea = new JTextArea();
 
-    NomadPanel(IntConsumer onCross, Runnable onNewRun, Runnable onViewOnWebsite, Runnable onCopyRunCode)
+    NomadPanel(IntConsumer onCross, Runnable onNewRun, Runnable onViewOnWebsite, Runnable onCopyRunCode,
+        Runnable onCopyLiveLink)
     {
+        this.onCopyLiveLink = onCopyLiveLink;
         this.onCross = onCross;
         this.onNewRun = onNewRun;
         this.onViewOnWebsite = onViewOnWebsite;
@@ -74,8 +77,12 @@ class NomadPanel extends PluginPanel
         JButton copy = new JButton("Copy run code");
         copy.setToolTipText("Copies a code you can paste on the website or share");
         copy.addActionListener(e -> this.onCopyRunCode.run());
+        JButton live = new JButton("Copy live link");
+        live.setToolTipText("A link that follows your run as you play (turn on Share live in the plugin's settings)");
+        live.addActionListener(e -> this.onCopyLiveLink.run());
         web.add(view);
         web.add(copy);
+        web.add(live);
         add(web);
         add(gap());
         JButton newRun = new JButton("Start a new run");

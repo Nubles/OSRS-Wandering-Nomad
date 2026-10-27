@@ -37,8 +37,20 @@ gradle runClient`}</pre>
         your game. You can also press <strong>Copy run code</strong> and paste the code into the box on the map page. The link holds your
         run, so you can send it to a friend or put it in a Discord channel.
       </p>
+      <p>
+        A run link is a snapshot of the moment you made it.
+      </p>
+
+      <h2>Share it live</h2>
+      <p>
+        Turn on <strong>Share live on the website</strong> in the plugin's settings, then press <strong>Copy live link</strong>. Anyone
+        with the link sees your circles move as you play: it's made for streams and Discord. The plugin sends your run to the Nomad
+        relay every few minutes, and within a minute when something happens, like a crossing or a voyage. Between sends the page moves
+        the circles itself with the same engine, so they move smoothly.
+      </p>
       <p className="muted">
-        A run link is a snapshot of the moment you made it. Live tracking, where the page follows your game as you play, is planned next.
+        Live sharing is off until you turn it on. It sends your run and the tile you count as standing on, and nothing else. When you
+        log out, the page shows the run as offline.
       </p>
       </div>
       </div>

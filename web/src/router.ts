@@ -6,10 +6,13 @@ export interface Route {
   params: URLSearchParams;
   /** A run code from #/run/<code>. */
   run?: string;
+  /** A live code from #/live/<code>. */
+  live?: string;
 }
 
 export function parseRoute(hash: string): Route {
   const h = hash.replace(/^#\/?/, '');
+  if (h.startsWith('live/')) return { page: 'map', params: new URLSearchParams(), live: decodeURIComponent(h.slice(5)) };
   if (h.startsWith('run/')) return { page: 'map', params: new URLSearchParams(), run: decodeURIComponent(h.slice(4)) };
   const [path, query = ''] = h.split('?');
   const params = new URLSearchParams(query);

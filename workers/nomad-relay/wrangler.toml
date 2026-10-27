@@ -1,0 +1,25 @@
+name = "nomad-relay"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Create the KV namespace once with:
+#   npx wrangler kv namespace create LIVE
+# then paste the returned id below and deploy with:
+#   npx wrangler@latest deploy
+[[kv_namespaces]]
+binding = "LIVE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Per-IP write limits (Workers Rate Limiting). Each namespace_id must be
+# unique in the Cloudflare account; Fate Locked's relay uses 7301 to 7303.
+# The worker runs unchanged without these bindings (tests, local dev).
+[[ratelimits]]
+name = "WRITE_LIMITER"
+namespace_id = "7401"
+simple = { limit = 20, period = 60 }
+
+# Writes that claim a new live code.
+[[ratelimits]]
+name = "CLAIM_LIMITER"
+namespace_id = "7402"
+simple = { limit = 3, period = 60 }
