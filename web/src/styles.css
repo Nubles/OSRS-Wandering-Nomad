@@ -1,681 +1,313 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Nomad UIM in the OSRS interface style, matching Fate Locked's OSRS skin
+   (components/osrs/osrs-skin.css there): brown stone windows with a black
+   frame and a light/dark bevel, RuneScape pixel fonts, orange titles, yellow
+   values, tan text, parchment chatbox, square corners.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@font-face { font-family: 'RS'; src: url('/fonts/runescape.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'RSBold'; src: url('/fonts/runescape_bold.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'RSSmall'; src: url('/fonts/runescape_small.ttf') format('truetype'); font-display: block; }
+
 :root {
-  --bg: #11151c;
-  --bg-2: #171c25;
-  --panel: #1b212c;
-  --line: #2a3240;
-  --text: #e8e4d8;
-  --muted: #9aa3b2;
-  --gold: #ff981f;
-  --gold-soft: #ffb860;
-  --red: #ff6b5a;
-  --green: #7bd88f;
-  --radius: 10px;
-  --serif: 'Cinzel', Georgia, serif;
-  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --osrs-page: #191512;
+  --osrs-window: #3e3529;
+  --osrs-inner: #2e271e;
+  --osrs-inner-ring: #4f4434;
+  --osrs-slot: #3b3226;
+  --osrs-btn: #4a4033;
+  --osrs-btn-hi: #6b5f4d;
+  --osrs-btn-lo: #2b241b;
+  --osrs-btn-off: #7d705c;
+  --osrs-btn-off-bg: #3a3228;
+  --osrs-bevel-hi: #5c5244;
+  --osrs-bevel-lo: #14110d;
+  --osrs-selected: #5a4c3a;
+  --osrs-selected-sh: #2a231a;
+  --osrs-well: #1f1a14;
+  --osrs-orange: #ff981f;
+  --osrs-yellow: #ffff00;
+  --osrs-white: #ffffff;
+  --osrs-tan: #c8b897;
+  --osrs-text-soft: #e2d6b8;
+  --osrs-text-dim: #a89878;
+  --osrs-muted: #8a7c66;
+  --osrs-green: #00ff00;
+  --osrs-red: #ff3030;
+  --osrs-parchment: #c9b994;
+  --osrs-shadow: 1px 1px 0 #000;
   color-scheme: dark;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body,
-#root {
-  margin: 0;
-  min-height: 100%;
-}
+html, body, #root { margin: 0; min-height: 100%; }
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font: 15px/1.55 var(--sans);
-  -webkit-font-smoothing: antialiased;
+  background: var(--osrs-page);
+  color: var(--osrs-tan);
+  font: 16px/18px 'RS', ui-sans-serif, sans-serif;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  text-shadow: var(--osrs-shadow);
 }
 
-a {
-  color: var(--gold-soft);
-}
+button, input, select, textarea { font-family: 'RS', ui-sans-serif, sans-serif; font-size: 16px; }
 
-h1,
-h2,
-h3 {
-  font-family: var(--serif);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.2;
-}
+a { color: var(--osrs-orange); }
+a:hover { color: var(--osrs-white); }
 
-h3 {
-  font-family: var(--sans);
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 10px;
-}
+h1, h2, h3, h4 { font-family: 'RSBold', ui-sans-serif, sans-serif; font-weight: 400; color: var(--osrs-orange); margin: 0; }
+h1 { font-size: 32px; line-height: 30px; }
+h2 { font-size: 16px; line-height: 18px; }
+h3 { font-size: 16px; line-height: 18px; }
+strong { font-family: 'RSBold', ui-sans-serif, sans-serif; font-weight: 400; color: var(--osrs-white); }
 
-.app {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
+:focus-visible { outline: 1px solid var(--osrs-yellow); }
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 24px;
-  background: rgba(17, 21, 28, 0.88);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line);
-}
+::-webkit-scrollbar { width: 16px; height: 16px; }
+::-webkit-scrollbar-track { background: var(--osrs-inner); border-left: 1px solid #000; }
+::-webkit-scrollbar-thumb { background: var(--osrs-btn); border: 1px solid #000; box-shadow: inset 1px 1px 0 var(--osrs-btn-hi), inset -1px -1px 0 var(--osrs-btn-lo); }
+::-webkit-scrollbar-thumb:hover { background: var(--osrs-selected); }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: var(--serif);
-  font-size: 19px;
-  font-weight: 700;
-  color: var(--text);
-  text-decoration: none;
-  white-space: nowrap;
+/* ── Building blocks (same names and look as Fate Locked's) ─────────────── */
+.osrs-win {
+  background-color: var(--osrs-window);
+  border: 2px solid #000;
+  box-shadow: inset 1px 1px 0 var(--osrs-bevel-hi), inset -1px -1px 0 var(--osrs-bevel-lo);
 }
-
-.brand-mark {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 3px solid var(--gold);
-  box-shadow: 0 0 12px rgba(255, 152, 31, 0.55);
+.osrs-inner { background: var(--osrs-inner); border: 1px solid #000; box-shadow: inset 0 0 0 1px var(--osrs-inner-ring); }
+.osrs-chat {
+  background: var(--osrs-parchment);
+  border: 2px solid #000;
+  box-shadow: inset 1px 1px 0 #e0d3b2, inset -1px -1px 0 #8f8062;
+  color: #000;
+  text-shadow: none;
 }
+.osrs-title { font: 16px 'RSBold', sans-serif; color: var(--osrs-orange); text-shadow: var(--osrs-shadow); }
+.osrs-sep { height: 0; margin: 6px 0; border-top: 1px solid var(--osrs-well); border-bottom: 1px solid var(--osrs-inner-ring); }
 
-.topbar nav {
-  display: flex;
-  gap: 4px;
-}
-
-.topbar nav a {
-  padding: 6px 12px;
-  border-radius: 8px;
-  color: var(--muted);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.topbar nav a:hover,
-.topbar nav a[aria-current='page'] {
-  color: var(--text);
-  background: var(--bg-2);
-}
-
-main {
-  flex: 1;
-}
-
-.loading {
-  display: grid;
-  place-items: center;
-  min-height: 60vh;
-  color: var(--muted);
-}
-
-/* Buttons and inputs */
 .btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 9px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--bg-2);
-  color: var(--text);
-  font: 600 14px var(--sans);
+  height: 32px;
+  padding: 0 12px;
+  background: var(--osrs-btn);
+  border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 var(--osrs-btn-hi), inset -1px -1px 0 var(--osrs-btn-lo);
+  color: var(--osrs-orange);
+  text-shadow: var(--osrs-shadow);
+  font: 16px 'RS', sans-serif;
+  white-space: nowrap;
   text-decoration: none;
-  cursor: pointer;
 }
+.btn:hover:not(:disabled) { color: var(--osrs-white); }
+.btn:focus-visible { outline: 1px solid var(--osrs-yellow); }
+.btn:disabled { cursor: default; color: var(--osrs-btn-off); background: var(--osrs-btn-off-bg); box-shadow: inset 1px 1px 0 var(--osrs-inner-ring); }
+.btn.is-on, .btn[aria-pressed='true'], .btn[aria-current='page'] { background: var(--osrs-selected); color: var(--osrs-white); box-shadow: inset 1px 1px 0 var(--osrs-selected-sh); }
+.btn-big { height: 40px; padding: 0 18px; font-family: 'RSBold', sans-serif; }
+.btn-small { height: 24px; padding: 0 8px; }
 
-.btn:hover:not(:disabled) {
-  border-color: #3b4558;
-  background: #1f2531;
-}
-
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--gold);
-  border-color: var(--gold);
-  color: #1a1206;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: var(--gold-soft);
-  border-color: var(--gold-soft);
-}
-
-.btn-small {
-  padding: 4px 10px;
-  font-size: 13px;
-}
-
-.link {
-  background: none;
-  border: 0;
-  color: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-  font: inherit;
-  margin-left: 8px;
-}
+.link { all: unset; cursor: pointer; color: #0000ff; text-decoration: underline; margin-left: 8px; }
 
 .input {
   flex: 1;
   min-width: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--text);
-  font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+  height: 32px;
+  padding: 0 8px;
+  background: var(--osrs-well);
+  border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #000;
+  color: var(--osrs-white);
+  text-shadow: var(--osrs-shadow);
 }
+.input::placeholder { color: var(--osrs-muted); }
 
-.row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
+/* OSRS tick box: a dark well with a yellow tick. */
+.check { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; cursor: pointer; color: var(--osrs-tan); }
+.check input {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  background: var(--osrs-well);
+  border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #000, 0 0 0 1px var(--osrs-inner-ring);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
 }
+.check input:checked::after { content: '✓'; color: var(--osrs-yellow); font: 14px/1 'RSBold', sans-serif; text-shadow: var(--osrs-shadow); }
 
-.muted {
-  color: var(--muted);
-}
+.row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.muted { color: var(--osrs-text-dim); }
+.small { font-family: 'RSSmall', sans-serif; font-size: 16px; line-height: 15px; }
+.value { color: var(--osrs-yellow); }
+.ok { color: var(--osrs-green); }
+.warn { color: var(--osrs-red); }
+.white { color: var(--osrs-white); }
+.break { overflow-wrap: anywhere; }
 
-.small {
-  font-size: 13px;
-}
+/* ── App frame ─────────────────────────────────────────────────────────── */
+.app { min-height: 100vh; display: flex; flex-direction: column; gap: 8px; padding: 8px; }
 
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-
-.break {
-  overflow-wrap: anywhere;
-}
-
-.eyebrow {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--gold-soft);
-}
-
-.lede {
-  font-size: 19px;
-  color: var(--text);
-  max-width: 34em;
-}
-
-/* Map canvas */
-.map-canvas {
-  position: relative;
-  overflow: hidden;
-  background: #1d2a3a;
-}
-
-.map-canvas canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  touch-action: none;
-  cursor: grab;
-}
-
-.map-canvas canvas:active {
-  cursor: grabbing;
-}
-
-.map-zoom {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.map-zoom button {
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; row-gap: 6px; min-height: 60px; padding: 6px 12px; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; min-width: 0; }
+.brand-mark {
+  flex: none;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(17, 21, 28, 0.9);
-  color: var(--text);
-  font-size: 18px;
-  cursor: pointer;
+  border-radius: 50%;
+  border: 2px solid #000;
+  box-shadow: inset 0 0 0 2px var(--osrs-bevel-hi);
+  background: radial-gradient(circle, var(--osrs-well) 0 9px, var(--osrs-orange) 9px 12px, var(--osrs-well) 12px);
 }
+.brand-name { font: 32px/26px 'RSBold', sans-serif; color: var(--osrs-orange); white-space: nowrap; }
+.brand-sub { font: 16px/15px 'RSSmall', sans-serif; color: var(--osrs-tan); white-space: nowrap; }
+.topbar nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
 
-/* Home */
-.hero {
-  position: relative;
-  height: min(78vh, 760px);
-  min-height: 460px;
-  overflow: hidden;
-}
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-.hero-map {
+.loading { display: grid; place-items: center; min-height: 60vh; color: var(--osrs-orange); }
+
+.footer { padding: 10px 12px; font: 16px/15px 'RSSmall', sans-serif; color: var(--osrs-text-dim); text-align: center; }
+
+/* ── Map canvas ────────────────────────────────────────────────────────── */
+.map-canvas { position: relative; overflow: hidden; background: #0e1824; }
+.map-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.map-canvas canvas:active { cursor: grabbing; }
+.map-zoom { position: absolute; right: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 4px; }
+.map-zoom .btn { width: 32px; padding: 0; font-family: 'RSBold', sans-serif; }
+
+/* ── Home ──────────────────────────────────────────────────────────────── */
+.hero { position: relative; height: min(72vh, 680px); min-height: 460px; padding: 4px; }
+.hero-map { position: absolute; inset: 4px; }
+.hero-map canvas { cursor: default; }
+.hero-box {
   position: absolute;
-  inset: 0;
-}
-
-.hero-map canvas {
-  cursor: default;
-}
-
-.hero-shade {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(90deg, rgba(17, 21, 28, 0.94) 0%, rgba(17, 21, 28, 0.7) 38%, rgba(17, 21, 28, 0) 70%),
-    linear-gradient(0deg, var(--bg) 0%, rgba(17, 21, 28, 0) 22%);
-}
-
-.hero-copy {
-  position: absolute;
-  left: max(24px, calc((100vw - 1100px) / 2));
+  left: 32px;
   top: 50%;
   transform: translateY(-50%);
-  max-width: 520px;
-  padding-right: 16px;
+  width: min(460px, calc(100% - 32px));
+  padding: 0;
 }
+.hero-box .win-head { padding: 8px 12px; text-align: center; border-bottom: 1px solid #000; }
+.hero-box .win-body { padding: 14px 16px 16px; }
+.hero-box h1 { font-size: 48px; line-height: 44px; margin-bottom: 8px; color: var(--osrs-orange); }
+.hero-box .lede { color: var(--osrs-white); margin: 0 0 14px; }
+.hero-box .row { margin-bottom: 12px; }
 
-.hero-copy h1 {
-  font-size: clamp(44px, 7vw, 76px);
-  margin: 0 0 12px;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
-}
+.page { width: 100%; max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.window { padding: 0; }
+.win-head { padding: 7px 12px; text-align: center; border-bottom: 1px solid #000; box-shadow: 0 1px 0 var(--osrs-inner-ring); }
+.win-body { padding: 12px 14px; }
 
-.hero-copy .lede {
-  margin: 0 0 24px;
-}
+.laws { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px; }
+.law { padding: 10px 12px; }
+.law h3 { margin-bottom: 4px; }
+.law p { margin: 0; color: var(--osrs-text-soft); }
 
-.hero-caption {
-  margin-top: 18px;
-}
+.split { display: grid; grid-template-columns: 1.3fr 1fr; gap: 8px; align-items: stretch; }
+.split p { margin: 0 0 10px; color: var(--osrs-text-soft); }
+.steps { padding-left: 22px; margin: 0 0 12px; color: var(--osrs-text-soft); }
+.steps li { margin-bottom: 4px; }
 
-.content {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 48px 24px;
-}
+/* ── Rules and plugin pages ────────────────────────────────────────────── */
+.prose { max-width: 860px; }
+.prose .win-body { padding: 16px 20px 20px; }
+.prose h1 { margin-bottom: 8px; }
+.prose h2 { margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--osrs-inner-ring); }
+.prose p, .prose li { color: var(--osrs-text-soft); }
+.prose p { margin: 0 0 10px; }
+.prose ul { padding-left: 22px; }
+.lede { color: var(--osrs-white); }
 
-.content h2 {
-  font-size: 28px;
-  margin: 0 0 20px;
-}
-
-.laws {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 14px;
-}
-
-.law {
-  padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-}
-
-.law h3 {
-  font-family: var(--serif);
-  font-size: 18px;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  color: var(--gold-soft);
-  margin-bottom: 6px;
-}
-
-.law p {
-  margin: 0;
-  color: var(--text);
-}
-
-.split {
-  display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 32px;
-  align-items: start;
-}
-
-.card {
-  padding: 22px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-}
-
-.card h3 {
-  font-family: var(--serif);
-  font-size: 20px;
-  text-transform: none;
-  letter-spacing: 0.01em;
-  color: var(--text);
-}
-
-.steps {
-  padding-left: 20px;
-  margin: 0 0 18px;
-}
-
-.steps li {
-  margin-bottom: 6px;
-}
-
-/* Prose pages */
-.prose {
-  max-width: 760px;
-}
-
-.prose h1 {
-  font-size: 44px;
-  margin: 0 0 12px;
-}
-
-.prose h2 {
-  margin-top: 40px;
-  font-size: 24px;
-}
-
-.law-list {
-  margin: 0;
-}
-
-.law-list > div {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 16px;
-  padding: 16px 0;
-  border-top: 1px solid var(--line);
-}
-
-.law-list dt {
-  font-family: var(--serif);
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--gold-soft);
-}
-
-.law-list dd {
-  margin: 0;
-}
-
-.law-list dd p {
-  margin: 0 0 6px;
-}
+.law-list { margin: 0; }
+.law-list > div { display: grid; grid-template-columns: 110px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--osrs-well); box-shadow: inset 0 1px 0 var(--osrs-inner-ring); }
+.law-list dt { font-family: 'RSBold', sans-serif; color: var(--osrs-orange); }
+.law-list dd { margin: 0; }
+.law-list dd p { margin: 0 0 4px; }
 
 .code {
-  padding: 14px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: #0c0f14;
-  font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  background: var(--osrs-well);
+  border: 1px solid #000;
+  box-shadow: inset 1px 1px 0 #000;
+  color: var(--osrs-yellow);
+  font: 16px/18px 'RS', sans-serif;
   overflow-x: auto;
 }
 
-.footer {
-  padding: 24px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 13px;
-  text-align: center;
-}
+/* ── Map page ──────────────────────────────────────────────────────────── */
+.map-page { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr); gap: 8px; height: calc(100vh - 96px); min-height: 560px; }
+.map-col { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.map-frame { position: relative; flex: 1; min-height: 0; }
+.map-frame .map-main { position: absolute; inset: 2px; }
+.hero-map .map-main { position: absolute; inset: 0; }
 
-/* Map page */
-.map-page {
-  display: grid;
-  grid-template-columns: 1fr 360px;
-  height: calc(100vh - 57px);
-}
+.chatbox { flex: none; height: 150px; display: flex; flex-direction: column; }
+.chat-lines { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px; list-style: none; margin: 0; }
+.chat-lines li { line-height: 18px; }
+.chat-time { color: #000080; }
+.chat-tabs { flex: none; display: flex; gap: 4px; padding: 3px; background: var(--osrs-window); border-top: 2px solid #000; }
+.chat-tabs .btn { height: 26px; flex: 1; max-width: 110px; }
+.chat-tabs .chat-note { flex: 1; align-self: center; text-align: right; padding-right: 6px; font: 16px 'RSSmall', sans-serif; color: var(--osrs-tan); text-shadow: var(--osrs-shadow); }
 
-.map-main {
-  height: 100%;
-}
+.panel { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.panel section { padding: 10px 12px; }
+.panel section + section { border-top: 1px solid var(--osrs-well); box-shadow: inset 0 1px 0 var(--osrs-inner-ring); }
+.panel h3 { text-align: center; margin-bottom: 8px; }
 
-.panel {
-  overflow-y: auto;
-  border-left: 1px solid var(--line);
-  background: var(--panel);
-}
+.run-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.clock { font: 32px/30px 'RSBold', sans-serif; color: var(--osrs-yellow); }
+.speeds { display: flex; gap: 4px; }
+.speeds .btn { flex: 1; height: 28px; }
 
-.panel section {
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--line);
-}
+.status-row { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
 
-.panel-title {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
+.notice { margin: 6px 0; padding: 6px 8px; font-size: 16px; line-height: 18px; }
+.notice-error { color: #7f0000; }
 
-.clock {
-  font-family: var(--serif);
-  font-size: 30px;
-  font-weight: 700;
-  line-height: 1.1;
-}
+.dot { flex: none; display: inline-block; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px #000; transform: translateY(1px); }
 
-.play {
-  min-width: 82px;
-}
+.crossings, .circles { list-style: none; margin: 0; padding: 0; }
+.crossings li, .circles li { display: flex; align-items: center; gap: 8px; padding: 3px 4px; }
+.circles li:nth-child(odd) { background: rgba(255, 236, 196, 0.04); }
+.circles li.is-yours { background: var(--osrs-selected); }
+.circles li.is-yours .name { color: var(--osrs-white); }
+.grow { flex: 1; min-width: 0; }
+.name { color: var(--osrs-orange); }
 
-.segmented {
-  display: flex;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
+.diary { display: inline-flex; align-items: center; gap: 3px; color: var(--osrs-yellow); font-family: 'RSSmall', sans-serif; }
+.diary .btn { width: 20px; height: 20px; padding: 0; font-family: 'RSBold', sans-serif; }
 
-.segmented button {
-  flex: 1;
-  padding: 7px 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: 600 13px var(--sans);
-  cursor: pointer;
-}
+.panel label.small { display: block; margin: 10px 0 4px; }
 
-.segmented button + button {
-  border-left: 1px solid var(--line);
-}
+/* ── Phones and narrow windows ─────────────────────────────────────────── */
+@media (max-width: 899px) {
+  .app { padding: 6px; gap: 6px; }
+  .brand-name { font-size: 32px; }
+  .brand-sub { display: none; }
+  .topbar nav { margin-left: 0; width: 100%; }
+  .topbar nav .btn { flex: 1; padding: 0 6px; }
+  .nav-gh { display: none !important; }
 
-.segmented button[aria-pressed='true'] {
-  background: var(--bg-2);
-  color: var(--text);
-}
+  .map-page { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto; }
+  .map-frame { height: 56vh; flex: none; }
+  .panel { overflow: visible; }
 
-.status-row {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  margin-bottom: 6px;
-}
+  .hero { height: auto; min-height: 0; padding: 0; display: flex; flex-direction: column; }
+  .hero-map { position: relative; inset: auto; height: 46vh; }
+  .hero-box { position: relative; left: auto; top: auto; transform: none; width: 100%; }
+  .hero-box h1 { font-size: 32px; line-height: 30px; }
 
-.warn {
-  color: var(--red);
-}
-
-.ok {
-  color: var(--green);
-}
-
-.notice {
-  margin: 8px 0;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #5b4521;
-  background: #2a2214;
-  font-size: 13px;
-}
-
-.notice-error {
-  border-color: #6b2b25;
-  background: #2a1614;
-}
-
-.dot {
-  flex: none;
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  transform: translateY(1px);
-}
-
-.crossings,
-.circles {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.crossings li,
-.circles li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-}
-
-.circles li.is-yours {
-  font-weight: 600;
-}
-
-.grow {
-  flex: 1;
-  min-width: 0;
-}
-
-.diary {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.diary button {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--bg-2);
-  color: var(--text);
-  cursor: pointer;
-  line-height: 1;
-}
-
-.diary button:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.toggle {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  margin-bottom: 8px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.toggle input {
-  margin-top: 3px;
-  accent-color: var(--gold);
-}
-
-.log {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 260px;
-  overflow-y: auto;
-  font-size: 13px;
-}
-
-.log li {
-  padding: 4px 0;
-  border-bottom: 1px dashed var(--line);
-}
-
-.panel label.small {
-  display: block;
-  margin: 12px 0 6px;
-}
-
-@media (max-width: 860px) {
-  .topbar {
-    padding: 10px 16px;
-  }
-
-  .nav-gh {
-    display: none;
-  }
-
-  .topbar nav a {
-    padding: 6px 8px;
-  }
-
-  .map-page {
-    grid-template-columns: 1fr;
-    grid-template-rows: 58vh auto;
-    height: auto;
-  }
-
-  .panel {
-    border-left: 0;
-    border-top: 1px solid var(--line);
-    overflow: visible;
-  }
-
-  .hero-shade {
-    background: linear-gradient(0deg, var(--bg) 0%, rgba(17, 21, 28, 0.86) 45%, rgba(17, 21, 28, 0.25) 100%);
-  }
-
-  .hero-copy {
-    top: auto;
-    bottom: 24px;
-    transform: none;
-    left: 16px;
-    right: 16px;
-  }
-
-  .content {
-    padding: 36px 16px;
-  }
-
-  .split {
-    grid-template-columns: 1fr;
-  }
-
-  .law-list > div {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .law-list > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 }

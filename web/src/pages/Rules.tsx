@@ -2,8 +2,10 @@ import { GROWTH, LAWS } from './laws';
 
 export function Rules() {
   return (
-    <article className="content prose">
-      <p className="eyebrow">The rulebook</p>
+    <article className="page prose">
+      <div className="osrs-win window">
+      <div className="win-body">
+      <p className="osrs-title">The rulebook</p>
       <h1>Nomad UIM</h1>
       <p className="lede">Ultimate Ironman, but you can only play inside circles that drift across Gielinor.</p>
 
@@ -57,6 +59,8 @@ export function Rules() {
         <strong>Waystones.</strong> Milestones like total level, quest points and first boss kills summon a waystone somewhere in the world.
         Reach it to claim a one-use boon, such as an extra circle, a bigger radius or a burst of speed.
       </p>
+      </div>
+      </div>
     </article>
   );
 }

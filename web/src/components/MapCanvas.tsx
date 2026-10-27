@@ -119,10 +119,7 @@ export function MapCanvas({ scene, zoom = 1, interactive = true, onPick, classNa
               ctx.stroke();
               ctx.setLineDash([]);
               const top = hull.reduce((a, b) => (b[1] < a[1] ? b : a));
-              ctx.fillStyle = withAlpha(colour, 0.9);
-              ctx.font = '600 11px Inter, system-ui, sans-serif';
-              ctx.textAlign = 'center';
-              ctx.fillText(`${s.forecast!.horizons[hIdx] / 60}h`, top[0], top[1] - 4);
+              rsText(ctx, `${s.forecast!.horizons[hIdx] / 60}h`, top[0], top[1] - 4, colour, 'RSSmall');
             }
           }
         });
@@ -210,14 +207,8 @@ export function MapCanvas({ scene, zoom = 1, interactive = true, onPick, classNa
         }
 
         if (v.scale > 0.3 || i === MAIN || isYours) {
-          ctx.font = `${i === MAIN || isYours ? 700 : 600} ${i === MAIN ? 13 : 11}px Inter, system-ui, sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = 'rgba(0,0,0,0.75)';
           const label = sim.name(c) + (isYours ? ' (you)' : '');
-          ctx.strokeText(label, x, y - r - 6);
-          ctx.fillStyle = colour;
-          ctx.fillText(label, x, y - r - 6);
+          rsText(ctx, label, x, y - r - 6, colour, i === MAIN || isYours ? 'RSBold' : 'RS');
         }
       }
 
@@ -341,6 +332,16 @@ export function MapCanvas({ scene, zoom = 1, interactive = true, onPick, classNa
       )}
     </div>
   );
+}
+
+/** Map labels the way the game draws them: a pixel font with a 1px black shadow. */
+function rsText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, colour: string, font: 'RS' | 'RSBold' | 'RSSmall') {
+  ctx.font = `16px ${font}, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#000';
+  ctx.fillText(text, Math.round(x) + 1, Math.round(y) + 1);
+  ctx.fillStyle = colour;
+  ctx.fillText(text, Math.round(x), Math.round(y));
 }
 
 function hex(rgb: number): string {

@@ -32,6 +32,7 @@ export function MapPage({ geo, route }: Props) {
   const [codeInput, setCodeInput] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const lastForecast = useRef(-Infinity);
+  const chatRef = useRef<HTMLOListElement>(null);
   const fogRef = useRef(fog);
   fogRef.current = fog;
 
@@ -132,6 +133,12 @@ export function MapPage({ geo, route }: Props) {
     }
   }, [fog, showForecast, runId]);
 
+  // Like the game's chatbox, the newest line sits at the bottom.
+  useEffect(() => {
+    const el = chatRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [log]);
+
   const s = scene.current;
   const sim = s?.sim;
 
@@ -201,28 +208,45 @@ export function MapPage({ geo, route }: Props) {
 
   return (
     <div className="map-page">
-      <MapCanvas scene={scene} zoom={1.4} onPick={pick} className="map-main" />
-      <aside className="panel">
+      <div className="map-col">
+        <div className="osrs-win map-frame">
+          <MapCanvas scene={scene} zoom={1.4} onPick={pick} className="map-main" />
+        </div>
+        <div className="osrs-chat chatbox">
+          <ol className="chat-lines" ref={chatRef} aria-label="Run log">
+            {[...log].reverse().map((l, k) => (
+              <li key={`${l.minute}-${k}`}>
+                <span className="chat-time">[{formatPlayed(l.minute)}]</span> {l.line}
+              </li>
+            ))}
+          </ol>
+          <div className="chat-tabs">
+            <span className="btn is-on">Run log</span>
+            <span className="chat-note">Tap the map to stand somewhere. Drag to pan, scroll or pinch to zoom.</span>
+          </div>
+        </div>
+      </div>
+      <aside className="panel osrs-win">
         {error && (
-          <div className="notice notice-error" role="alert">
+          <div className="osrs-chat notice notice-error" role="alert">
             {error}
             <button type="button" className="link" onClick={() => setError(null)}>Dismiss</button>
           </div>
         )}
         <section>
-          <div className="panel-title">
+          <div className="run-head">
             <div>
-              <div className="eyebrow">{loaded === 'run' ? 'Your run, from the plugin' : `Seed ${sim.state.seed}`}</div>
+              <div className="osrs-title">{loaded === 'run' ? 'Your run, from the plugin' : `Seed ${sim.state.seed}`}</div>
               <div className="clock">{formatPlayed(sim.state.minutes)}</div>
               <div className="muted small">played time</div>
             </div>
-            <button type="button" className="btn btn-primary play" onClick={() => setPlaying((p) => !p)}>
+            <button type="button" className="btn btn-big" onClick={() => setPlaying((p) => !p)}>
               {playing ? 'Pause' : 'Play'}
             </button>
           </div>
-          <div className="segmented" role="group" aria-label="Speed">
+          <div className="speeds" role="group" aria-label="Speed">
             {SPEEDS.map((sp, i) => (
-              <button key={sp.label} type="button" aria-pressed={speed === i} onClick={() => setSpeed(i)}>
+              <button key={sp.label} type="button" className="btn" aria-pressed={speed === i} onClick={() => setSpeed(i)}>
                 {sp.label}
               </button>
             ))}
@@ -233,19 +257,19 @@ export function MapPage({ geo, route }: Props) {
           <div className="status-row">
             <span className="dot" style={{ background: hex(sim.colour(status.yours)) }} />
             <span>
-              You are bound to <strong>{sim.name(status.yours)}</strong>
+              You are bound to <span className="value">{sim.name(status.yours)}</span>
               {status.yours.voyage ? <>, sailing to {status.yours.voyage.to}</> : null}.
             </span>
           </div>
           <div className="status-row muted">
             {status.where === 'unknown' && 'Tap the map to stand somewhere.'}
-            {status.where === 'inside' && 'You are inside your circle.'}
+            {status.where === 'inside' && <span className="ok">You are inside your circle.</span>}
             {status.where === 'outside' && (
               <span className="warn">You are outside. Your circle drifts 5x faster and shrinks a tile a minute.</span>
             )}
           </div>
           {status.stranded && (
-            <div className="notice">Stranded: Main has moved on. Your circle leans toward it and waits at the border.</div>
+            <div className="osrs-chat notice">Stranded: Main has moved on. Your circle leans toward it and waits at the border.</div>
           )}
           <div className="status-row muted small">
             Inferno and Fight Caves: {status.volcano ? <strong className="ok">open</strong> : 'closed'} (Main must cover the volcano)
@@ -267,7 +291,7 @@ export function MapPage({ geo, route }: Props) {
                 return (
                   <li key={i}>
                     <span className="dot" style={{ background: hex(sim.colour(c)) }} />
-                    <span className="grow">{sim.name(c)}</span>
+                    <span className="grow name">{sim.name(c)}</span>
                     <button
                       type="button"
                       className="btn btn-small"
@@ -289,14 +313,14 @@ export function MapPage({ geo, route }: Props) {
 
         <section>
           <h3>Map</h3>
-          <label className="toggle">
+          <label className="check">
             <input type="checkbox" checked={fog} onChange={(e) => setFog(e.target.checked)} /> Fog outside your circle
           </label>
-          <label className="toggle">
+          <label className="check">
             <input type="checkbox" checked={showForecast} onChange={(e) => setShowForecast(e.target.checked)} /> Forecast (where Main and your
             circle could be in 1, 3 and 6 hours)
           </label>
-          <label className="toggle">
+          <label className="check">
             <input
               type="checkbox"
               checked={sim.state.sailingUnlocked}
@@ -320,7 +344,7 @@ export function MapPage({ geo, route }: Props) {
                 <li key={i} className={i === sim.state.bound ? 'is-yours' : ''}>
                   <span className="dot" style={{ background: hex(sim.colour(c)) }} />
                   <span className="grow">
-                    {sim.name(c)}
+                    <span className="name">{sim.name(c)}</span>
                     <span className="muted small">
                       {' '}
                       · {Math.round(c.radius)} tiles
@@ -329,13 +353,13 @@ export function MapPage({ geo, route }: Props) {
                   </span>
                   {region && max > 0 && (
                     <span className="diary" title={`Diary tiers done: ${c.tiers} of ${max}`}>
-                      <button type="button" aria-label={`Fewer ${region.name} diary tiers`} onClick={() => setDiary(region.id, c.tiers - 1)} disabled={c.tiers === 0}>
+                      <button type="button" className="btn" aria-label={`Fewer ${region.name} diary tiers`} onClick={() => setDiary(region.id, c.tiers - 1)} disabled={c.tiers === 0}>
                         −
                       </button>
                       <span>
                         {c.tiers}/{max}
                       </span>
-                      <button type="button" aria-label={`More ${region.name} diary tiers`} onClick={() => setDiary(region.id, c.tiers + 1)} disabled={c.tiers >= max}>
+                      <button type="button" className="btn" aria-label={`More ${region.name} diary tiers`} onClick={() => setDiary(region.id, c.tiers + 1)} disabled={c.tiers >= max}>
                         +
                       </button>
                     </span>
@@ -345,17 +369,6 @@ export function MapPage({ geo, route }: Props) {
             })}
           </ul>
           <p className="muted small">The numbers are Achievement Diary tiers. Each one permanently grows that kingdom's circle.</p>
-        </section>
-
-        <section>
-          <h3>Run log</h3>
-          <ol className="log">
-            {log.map((l, k) => (
-              <li key={`${l.minute}-${k}`}>
-                <span className="muted mono">{formatPlayed(l.minute)}</span> {l.line}
-              </li>
-            ))}
-          </ol>
         </section>
 
         <section>

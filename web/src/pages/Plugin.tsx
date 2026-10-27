@@ -2,8 +2,10 @@ const REPO = 'https://github.com/Nubles/OSRS-Wandering-Nomad';
 
 export function Plugin() {
   return (
-    <article className="content prose">
-      <p className="eyebrow">RuneLite plugin</p>
+    <article className="page prose">
+      <div className="osrs-win window">
+      <div className="win-body">
+      <p className="osrs-title">RuneLite plugin</p>
       <h1>Play with the plugin</h1>
       <p className="lede">The plugin runs your circles, draws them in the game and keeps the run log. This site uses the same engine.</p>
 
@@ -38,6 +40,8 @@ gradle runClient`}</pre>
       <p className="muted">
         A run link is a snapshot of the moment you made it. Live tracking, where the page follows your game as you play, is planned next.
       </p>
+      </div>
+      </div>
     </article>
   );
 }

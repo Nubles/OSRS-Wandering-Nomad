@@ -17,18 +17,22 @@ export function App() {
 
   return (
     <div className={`app page-${route.page}`}>
-      <header className="topbar">
+      <header className="topbar osrs-win">
         <a className="brand" href="#/">
           <span className="brand-mark" aria-hidden="true" />
-          Nomad UIM
+          <span>
+            <span className="brand-name">Nomad UIM</span>
+            <br />
+            <span className="brand-sub">Ultimate Ironman inside drifting circles</span>
+          </span>
         </a>
         <nav>
           {NAV.map((n) => (
-            <a key={n.page} href={n.href} aria-current={route.page === n.page ? 'page' : undefined}>
+            <a key={n.page} className="btn" href={n.href} aria-current={route.page === n.page ? 'page' : undefined}>
               {n.label}
             </a>
           ))}
-          <a href="https://github.com/Nubles/OSRS-Wandering-Nomad" target="_blank" rel="noreferrer" className="nav-gh">
+          <a href="https://github.com/Nubles/OSRS-Wandering-Nomad" target="_blank" rel="noreferrer" className="btn nav-gh">
             GitHub
           </a>
         </nav>
