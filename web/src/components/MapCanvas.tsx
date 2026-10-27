@@ -318,10 +318,11 @@ export function MapCanvas({ scene, zoom = 1, interactive = true, onPick, classNa
       <canvas ref={canvasRef} aria-label="Map of Gielinor with the Nomad circles" role="img" />
       {interactive && (
         <div className="map-zoom">
-          <button type="button" aria-label="Zoom in" onClick={() => nudge(1.4)}>+</button>
-          <button type="button" aria-label="Zoom out" onClick={() => nudge(1 / 1.4)}>−</button>
+          <button type="button" className="btn" aria-label="Zoom in" onClick={() => nudge(1.4)}>+</button>
+          <button type="button" className="btn" aria-label="Zoom out" onClick={() => nudge(1 / 1.4)}>−</button>
           <button
             type="button"
+            className="btn"
             aria-label="Follow your circle"
             title="Follow your circle"
             onClick={() => scene.current && (scene.current.follow = true)}

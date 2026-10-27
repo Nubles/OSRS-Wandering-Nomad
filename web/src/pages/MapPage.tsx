@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { MapCanvas, MapScene } from '../components/MapCanvas';
 import type { Geography, Tile } from '../engine/geography';
 import { forecast } from '../engine/forecast';
@@ -6,6 +6,17 @@ import { decodeRun, encodeRun } from '../engine/runcode';
 import { contains, MAIN, NomadSim } from '../engine/sim';
 import { ago, fetchLive, isLive, LIVE_CODE_RE, LiveRun, POLL_MS } from '../live';
 import type { Route } from '../router';
+
+const Map3D = lazy(() => import('../components/Map3D'));
+const VIEW_KEY = 'nomad.view';
+
+function savedView(): '2d' | '3d' {
+  try {
+    return localStorage.getItem(VIEW_KEY) === '3d' ? '3d' : '2d';
+  } catch {
+    return '2d';
+  }
+}
 
 const SPEEDS = [
   { label: '1 min/s', perSecond: 1 },
@@ -27,6 +38,7 @@ export function MapPage({ geo, route }: Props) {
   const [speed, setSpeed] = useState(1);
   const [log, setLog] = useState<{ minute: number; line: string }[]>([]);
   const [fog, setFog] = useState(true);
+  const [view, setView] = useState(savedView);
   const [showForecast, setShowForecast] = useState(false);
   const [loaded, setLoaded] = useState<'seed' | 'run' | 'live'>('seed');
   const [liveRun, setLiveRun] = useState<LiveRun | null>(null);
@@ -278,7 +290,33 @@ export function MapPage({ geo, route }: Props) {
     <div className="map-page">
       <div className="map-col">
         <div className="osrs-win map-frame">
-          <MapCanvas scene={scene} zoom={1.4} onPick={pick} className="map-main" />
+          {view === '3d' ? (
+            <Suspense fallback={<div className="loading">Loading the 3D map…</div>}>
+              <Map3D scene={scene} onPick={pick} className="map-main" />
+            </Suspense>
+          ) : (
+            <MapCanvas scene={scene} zoom={1.4} onPick={pick} className="map-main" />
+          )}
+          <div className="map-mode" role="group" aria-label="Map view">
+            {(['2d', '3d'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`btn${view === m ? ' is-on' : ''}`}
+                aria-pressed={view === m}
+                onClick={() => {
+                  setView(m);
+                  try {
+                    localStorage.setItem(VIEW_KEY, m);
+                  } catch {
+                    /* private mode: the choice just isn't remembered */
+                  }
+                }}
+              >
+                {m.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="osrs-chat chatbox">
           <ol className="chat-lines" ref={chatRef} aria-label="Run log">
@@ -291,7 +329,8 @@ export function MapPage({ geo, route }: Props) {
           <div className="chat-tabs">
             <span className="btn is-on">Run log</span>
             <span className="chat-note">
-              {loaded === 'live' ? 'Drag to pan, scroll or pinch to zoom.' : 'Tap the map to stand somewhere. Drag to pan, scroll or pinch to zoom.'}
+              {loaded === 'live' ? '' : 'Tap the map to stand somewhere. '}
+              {view === '3d' ? 'Drag to spin, right-drag or two fingers to move, scroll or pinch to zoom.' : 'Drag to pan, scroll or pinch to zoom.'}
             </span>
           </div>
         </div>
