@@ -9,3 +9,7 @@ web/node_modules/
 web/dist/
 # Copied from src/main/resources by web/scripts/copy-assets.mjs
 web/public/world.dat
+
+# Live relay worker
+workers/nomad-relay/node_modules/
+workers/nomad-relay/.wrangler/

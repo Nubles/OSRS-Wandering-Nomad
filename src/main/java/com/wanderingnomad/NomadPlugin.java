@@ -51,6 +51,7 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.LinkBrowser;
+import okhttp3.OkHttpClient;
 
 /**
  * Nomad UIM, Solo mode: runs the circles on the account's played time, works out which surface
@@ -68,6 +69,8 @@ public class NomadPlugin extends Plugin
     /** The companion website, served from this repo's web/ folder by GitHub Pages. */
     static final String WEBSITE = "https://nubles.github.io/OSRS-Wandering-Nomad/";
     static final String RUN_KEY = "run";
+    static final String LIVE_CODE_KEY = "liveCode";
+    static final String LIVE_TOKEN_KEY = "liveToken";
     /** Game ticks in one played minute. */
     static final int TICKS_PER_MINUTE = 100;
     private static final int LOG_LINES = 12;
@@ -89,6 +92,8 @@ public class NomadPlugin extends Plugin
     @Inject
     private Gson gson;
     @Inject
+    private OkHttpClient okHttpClient;
+    @Inject
     private NomadSceneOverlay sceneOverlay;
     @Inject
     private NomadMinimapOverlay minimapOverlay;
@@ -98,6 +103,7 @@ public class NomadPlugin extends Plugin
     private NomadStatusOverlay statusOverlay;
 
     private NomadPanel panel;
+    private LiveShare live;
     private NavigationButton navButton;
 
     private NomadSim sim;
@@ -116,7 +122,9 @@ public class NomadPlugin extends Plugin
     @Override
     protected void startUp()
     {
-        panel = new NomadPanel(this::crossFromPanel, this::newRunFromPanel, this::viewOnWebsite, this::copyRunCode);
+        live = new LiveShare(okHttpClient);
+        panel = new NomadPanel(this::crossFromPanel, this::newRunFromPanel, this::viewOnWebsite, this::copyRunCode,
+            this::copyLiveLink);
         navButton = NavigationButton.builder()
             .tooltip("Nomad UIM")
             .icon(icon())
@@ -158,6 +166,7 @@ public class NomadPlugin extends Plugin
         {
             // The next login may be another account, with a run of its own.
             save();
+            if (config.liveShare()) live.offline(liveCode(), liveToken(), runCode());
             sim = null;
             surface = null;
             loadPending = false;
@@ -192,8 +201,14 @@ public class NomadPlugin extends Plugin
         }
         ticks = 0;
         sim.setSailingUnlocked(config.sailingUnlocked());
-        report(sim.step(surface));
+        List<String> lines = sim.step(surface);
+        report(lines);
         if (sim.minutes() % 5 == 0) save();
+        if (config.liveShare())
+        {
+            if (!lines.isEmpty()) live.markDirty();
+            live.minute(liveCode(), liveToken(), runCode());
+        }
         publish();
     }
 
@@ -324,6 +339,7 @@ public class NomadPlugin extends Plugin
             {
                 report(java.util.Collections.singletonList(line));
                 save();
+                live.markDirty();
             }
             publish();
         });
@@ -357,6 +373,57 @@ public class NomadPlugin extends Plugin
         });
     }
 
+    private void copyLiveLink()
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null)
+            {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(panel,
+                    "Log in first, so the plugin can load your run.", "Nomad UIM", JOptionPane.INFORMATION_MESSAGE));
+                return;
+            }
+            boolean on = config.liveShare();
+            String url = LiveShare.liveUrl(liveCode());
+            if (on) live.markDirty();
+            SwingUtilities.invokeLater(() ->
+            {
+                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(url), null);
+                JOptionPane.showMessageDialog(panel, on
+                        ? "Live link copied. It follows your run while you play."
+                        : "Live link copied, but live sharing is off. Turn on \"Share live on the website\" in the plugin's settings so the link updates.",
+                    "Nomad UIM", JOptionPane.INFORMATION_MESSAGE);
+            });
+        });
+    }
+
+    /** This account's live code, made the first time it's needed and kept with the run. */
+    private String liveCode()
+    {
+        return profileValue(LIVE_CODE_KEY, 18);
+    }
+
+    private String liveToken()
+    {
+        return profileValue(LIVE_TOKEN_KEY, 32);
+    }
+
+    private String profileValue(String key, int bytes)
+    {
+        String value = configManager.getRSProfileConfiguration(NomadConfig.GROUP, key);
+        if (value == null || value.isEmpty())
+        {
+            value = LiveShare.random(bytes);
+            configManager.setRSProfileConfiguration(NomadConfig.GROUP, key, value);
+        }
+        return value;
+    }
+
+    private String runCode()
+    {
+        return RunCode.encode(gson.toJson(new SavedRun(sim, surface)));
+    }
+
     /** Encodes the run on the client thread, then hands the code to Swing. */
     private void withRunCode(Consumer<String> use)
     {
@@ -368,7 +435,7 @@ public class NomadPlugin extends Plugin
                     "Log in first, so the plugin can load your run.", "Nomad UIM", JOptionPane.INFORMATION_MESSAGE));
                 return;
             }
-            String code = RunCode.encode(gson.toJson(new SavedRun(sim, surface)));
+            String code = runCode();
             SwingUtilities.invokeLater(() -> use.accept(code));
         });
     }

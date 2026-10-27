@@ -85,4 +85,18 @@ public interface NomadConfig extends Config
     {
         return true;
     }
+
+    @ConfigItem(
+        keyName = "liveShare",
+        name = "Share live on the website",
+        description = "Sends your run, including the tile you stand on, to the Nomad UIM relay (a third-party server) "
+            + "about every 5 minutes, so anyone with your live link can watch your circles. Off by default.",
+        warning = "This sends your run and position to the Nomad UIM relay, a server not run by RuneLite or Jagex. "
+            + "Anyone with your live link can watch it. Turn it on?",
+        position = 7
+    )
+    default boolean liveShare()
+    {
+        return false;
+    }
 }

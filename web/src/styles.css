@@ -130,6 +130,7 @@ strong { font-family: 'RSBold', ui-sans-serif, sans-serif; font-weight: 400; col
 
 /* OSRS tick box: a dark well with a yellow tick. */
 .check { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; cursor: pointer; color: var(--osrs-tan); }
+.check input:disabled { opacity: 0.5; cursor: default; }
 .check input {
   appearance: none;
   flex: none;
@@ -269,6 +270,12 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .clock { font: 32px/30px 'RSBold', sans-serif; color: var(--osrs-yellow); }
 .speeds { display: flex; gap: 4px; }
 .speeds .btn { flex: 1; height: 28px; }
+
+.live-status { display: flex; align-items: baseline; gap: 6px; }
+.live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--osrs-red); box-shadow: 0 0 0 1px #000; align-self: center; }
+.live-dot.is-on { background: var(--osrs-green); animation: live-blink 1.6s steps(2, start) infinite; }
+@keyframes live-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .live-dot.is-on { animation: none; } }
 
 .status-row { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
 

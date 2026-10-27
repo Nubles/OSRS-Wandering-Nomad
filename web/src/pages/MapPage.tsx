@@ -4,6 +4,7 @@ import type { Geography, Tile } from '../engine/geography';
 import { forecast } from '../engine/forecast';
 import { decodeRun, encodeRun } from '../engine/runcode';
 import { contains, MAIN, NomadSim } from '../engine/sim';
+import { ago, fetchLive, isLive, LIVE_CODE_RE, LiveRun, POLL_MS } from '../live';
 import type { Route } from '../router';
 
 const SPEEDS = [
@@ -27,7 +28,10 @@ export function MapPage({ geo, route }: Props) {
   const [log, setLog] = useState<{ minute: number; line: string }[]>([]);
   const [fog, setFog] = useState(true);
   const [showForecast, setShowForecast] = useState(false);
-  const [loaded, setLoaded] = useState<'seed' | 'run'>('seed');
+  const [loaded, setLoaded] = useState<'seed' | 'run' | 'live'>('seed');
+  const [liveRun, setLiveRun] = useState<LiveRun | null>(null);
+  const liveRef = useRef<LiveRun | null>(null);
+  liveRef.current = liveRun;
   const [error, setError] = useState<string | null>(null);
   const [codeInput, setCodeInput] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
@@ -54,6 +58,62 @@ export function MapPage({ geo, route }: Props) {
   useEffect(() => {
     let live = true;
     setError(null);
+    setLiveRun(null);
+    if (route.live) {
+      const code = route.live;
+      if (!LIVE_CODE_RE.test(code)) {
+        setError('That live link is not complete. Copy it again from the plugin.');
+        startSeed(randomSeed());
+        return;
+      }
+      let etag: string | null = null;
+      let first = true;
+      let timer = 0;
+      const poll = async () => {
+        try {
+          const got = await fetchLive(code, etag);
+          if (!live) return;
+          if (got.kind === 'missing') {
+            if (first) {
+              setError("This live run hasn't been shared yet. Turn on Share live in the plugin's settings and play for a minute.");
+              startSeed(randomSeed());
+              setPlaying(false);
+            }
+          } else if (got.kind === 'run') {
+            etag = got.etag;
+            const run = await decodeRun(got.data.run);
+            if (!live) return;
+            const sim = new NomadSim(geo, run.sim);
+            const player = run.surface ?? null;
+            // Catch up on the minutes played since the plugin sent this, up to the point it would have sent again.
+            if (isLive(got.data)) {
+              const behind = Math.min(Math.floor((Date.now() - got.data.at) / 60_000), 10);
+              for (let i = 0; i < behind; i++) sim.step(player);
+            }
+            const view = scene.current;
+            scene.current = { sim, player, forecast: null, fog: fogRef.current, follow: view?.follow ?? true };
+            setLoaded('live');
+            setLiveRun(got.data);
+            setPlaying(isLive(got.data));
+            if (first) {
+              setRunId((r) => r + 1);
+              setLog([{ minute: sim.state.minutes, line: 'Watching a live run. The circles move as the player plays.' }]);
+            }
+            lastForecast.current = -Infinity;
+            refresh();
+          }
+          first = false;
+        } catch (e) {
+          if (live && first) setError((e as Error).message);
+        }
+        if (live) timer = window.setTimeout(poll, POLL_MS);
+      };
+      poll();
+      return () => {
+        live = false;
+        clearTimeout(timer);
+      };
+    }
     if (route.run) {
       decodeRun(route.run)
         .then((run) => {
@@ -97,7 +157,13 @@ export function MapPage({ geo, route }: Props) {
       frame = requestAnimationFrame(loop);
       const s = scene.current;
       if (!s) return;
-      owed += ((now - last) / 1000) * SPEEDS[speed].perSecond;
+      // A live run whose player stopped sending stays where it was last seen.
+      if (loaded === 'live' && (!liveRef.current || !isLive(liveRef.current))) {
+        last = now;
+        return;
+      }
+      // Live runs move at the game's own pace: one played minute a minute.
+      owed += ((now - last) / 1000) * (loaded === 'live' ? 1 / 60 : SPEEDS[speed].perSecond);
       last = now;
       const steps = Math.min(Math.floor(owed), 600);
       owed -= steps;
@@ -119,7 +185,7 @@ export function MapPage({ geo, route }: Props) {
     };
     frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
-  }, [playing, speed, showForecast, refresh]);
+  }, [playing, speed, showForecast, refresh, loaded]);
 
   useEffect(() => {
     const s = scene.current;
@@ -144,11 +210,11 @@ export function MapPage({ geo, route }: Props) {
 
   const pick = useCallback(
     (tile: Tile) => {
-      if (!scene.current) return;
+      if (!scene.current || loaded === 'live') return;
       scene.current.player = tile;
       refresh();
     },
-    [refresh],
+    [refresh, loaded],
   );
 
   const crossTo = (i: number) => {
@@ -169,12 +235,14 @@ export function MapPage({ geo, route }: Props) {
     if (!s) return;
     const base = `${location.origin}${location.pathname}`;
     const url =
-      loaded === 'run'
+      loaded === 'live'
+        ? location.href
+        : loaded === 'run'
         ? `${base}#/run/${await encodeRun({ sim: s.sim.state, surface: s.player ?? undefined })}`
         : `${base}#/map?seed=${s.sim.state.seed}`;
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(loaded === 'run' ? 'Link to this run copied.' : 'Link to this seed copied.');
+      setCopied(loaded === 'live' ? 'Live link copied.' : loaded === 'run' ? 'Link to this run copied.' : 'Link to this seed copied.');
     } catch {
       setCopied(url);
     }
@@ -222,7 +290,9 @@ export function MapPage({ geo, route }: Props) {
           </ol>
           <div className="chat-tabs">
             <span className="btn is-on">Run log</span>
-            <span className="chat-note">Tap the map to stand somewhere. Drag to pan, scroll or pinch to zoom.</span>
+            <span className="chat-note">
+              {loaded === 'live' ? 'Drag to pan, scroll or pinch to zoom.' : 'Tap the map to stand somewhere. Drag to pan, scroll or pinch to zoom.'}
+            </span>
           </div>
         </div>
       </div>
@@ -236,14 +306,34 @@ export function MapPage({ geo, route }: Props) {
         <section>
           <div className="run-head">
             <div>
-              <div className="osrs-title">{loaded === 'run' ? 'Your run, from the plugin' : `Seed ${sim.state.seed}`}</div>
+              <div className="osrs-title">
+                {loaded === 'live' ? 'Live run' : loaded === 'run' ? 'Your run, from the plugin' : `Seed ${sim.state.seed}`}
+              </div>
               <div className="clock">{formatPlayed(sim.state.minutes)}</div>
               <div className="muted small">played time</div>
             </div>
-            <button type="button" className="btn btn-big" onClick={() => setPlaying((p) => !p)}>
-              {playing ? 'Pause' : 'Play'}
-            </button>
+            {loaded !== 'live' && (
+              <button type="button" className="btn btn-big" onClick={() => setPlaying((p) => !p)}>
+                {playing ? 'Pause' : 'Play'}
+              </button>
+            )}
           </div>
+          {loaded === 'live' && liveRun && (
+            <div className="live-status">
+              {isLive(liveRun) ? (
+                <>
+                  <span className="live-dot is-on" /> <span className="ok">Live</span>
+                  <span className="muted small"> · updated {ago(Date.now() - liveRun.at)}</span>
+                </>
+              ) : (
+                <>
+                  <span className="live-dot" /> <span className="warn">Offline</span>
+                  <span className="muted small"> · last played {ago(Date.now() - liveRun.at)}</span>
+                </>
+              )}
+            </div>
+          )}
+          {loaded !== 'live' && (
           <div className="speeds" role="group" aria-label="Speed">
             {SPEEDS.map((sp, i) => (
               <button key={sp.label} type="button" className="btn" aria-pressed={speed === i} onClick={() => setSpeed(i)}>
@@ -251,6 +341,7 @@ export function MapPage({ geo, route }: Props) {
               </button>
             ))}
           </div>
+          )}
         </section>
 
         <section className="status">
@@ -262,7 +353,7 @@ export function MapPage({ geo, route }: Props) {
             </span>
           </div>
           <div className="status-row muted">
-            {status.where === 'unknown' && 'Tap the map to stand somewhere.'}
+            {status.where === 'unknown' && (loaded === 'live' ? 'Waiting for the player\'s position.' : 'Tap the map to stand somewhere.')}
             {status.where === 'inside' && <span className="ok">You are inside your circle.</span>}
             {status.where === 'outside' && (
               <span className="warn">You are outside. Your circle drifts 5x faster and shrinks a tile a minute.</span>
@@ -295,7 +386,7 @@ export function MapPage({ geo, route }: Props) {
                     <button
                       type="button"
                       className="btn btn-small"
-                      disabled={!ok}
+                      disabled={!ok || loaded === 'live'}
                       title={ok ? '' : 'Stand where the two circles overlap'}
                       onClick={() => crossTo(i)}
                     >
@@ -324,6 +415,7 @@ export function MapPage({ geo, route }: Props) {
             <input
               type="checkbox"
               checked={sim.state.sailingUnlocked}
+              disabled={loaded === 'live'}
               onChange={(e) => {
                 sim.state.sailingUnlocked = e.target.checked;
                 refresh();
@@ -353,13 +445,13 @@ export function MapPage({ geo, route }: Props) {
                   </span>
                   {region && max > 0 && (
                     <span className="diary" title={`Diary tiers done: ${c.tiers} of ${max}`}>
-                      <button type="button" className="btn" aria-label={`Fewer ${region.name} diary tiers`} onClick={() => setDiary(region.id, c.tiers - 1)} disabled={c.tiers === 0}>
+                      <button type="button" className="btn" aria-label={`Fewer ${region.name} diary tiers`} onClick={() => setDiary(region.id, c.tiers - 1)} disabled={c.tiers === 0 || loaded === 'live'}>
                         −
                       </button>
                       <span>
                         {c.tiers}/{max}
                       </span>
-                      <button type="button" className="btn" aria-label={`More ${region.name} diary tiers`} onClick={() => setDiary(region.id, c.tiers + 1)} disabled={c.tiers >= max}>
+                      <button type="button" className="btn" aria-label={`More ${region.name} diary tiers`} onClick={() => setDiary(region.id, c.tiers + 1)} disabled={c.tiers >= max || loaded === 'live'}>
                         +
                       </button>
                     </span>
