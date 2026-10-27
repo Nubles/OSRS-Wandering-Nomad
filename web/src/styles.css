@@ -292,6 +292,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 @keyframes live-blink { to { visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { .live-dot.is-on { animation: none; } }
 
+.world-link { display: block; margin-top: 8px; text-align: center; text-decoration: none; }
 .status-row { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
 
 .notice { margin: 6px 0; padding: 6px 8px; font-size: 16px; line-height: 18px; }

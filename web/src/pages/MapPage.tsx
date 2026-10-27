@@ -18,6 +18,15 @@ function savedView(): '2d' | '3d' {
   }
 }
 
+/**
+ * osrs.world (dennisdev's rs-map-viewer) at a spot: the camera stands south of it, up in the air,
+ * looking north and down. Its camera is in tiles: cx east, cz north, cy is height (up is positive).
+ */
+function osrsWorldUrl(x: number, y: number): string {
+  const q = new URLSearchParams({ cx: String(Math.round(x)), cy: '45', cz: String(Math.round(y) - 45), p: '-245', y: '0', v: '1' });
+  return `https://osrs.world/?${q}`;
+}
+
 const SPEEDS = [
   { label: '1 min/s', perSecond: 1 },
   { label: '10 min/s', perSecond: 10 },
@@ -404,6 +413,9 @@ export function MapPage({ geo, route }: Props) {
           <div className="status-row muted small">
             Inferno and Fight Caves: {status.volcano ? <strong className="ok">open</strong> : 'closed'} (Main must cover the volcano)
           </div>
+          <a className="btn world-link" href={osrsWorldUrl(yours.x, yours.y)} target="_blank" rel="noopener noreferrer">
+            See your circle on osrs.world
+          </a>
         </section>
 
         <section>
