@@ -244,7 +244,7 @@ public final class NomadSim
     {
         if (c.voyage != null)
         {
-            double d = Math.hypot(c.voyage.tx - c.x, c.voyage.ty - c.y);
+            double d = Circle.dist(c.voyage.tx - c.x, c.voyage.ty - c.y);
             if (d <= SAIL_SPEED)
             {
                 c.x = c.voyage.tx;
@@ -267,8 +267,8 @@ public final class NomadSim
                 steer(c, toward.x, toward.y, pull);
             }
             double v = (c.isMain() ? DRIFT : REGION_DRIFT) * speedup;
-            double nx = c.x + Math.cos(c.heading) * v;
-            double ny = c.y + Math.sin(c.heading) * v;
+            double nx = c.x + StrictMath.cos(c.heading) * v;
+            double ny = c.y + StrictMath.sin(c.heading) * v;
             boolean ok = c.isMain() ? Geography.onLand(nx, ny) : c.region().contains(nx, ny);
             if (ok)
             {
@@ -354,8 +354,8 @@ public final class NomadSim
 
     private static void steer(Circle c, double tx, double ty, double weight)
     {
-        double d = Math.atan2(ty - c.y, tx - c.x) - c.heading;
-        d = Math.atan2(Math.sin(d), Math.cos(d));
+        double d = StrictMath.atan2(ty - c.y, tx - c.x) - c.heading;
+        d = StrictMath.atan2(StrictMath.sin(d), StrictMath.cos(d));
         c.heading += d * weight;
     }
 

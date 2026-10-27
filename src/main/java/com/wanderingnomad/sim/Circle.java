@@ -138,17 +138,26 @@ public final class Circle
     /** A tile is inside when its centre is within the radius. */
     public boolean contains(double tx, double ty)
     {
-        return Math.hypot(tx - x, ty - y) <= radius;
+        return dist(tx - x, ty - y) <= radius;
     }
 
     public boolean touches(Circle o)
     {
-        return Math.hypot(o.x - x, o.y - y) <= radius + o.radius;
+        return dist(o.x - x, o.y - y) <= radius + o.radius;
     }
 
     /** Tiles between the two edges; 0 or less once they overlap. */
     public double gap(Circle o)
     {
-        return Math.hypot(o.x - x, o.y - y) - radius - o.radius;
+        return dist(o.x - x, o.y - y) - radius - o.radius;
+    }
+
+    /**
+     * Distance as sqrt(dx² + dy²). Unlike Math.hypot, every platform rounds this the same way, so
+     * the website's TypeScript twin of the sim lands on exactly the same numbers.
+     */
+    static double dist(double dx, double dy)
+    {
+        return Math.sqrt(dx * dx + dy * dy);
     }
 }

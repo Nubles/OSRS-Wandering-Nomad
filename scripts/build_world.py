@@ -16,10 +16,11 @@ Format (big-endian):
   int chunkX0, int chunkY0, int chunkCols, int chunkRows, then one byte per chunk: kingdom
   index + 1 in KINGDOMS order, 0 for none.
 
-Usage: python3 scripts/build_world.py   (needs numpy and Pillow; caches tiles in build/maptiles)
+Usage: python3 scripts/build_world.py [--preview] [--site-map]   (needs numpy and Pillow; caches tiles in build/maptiles)
 """
 import gzip
 import io
+import json
 import os
 import re
 import struct
@@ -159,6 +160,9 @@ def main():
         f.write(gzip.compress(out.getvalue(), mtime=0))
     print(f"world.dat: {cols}x{rows} cells of {CELL} tiles, {int(cells.sum())} land, {len(chunks)} kingdom chunks")
 
+    if "--site-map" in sys.argv:
+        site_map(img, land, x0, y0)
+
     if "--preview" in sys.argv:
         preview = np.zeros((rows, cols, 3), dtype=np.uint8)
         preview[:] = (40, 80, 200)
@@ -172,6 +176,25 @@ def main():
                     k = chunks.get(((x0 + col * CELL) >> 6, wy >> 6))
                     preview[row, col] = colours[k] if k is not None else (120, 160, 80)
         Image.fromarray(preview[::-1]).save(os.path.join(ROOT, "build", "world-preview.png"))
+
+
+def site_map(img, land, x0, y0):
+    """The website's background: the game map at 1 pixel per tile, cropped to the land plus a margin."""
+    h = img.shape[0]
+    rows = np.where(land.any(axis=1))[0]
+    cols = np.where(land.any(axis=0))[0]
+    margin = 64
+    top, bottom = max(0, rows[0] - margin), min(h, rows[-1] + 1 + margin)
+    left, right = max(0, cols[0] - margin), min(img.shape[1], cols[-1] + 1 + margin)
+    crop = np.clip(img[top:bottom, left:right], 0, 255).astype(np.uint8)
+    web = os.path.join(ROOT, "web", "public")
+    os.makedirs(web, exist_ok=True)
+    Image.fromarray(crop).save(os.path.join(web, "map.jpg"), quality=82, optimize=True, progressive=True)
+    # World x of the left edge, and world y of the top and bottom edges (y grows northward).
+    bounds = {"x0": x0 + int(left), "x1": x0 + int(right), "yTop": y0 + (h - int(top)), "yBottom": y0 + (h - int(bottom))}
+    with open(os.path.join(ROOT, "web", "src", "mapBounds.json"), "w") as f:
+        f.write(json.dumps(bounds) + "\n")
+    print(f"map.jpg: {right - left}x{bottom - top}, {bounds}")
 
 
 if __name__ == "__main__":

@@ -243,4 +243,18 @@ public class NomadSimTest
         }
         throw new AssertionError(id);
     }
+
+    @Test
+    public void runCodesRoundTripAndFitInALink()
+    {
+        Gson gson = new Gson();
+        NomadSim sim = NomadSim.start(7);
+        for (int i = 0; i < 600; i++) sim.step(null);
+        String json = gson.toJson(new SavedRun(sim, new Tile(3200, 3200)));
+        String code = RunCode.encode(json);
+        assertTrue(code.startsWith("N1."));
+        assertTrue("code is " + code.length() + " characters", code.length() < 2500);
+        assertFalse(code.contains("+") || code.contains("/") || code.contains("="));
+        assertEquals(json, RunCode.decode(code));
+    }
 }

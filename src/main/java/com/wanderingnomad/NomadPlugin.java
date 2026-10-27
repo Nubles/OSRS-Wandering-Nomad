@@ -7,6 +7,7 @@ import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Geography;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Region;
+import com.wanderingnomad.sim.RunCode;
 import com.wanderingnomad.sim.SavedRun;
 import com.wanderingnomad.sim.Surface;
 import com.wanderingnomad.sim.Tile;
@@ -14,13 +15,17 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
 import java.awt.image.BufferedImage;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 import javax.inject.Inject;
+import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
@@ -45,6 +50,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.LinkBrowser;
 
 /**
  * Nomad UIM, Solo mode: runs the circles on the account's played time, works out which surface
@@ -59,6 +65,8 @@ import net.runelite.client.ui.overlay.OverlayManager;
 )
 public class NomadPlugin extends Plugin
 {
+    /** The companion website, served from this repo's web/ folder by GitHub Pages. */
+    static final String WEBSITE = "https://nubles.github.io/OSRS-Wandering-Nomad/";
     static final String RUN_KEY = "run";
     /** Game ticks in one played minute. */
     static final int TICKS_PER_MINUTE = 100;
@@ -108,7 +116,7 @@ public class NomadPlugin extends Plugin
     @Override
     protected void startUp()
     {
-        panel = new NomadPanel(this::crossFromPanel, this::newRunFromPanel);
+        panel = new NomadPanel(this::crossFromPanel, this::newRunFromPanel, this::viewOnWebsite, this::copyRunCode);
         navButton = NavigationButton.builder()
             .tooltip("Nomad UIM")
             .icon(icon())
@@ -330,6 +338,38 @@ public class NomadPlugin extends Plugin
             sim = null;
             runLog.clear();
             load();
+        });
+    }
+
+    /** Opens the run on the website. The run travels in the link itself; nothing is uploaded. */
+    private void viewOnWebsite()
+    {
+        withRunCode(code -> LinkBrowser.browse(WEBSITE + "#/run/" + code));
+    }
+
+    private void copyRunCode()
+    {
+        withRunCode(code ->
+        {
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(code), null);
+            JOptionPane.showMessageDialog(panel, "Run code copied. Paste it on the website's map page, or share it.",
+                "Nomad UIM", JOptionPane.INFORMATION_MESSAGE);
+        });
+    }
+
+    /** Encodes the run on the client thread, then hands the code to Swing. */
+    private void withRunCode(Consumer<String> use)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null)
+            {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(panel,
+                    "Log in first, so the plugin can load your run.", "Nomad UIM", JOptionPane.INFORMATION_MESSAGE));
+                return;
+            }
+            String code = RunCode.encode(gson.toJson(new SavedRun(sim, surface)));
+            SwingUtilities.invokeLater(() -> use.accept(code));
         });
     }
 

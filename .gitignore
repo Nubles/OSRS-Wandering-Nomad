@@ -3,3 +3,9 @@ build/
 out/
 *.iml
 .idea/
+
+# Website
+web/node_modules/
+web/dist/
+# Copied from src/main/resources by web/scripts/copy-assets.mjs
+web/public/world.dat
