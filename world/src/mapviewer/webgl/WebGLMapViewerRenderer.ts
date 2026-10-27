@@ -939,6 +939,7 @@ export class WebGLMapViewerRenderer extends MapViewerRenderer<WebGLMapSquare> {
             camera.getPosZ(),
             renderDistance,
             this.cullBackFace,
+            time,
         );
 
         // Can't sample from renderbuffer so blit to a texture for sampling.

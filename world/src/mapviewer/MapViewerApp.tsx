@@ -44,6 +44,10 @@ function MapViewerApp() {
             const objSpawnsPromise = fetchObjSpawns();
 
             const nomad = new NomadWorld();
+            if (process.env.NODE_ENV === "development") {
+                // For poking at a run from the browser console while working on the effects.
+                (window as any).nomad = nomad;
+            }
             const nomadPromise = nomad
                 .load(searchParams)
                 .then(() => nomad)
