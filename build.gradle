@@ -1,0 +1,49 @@
+/*
+ * Nomad UIM — RuneLite external plugin.
+ *
+ * Standard RuneLite Plugin Hub build template. The Hub provides the RuneLite
+ * runtime (client, Gson, Guice, SLF4J) itself, so everything RuneLite ships is
+ * compileOnly and nothing is shaded.
+ *
+ * Build a sideload jar:  gradle jar  → build/libs/*.jar
+ * Run with the client:   gradle runClient
+ */
+
+plugins {
+    id 'java'
+}
+
+group 'com.wanderingnomad'
+version = project.findProperty('pluginVersion') ?: '0.1.0'
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.runelite.net' }
+}
+
+def runeLiteVersion = 'latest.release'
+
+dependencies {
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// Starts RuneLite in developer mode with this plugin loaded from source.
+tasks.register('runClient', JavaExec) {
+    group = 'verification'
+    description = 'Runs RuneLite with Nomad UIM loaded from source.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.wanderingnomad.NomadPluginDevLauncher'
+    jvmArgs '-ea'
+    args '--developer-mode'
+}
