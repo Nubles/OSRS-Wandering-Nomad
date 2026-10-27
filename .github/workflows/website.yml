@@ -14,7 +14,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The game world in 3D: the osrs.world viewer (world/) with the circles drawn in it, served
+  # from the site's world/ folder along with the game cache it loads.
+  world:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: world
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: world/yarn.lock
+      - run: yarn install --frozen-lockfile --non-interactive
+      - uses: actions/cache@v4
+        with:
+          path: world/build-cache
+          key: osrs-cache-${{ hashFiles('world/scripts/build_cache.py') }}
+      - name: Build the game cache
+        run: python3 scripts/build_cache.py
+      - name: Build
+        run: yarn build
+        env:
+          # Create React App fails the build on lint warnings when CI is set; the viewer has some upstream.
+          CI: false
+          GENERATE_SOURCEMAP: false
+          PUBLIC_URL: /${{ github.event.repository.name }}/world
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: world
+          path: world/build
+          retention-days: 1
+
   build:
+    needs: world
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -33,6 +69,11 @@ jobs:
         run: npm run build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
+      - uses: actions/download-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: world
+          path: web/dist/world
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:

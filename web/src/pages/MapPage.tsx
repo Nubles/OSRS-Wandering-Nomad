@@ -274,6 +274,15 @@ export function MapPage({ geo, route }: Props) {
 
   if (!sim || !s) return <div className="loading">Loading the map…</div>;
 
+  // The same run in the 3D game world (world/, the osrs.world viewer with the circles in it).
+  const worldLink = `${import.meta.env.BASE_URL}world/?${
+    loaded === 'live' && route.live
+      ? `live=${route.live}`
+      : loaded === 'run' && route.run
+      ? `run=${encodeURIComponent(route.run)}`
+      : `seed=${sim.state.seed}`
+  }`;
+
   const yours = sim.bound;
   const status = {
     yours,
@@ -316,6 +325,15 @@ export function MapPage({ geo, route }: Props) {
                 {m.toUpperCase()}
               </button>
             ))}
+            <a
+              className="btn"
+              href={worldLink}
+              target="_blank"
+              rel="noopener"
+              title="The circles in the game's own 3D world, built on osrs.world. Downloads about 120MB the first time."
+            >
+              Game world
+            </a>
           </div>
         </div>
         <div className="osrs-chat chatbox">
