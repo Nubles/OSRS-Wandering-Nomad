@@ -17,6 +17,7 @@ import {
 } from "picogl";
 
 import { OsrsMenuEntry } from "../../components/rs/menu/OsrsMenu";
+import { NomadOverlay } from "../../nomad/NomadOverlay";
 import { createTextureArray } from "../../picogl/PicoTexture";
 import { MenuTargetType } from "../../rs/MenuEntry";
 import { Scene } from "../../rs/scene/Scene";
@@ -152,6 +153,8 @@ export class WebGLMapViewerRenderer extends MapViewerRenderer<WebGLMapSquare> {
 
     cullBackFace: boolean = true;
 
+    nomadOverlay?: NomadOverlay;
+
     msaaEnabled: boolean = false;
     fxaaEnabled: boolean = false;
 
@@ -240,6 +243,10 @@ export class WebGLMapViewerRenderer extends MapViewerRenderer<WebGLMapSquare> {
         this.initFramebuffers();
 
         this.initTextures();
+
+        if (this.mapViewer.nomad) {
+            this.nomadOverlay = new NomadOverlay(this.app, this.mapViewer.nomad, this.groundAt);
+        }
 
         console.log("Renderer init");
     }
@@ -773,6 +780,25 @@ export class WebGLMapViewerRenderer extends MapViewerRenderer<WebGLMapSquare> {
         }
     }
 
+    /** The ground at a tile, in tiles up, where its map square is loaded. */
+    groundAt = (x: number, y: number): number | undefined => {
+        const tx = Math.floor(x);
+        const ty = Math.floor(y);
+        const map = this.mapManager.getMap(tx >> 6, ty >> 6);
+        const heights = map?.groundHeights;
+        if (!map || !heights) return undefined;
+        const size = Scene.MAP_SQUARE_SIZE + map.borderSize * 2;
+        const lx = tx - map.mapX * Scene.MAP_SQUARE_SIZE + map.borderSize;
+        const ly = ty - map.mapY * Scene.MAP_SQUARE_SIZE + map.borderSize;
+        const fx = x - tx;
+        const fy = y - ty;
+        const at = (cx: number, cy: number) => heights[cy * size + cx];
+        const h =
+            (at(lx, ly) * (1 - fx) + at(lx + 1, ly) * fx) * (1 - fy) +
+            (at(lx, ly + 1) * (1 - fx) + at(lx + 1, ly + 1) * fx) * fy;
+        return h / 16;
+    };
+
     override onResize(width: number, height: number): void {
         this.app.resize(width, height);
     }
@@ -905,6 +931,15 @@ export class WebGLMapViewerRenderer extends MapViewerRenderer<WebGLMapSquare> {
         const transparentNpcPassStart = performance.now();
         this.renderTransparentNpcPass(npcDataTextureIndex, npcDataTexture);
         const transparentNpcPassTime = performance.now() - transparentNpcPassStart;
+
+        this.mapViewer.nomad?.update(time);
+        this.nomadOverlay?.draw(
+            camera.viewProjMatrix,
+            camera.getPosX(),
+            camera.getPosZ(),
+            renderDistance,
+            this.cullBackFace,
+        );
 
         // Can't sample from renderbuffer so blit to a texture for sampling.
         this.app.readFramebuffer(this.framebuffer);
@@ -1464,6 +1499,9 @@ export class WebGLMapViewerRenderer extends MapViewerRenderer<WebGLMapSquare> {
 
         this.quadPositions?.delete();
         this.quadPositions = undefined;
+
+        this.nomadOverlay?.delete();
+        this.nomadOverlay = undefined;
 
         // Uniforms
         this.sceneUniformBuffer?.delete();

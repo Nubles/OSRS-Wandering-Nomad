@@ -4,6 +4,8 @@ import { registerSerializer } from "threads";
 import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
+import { frameCircle } from "../nomad/NomadPanel";
+import { NomadWorld } from "../nomad/NomadWorld";
 import { DownloadProgress } from "../rs/cache/CacheFiles";
 import { formatBytes } from "../util/BytesUtil";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
@@ -40,6 +42,15 @@ function MapViewerApp() {
 
         const load = async () => {
             const objSpawnsPromise = fetchObjSpawns();
+
+            const nomad = new NomadWorld();
+            const nomadPromise = nomad
+                .load(searchParams)
+                .then(() => nomad)
+                .catch((e) => {
+                    console.error("Nomad failed to load", e);
+                    return undefined;
+                });
 
             const cacheList = await cachesPromise;
             if (!cacheList) {
@@ -81,8 +92,14 @@ function MapViewerApp() {
                 mapImageCache,
                 rendererType,
                 cache,
+                await nomadPromise,
             );
             mapViewer.applySearchParams(searchParams);
+            // Without a camera in the link, start looking at your circle.
+            const yours = mapViewer.nomad?.circles().find((c) => c.yours);
+            if (yours && !searchParams.get("cx")) {
+                frameCircle(mapViewer, mapViewer.nomad!, yours);
+            }
             mapViewer.init();
 
             setDownloadProgress(undefined);

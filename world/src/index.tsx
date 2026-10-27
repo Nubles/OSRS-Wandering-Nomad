@@ -22,7 +22,8 @@ window.wallpaperPropertyListener = {
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 root.render(
     // <React.StrictMode>
-    <BrowserRouter>
+    // Served from a folder (the Nomad site's world/), kept with its trailing slash so links stay inside it.
+    <BrowserRouter basename={process.env.PUBLIC_URL ? process.env.PUBLIC_URL + "/" : undefined}>
         <MapViewerApp />
     </BrowserRouter>,
     // </React.StrictMode>,

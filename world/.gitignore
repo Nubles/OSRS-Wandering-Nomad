@@ -27,3 +27,6 @@ caches/
 # Nomad
 /src/nomad/engine
 /public/caches
+/public/nomad
+/caches
+/build-cache

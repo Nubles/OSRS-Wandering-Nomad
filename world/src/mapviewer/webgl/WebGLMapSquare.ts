@@ -252,7 +252,7 @@ export class WebGLMapSquare {
 
         const drawCallNpc = createDrawCall(npcProgram, undefined, drawRangesNpc);
 
-        return new WebGLMapSquare(
+        const square = new WebGLMapSquare(
             mapX,
             mapY,
 
@@ -298,7 +298,13 @@ export class WebGLMapSquare {
             locsAnimated,
             npcs,
         );
+        // Kept on the CPU too, so the Nomad circles can stand on the ground.
+        square.groundHeights = mapData.heightMapTextureData;
+        return square;
     }
+
+    /** The ground per tile, border included: plane 0 first, by row (y) then x, in steps of 8 game units up. */
+    groundHeights?: Int16Array;
 
     constructor(
         readonly mapX: number,

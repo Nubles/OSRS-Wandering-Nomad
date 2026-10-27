@@ -7,6 +7,7 @@ import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
 import { OsrsMenu, OsrsMenuProps } from "../components/rs/menu/OsrsMenu";
 import { MinimapContainer } from "../components/rs/minimap/MinimapContainer";
 import { WorldMapModal } from "../components/rs/worldmap/WorldMapModal";
+import { NomadLabels, NomadPanel } from "../nomad/NomadPanel";
 import { RS_TO_DEGREES } from "../rs/MathConstants";
 import { DownloadProgress } from "../rs/cache/CacheFiles";
 import { formatBytes } from "../util/BytesUtil";
@@ -197,6 +198,11 @@ export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.
             )}
 
             <RendererCanvas renderer={renderer} />
+
+            {!hideUi && mapViewer.nomad && <NomadLabels mapViewer={mapViewer} />}
+            {!hideUi && mapViewer.nomad && (
+                <NomadPanel mapViewer={mapViewer} nomad={mapViewer.nomad} />
+            )}
         </div>
     );
 }

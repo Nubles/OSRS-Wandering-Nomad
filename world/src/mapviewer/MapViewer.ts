@@ -2,6 +2,7 @@ import { vec3 } from "gl-matrix";
 import { URLSearchParamsInit } from "react-router-dom";
 
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
+import { NomadWorld } from "../nomad/NomadWorld";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { CacheSystem } from "../rs/cache/CacheSystem";
 import { CacheLoaderFactory, getCacheLoaderFactory } from "../rs/cache/loader/CacheLoaderFactory";
@@ -97,6 +98,7 @@ export class MapViewer {
         readonly mapImageCache: Cache,
         rendererType: MapViewerRendererType,
         cache: LoadedCache,
+        readonly nomad?: NomadWorld,
     ) {
         this.renderer = createRenderer(rendererType, this);
         this.initCache(cache);
@@ -130,6 +132,10 @@ export class MapViewer {
         }
 
         params["v"] = 1;
+
+        if (this.nomad) {
+            Object.assign(params, this.nomad.params());
+        }
 
         return params;
     }
