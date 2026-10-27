@@ -30,6 +30,11 @@ export class IndexSkeletalSeqLoader implements SkeletalSeqLoader {
 
         let archive = this.archiveCache.get(archiveId);
         if (!archive) {
+            // The Nomad site leaves these animations out of its cache to keep the download
+            // small; a creature that uses one stands still instead of failing to load.
+            if (!this.animIndex.archiveExists(archiveId)) {
+                return undefined;
+            }
             archive = this.animIndex.getArchive(archiveId);
             this.archiveCache.set(archiveId, archive);
         }

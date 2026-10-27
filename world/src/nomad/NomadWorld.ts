@@ -37,6 +37,23 @@ export interface DrawnCircle {
     sailing: boolean;
 }
 
+/** A circle that just pulsed (grew or shrank in a burst), and when it was seen, in ms. */
+export interface Pulse {
+    index: number;
+    at: number;
+}
+
+/** Where a circle has been while at sea, by played minute. */
+export interface TrailPoint {
+    x: number;
+    y: number;
+    minute: number;
+}
+
+/** How long a sea trail lasts, in played minutes. */
+export const TRAIL_MINUTES = 120;
+const PULSE_SHOWN_MS = 3000;
+
 interface Ground {
     cols: number;
     rows: number;
@@ -65,6 +82,10 @@ export class NomadWorld {
     version = 0;
     onLoaded?: () => void;
 
+    /** Sea trails by circle index. */
+    trails = new Map<number, TrailPoint[]>();
+
+    private pulses: Pulse[] = [];
     private geo?: Geography;
     private ground?: Ground;
     private prev: { x: number; y: number; radius: number }[] = [];
@@ -151,6 +172,7 @@ export class NomadWorld {
             for (let i = 0; i < steps; i++) {
                 if (i === steps - 1) this.remember();
                 sim.step(this.player);
+                this.watch(sim, nowMs);
             }
             this.version++;
         }
@@ -182,6 +204,31 @@ export class NomadWorld {
         return out;
     }
 
+    /** Pulses still rippling out at this moment. */
+    recentPulses(nowMs: number): Pulse[] {
+        this.pulses = this.pulses.filter((p) => nowMs - p.at < PULSE_SHOWN_MS);
+        return this.pulses;
+    }
+
+    /** Circles you could cross into right now, paired with your own. */
+    crossings(drawn: DrawnCircle[]): [DrawnCircle, DrawnCircle][] {
+        const sim = this.sim;
+        if (!sim) return [];
+        const yours = drawn.find((c) => c.yours);
+        if (!yours) return [];
+        const out: [DrawnCircle, DrawnCircle][] = [];
+        for (const c of drawn) {
+            if (!sim.linked(c.index)) continue;
+            if (Math.hypot(c.x - yours.x, c.y - yours.y) <= c.radius + yours.radius)
+                out.push([yours, c]);
+        }
+        return out;
+    }
+
+    volcanoOpen(): boolean {
+        return this.sim?.volcanoOpen() ?? false;
+    }
+
     /** Ground height in tiles (up is positive) from heights.bin, for parts of the world not loaded. */
     groundFar(x: number, y: number): number {
         const g = this.ground;
@@ -199,6 +246,24 @@ export class NomadWorld {
 
     dispose(): void {
         clearTimeout(this.pollTimer);
+    }
+
+    /** Notes what just happened in a played minute that is worth drawing: pulses and voyages. */
+    private watch(sim: NomadSim, nowMs: number): void {
+        const minute = sim.state.minutes;
+        sim.circles.forEach((c: CircleState, i: number) => {
+            // A pulse sets the counter to 45 and counts it down a minute at a time.
+            if (c.pulse === 45) this.pulses.push({ index: i, at: nowMs });
+            if (c.voyage) {
+                const trail = this.trails.get(i) ?? [];
+                trail.push({ x: c.x, y: c.y, minute });
+                this.trails.set(i, trail);
+            }
+        });
+        for (const [i, trail] of this.trails) {
+            while (trail.length && minute - trail[0].minute > TRAIL_MINUTES) trail.shift();
+            if (!trail.length) this.trails.delete(i);
+        }
     }
 
     private use(sim: NomadSim, player: { x: number; y: number } | null): void {
