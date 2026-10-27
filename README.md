@@ -49,7 +49,7 @@ npm run dev          # the website at http://localhost:5173
 npm test             # engine tests, including the shared vectors
 ```
 
-Pushes to `main` deploy the website to GitHub Pages (`.github/workflows/website.yml`). `python3 scripts/build_world.py --site-map` rebuilds the website's map image (`web/public/map.jpg`) alongside `world.dat`.
+Pushes to `main` deploy the website to GitHub Pages (`.github/workflows/website.yml`). `python3 scripts/build_world.py --site-map` rebuilds the website's map image (`web/public/map.jpg`) alongside `world.dat`. `python3 scripts/build_heights.py` rebuilds `web/public/heights.bin`, the ground heights for the website's 3D view, from the game's map data (abextm/osrs-cache at a pinned commit).
 
 ## Live view
 
