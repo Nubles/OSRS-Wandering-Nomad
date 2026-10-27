@@ -176,6 +176,8 @@ class NomadPanel extends PluginPanel
             Region home = c.region();
             v.diary = home == null
                 ? "<html>Diaries grow region circles. Cross into one to see its progress.</html>"
+                : home.maxTiers() == 0
+                ? "<html>" + home.name + " has no Achievement Diary, so its circle doesn't grow.</html>"
                 : "<html>" + home.name + " diaries: " + c.tiers() + "/" + home.maxTiers() + " tiers<br>Range "
                     + Math.round(c.radiusMin()) + " to " + Math.round(c.radiusMax()) + " tiles</html>";
             return v;

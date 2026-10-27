@@ -3,35 +3,33 @@ package com.wanderingnomad.sim;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * The fixed outline of Gielinor the circles move over: kingdoms, ports and boat routes. It is
- * coarse on purpose (a few dozen points per kingdom) and never lists quests, items or other
- * content, so it never needs patching when the game changes.
- *
- * <p>The outlines are the prototype's schematic ones from the mock-up and still need tracing
- * against the real map before a release.
+ * The fixed outline of Gielinor the circles move over: land and kingdoms (from world.dat), ports
+ * and the boat routes between them. It never lists quests, items or other content, so it never
+ * needs patching when the game changes; only a new landmass would mean rebuilding world.dat.
  */
 public final class Geography
 {
+    static final World WORLD = World.load();
+
+    /** The eleven kingdoms with a region circle. Indexes follow scripts/build_world.py. */
     public static final List<Region> REGIONS = Collections.unmodifiableList(Arrays.asList(
-        new Region("kandarin", "Kandarin", 0x4FC3F7, new String[]{"Kandarin", "Ardougne"}, new Tile(2580, 3300),
-            new int[][]{{2420, 3050}, {2660, 3050}, {2700, 3200}, {2860, 3300}, {2860, 3520}, {2740, 3540}, {2600, 3560}, {2420, 3480}}),
-        new Region("fremennik", "Fremennik", 0xB0BEC5, new String[]{"Fremennik"}, new Tile(2750, 3700),
-            new int[][]{{2600, 3560}, {2740, 3540}, {2860, 3520}, {2920, 3610}, {2860, 3760}, {2640, 3760}, {2590, 3650}}),
-        new Region("asgarnia", "Asgarnia", 0x7986CB, new String[]{"Falador"}, new Tile(2980, 3300),
-            new int[][]{{2860, 3300}, {2980, 3200}, {3060, 3190}, {3100, 3250}, {3100, 3520}, {2860, 3520}}),
-        new Region("misthalin", "Misthalin", 0x9CCC65, new String[]{"Lumbridge", "Varrock"}, new Tile(3290, 3360),
-            new int[][]{{3100, 3150}, {3270, 3140}, {3300, 3250}, {3400, 3330}, {3400, 3520}, {3100, 3520}, {3100, 3250}}),
-        new Region("desert", "Kharidian Desert", 0xFFD54F, new String[]{"Desert"}, new Tile(3380, 3040),
-            new int[][]{{3270, 3140}, {3200, 2920}, {3520, 2920}, {3480, 3200}, {3400, 3330}, {3300, 3250}}),
-        new Region("morytania", "Morytania", 0xBA68C8, new String[]{"Morytania"}, new Tile(3610, 3400),
-            new int[][]{{3400, 3330}, {3480, 3200}, {3740, 3180}, {3780, 3560}, {3400, 3560}}),
-        new Region("wilderness", "Wilderness", 0xEF5350, new String[]{"Wilderness"}, new Tile(3200, 3740),
-            new int[][]{{2944, 3520}, {3400, 3520}, {3400, 3940}, {2944, 3940}}),
-        new Region("karamja", "Karamja", 0x26A69A, new String[]{"Karamja"}, new Tile(2840, 3030),
-            new int[][]{{2730, 3230}, {2900, 3215}, {2960, 3160}, {2950, 2900}, {2770, 2880}, {2715, 3000}})
+        new Region("kandarin", "Kandarin", 0x4FC3F7, 0, "Kandarin", "Ardougne"),
+        new Region("fremennik", "Fremennik", 0xB0BEC5, 1, "Fremennik"),
+        new Region("asgarnia", "Asgarnia", 0x7986CB, 2, "Falador"),
+        new Region("misthalin", "Misthalin", 0x9CCC65, 3, "Lumbridge", "Varrock"),
+        new Region("desert", "Kharidian Desert", 0xFFD54F, 4, "Desert"),
+        new Region("morytania", "Morytania", 0xBA68C8, 5, "Morytania"),
+        new Region("wilderness", "Wilderness", 0xEF5350, 6, "Wilderness"),
+        new Region("karamja", "Karamja", 0x26A69A, 7, "Karamja"),
+        new Region("kourend", "Kourend & Kebos", 0xF06292, 8, "Kourend"),
+        new Region("tirannwn", "Tirannwn", 0x81C784, 9, "Western"),
+        // Varlamore has no Achievement Diary yet, so its circle doesn't grow.
+        new Region("varlamore", "Varlamore", 0xFFA726, 10)
     ));
 
     /** The Main circle's start, and the volcano over TzHaar that only the Main circle opens. */
@@ -41,28 +39,57 @@ public final class Geography
     public static final class Port
     {
         public final String name;
+        /** A land tile at the dock, where the Main circle's centre lands after a voyage. */
         public final Tile tile;
 
-        Port(String name, int x, int y)
+        Port(String name, int chunkX, int chunkY)
         {
             this.name = name;
-            this.tile = new Tile(x, y);
+            this.tile = nearestLand(chunkX * 64 + 32, chunkY * 64 + 32);
         }
     }
 
+    /** Docks by map chunk, as Fate Locked's travel table lists them (data/travelLinks.ts). */
     public static final List<Port> PORTS = Collections.unmodifiableList(Arrays.asList(
-        new Port("Port Sarim", 3029, 3217),
-        new Port("Musa Point", 2956, 3146),
-        new Port("Brimhaven docks", 2770, 3215),
-        new Port("Ardougne docks", 2683, 3271),
-        new Port("Catherby docks", 2792, 3414),
-        new Port("Port Khazard", 2674, 3144),
-        new Port("Port Phasmatys", 3702, 3503)
+        new Port("Port Sarim", 47, 50),
+        new Port("Musa Point", 46, 49),
+        new Port("Rimmington", 45, 50),
+        new Port("Brimhaven", 43, 50),
+        new Port("East Ardougne", 41, 51),
+        new Port("Catherby", 43, 53),
+        new Port("Port Khazard", 41, 49),
+        new Port("Corsair Cove", 40, 44),
+        new Port("Void Knights' Outpost", 41, 41),
+        new Port("Entrana", 44, 52),
+        new Port("Port Piscarilius", 28, 57),
+        new Port("Land's End", 23, 53),
+        new Port("Rellekka", 41, 57),
+        new Port("Waterbirth Island", 39, 58)
     ));
 
-    private static final String[][] FERRIES = {{"Port Sarim", "Musa Point"}, {"Ardougne docks", "Brimhaven docks"}};
-    private static final List<String> CHARTER = Arrays.asList("Port Sarim", "Brimhaven docks", "Catherby docks",
-        "Port Khazard", "Port Phasmatys");
+    /**
+     * Boats anyone can take without a quest, each sailing between every pair of its docks: the
+     * Port Sarim ferry, Veos, the Entrana monks, Captain Barnaby, Captain Tock, the Void Knights'
+     * squire, Jarvald, and the charter ships' quest-free ports.
+     */
+    private static final String[][] BOATS = {
+        {"Port Sarim", "Musa Point"},
+        {"Port Sarim", "Port Piscarilius", "Land's End"},
+        {"Port Sarim", "Entrana"},
+        {"East Ardougne", "Brimhaven", "Rimmington"},
+        {"Rimmington", "Corsair Cove"},
+        {"Port Sarim", "Void Knights' Outpost"},
+        {"Rellekka", "Waterbirth Island"},
+        {"Port Sarim", "Musa Point", "Brimhaven", "Catherby", "Port Khazard", "Corsair Cove", "Port Piscarilius", "Land's End"},
+    };
+
+    static
+    {
+        for (Region r : REGIONS)
+        {
+            r.setHome(middleOf(r));
+        }
+    }
 
     private Geography()
     {
@@ -77,19 +104,22 @@ public final class Geography
         return null;
     }
 
-    /** The kingdom a point lies in, or null over water. */
+    /** The kingdom with a region circle that a tile lies in, or null over water or elsewhere. */
     public static Region regionAt(double x, double y)
     {
+        if (!WORLD.land(x, y)) return null;
+        int k = WORLD.kingdom(x, y);
         for (Region r : REGIONS)
         {
-            if (r.contains(x, y)) return r;
+            if (r.index == k) return r;
         }
         return null;
     }
 
+    /** Any land the Main circle may drift over, islands included. */
     public static boolean onLand(double x, double y)
     {
-        return regionAt(x, y) != null;
+        return WORLD.land(x, y);
     }
 
     public static Port port(String name)
@@ -102,32 +132,85 @@ public final class Geography
     }
 
     /**
-     * Where a boat can take the Main circle from this port. Before Sailing, ferries and charter
-     * ships only; after Sailing, any port.
+     * Where a boat can take the Main circle from this port. Before Sailing, the quest-free boats
+     * only; after Sailing, any port.
      */
     public static List<String> routesFrom(String name, boolean sailing)
     {
-        List<String> out = new ArrayList<>();
+        Set<String> out = new LinkedHashSet<>();
         if (sailing)
         {
             for (Port p : PORTS)
             {
                 if (!p.name.equals(name)) out.add(p.name);
             }
-            return out;
+            return new ArrayList<>(out);
         }
-        for (String[] f : FERRIES)
+        for (String[] boat : BOATS)
         {
-            if (f[0].equals(name)) out.add(f[1]);
-            if (f[1].equals(name)) out.add(f[0]);
-        }
-        if (CHARTER.contains(name))
-        {
-            for (String n : CHARTER)
+            if (!Arrays.asList(boat).contains(name)) continue;
+            for (String stop : boat)
             {
-                if (!n.equals(name) && !out.contains(n)) out.add(n);
+                if (!stop.equals(name)) out.add(stop);
             }
         }
-        return out;
+        return new ArrayList<>(out);
+    }
+
+    /** The land cell nearest a tile, searched outward ring by ring. */
+    static Tile nearestLand(int x, int y)
+    {
+        int step = WORLD.cell();
+        for (int ring = 0; ring < 64; ring++)
+        {
+            for (int dx = -ring; dx <= ring; dx++)
+            {
+                for (int dy = -ring; dy <= ring; dy++)
+                {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) != ring) continue;
+                    int tx = x + dx * step, ty = y + dy * step;
+                    if (WORLD.land(tx, ty)) return new Tile(tx, ty);
+                }
+            }
+        }
+        return new Tile(x, y);
+    }
+
+    /** The kingdom's land cell nearest the middle of all its land. */
+    private static Tile middleOf(Region r)
+    {
+        int step = WORLD.cell();
+        long sx = 0, sy = 0, n = 0;
+        for (int row = 0; row < WORLD.rows(); row++)
+        {
+            for (int col = 0; col < WORLD.cols(); col++)
+            {
+                int x = WORLD.x0() + col * step + step / 2, y = WORLD.y0() + row * step + step / 2;
+                if (r.contains(x, y))
+                {
+                    sx += x;
+                    sy += y;
+                    n++;
+                }
+            }
+        }
+        if (n == 0) throw new IllegalStateException(r.name + " has no land in world.dat");
+        double mx = (double) sx / n, my = (double) sy / n;
+        Tile best = null;
+        double bestD = Double.MAX_VALUE;
+        for (int row = 0; row < WORLD.rows(); row++)
+        {
+            for (int col = 0; col < WORLD.cols(); col++)
+            {
+                int x = WORLD.x0() + col * step + step / 2, y = WORLD.y0() + row * step + step / 2;
+                double d = Math.hypot(x - mx, y - my);
+                if (d < bestD && r.contains(x, y))
+                {
+                    bestD = d;
+                    best = new Tile(x, y);
+                }
+            }
+        }
+        return best;
     }
 }
