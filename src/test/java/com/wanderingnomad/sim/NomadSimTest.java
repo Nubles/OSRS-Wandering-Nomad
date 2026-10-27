@@ -257,4 +257,45 @@ public class NomadSimTest
         assertFalse(code.contains("+") || code.contains("/") || code.contains("="));
         assertEquals(json, RunCode.decode(code));
     }
+
+    @Test
+    public void mainFindsItsWayOutOfThePeninsulas()
+    {
+        // Alex saw Main stuck around the Lighthouse for nearly 50 hours. From there it now gets
+        // 80 tiles away in about 6 hours (the straight-line minimum is 5.3).
+        for (int seed = 1; seed <= 30; seed++)
+        {
+            NomadSim sim = NomadSim.start(seed);
+            Circle main = sim.main();
+            main.x = 2509;
+            main.y = 3636;
+            int minutes = 0;
+            while (Circle.dist(main.x - 2509, main.y - 3636) < 80 && minutes < 12 * 60)
+            {
+                sim.step(null);
+                minutes++;
+            }
+            assertTrue("seed " + seed + " still near the Lighthouse after " + minutes / 60 + " hours", minutes < 12 * 60);
+        }
+    }
+
+    @Test
+    public void circlesNeverFreezeAgainstAShore()
+    {
+        NomadSim sim = NomadSim.start(20261027);
+        double[][] last = new double[sim.circles().size()][];
+        int[] still = new int[last.length];
+        for (int t = 0; t < 200 * 60; t++)
+        {
+            sim.step(null);
+            for (int i = 0; i < last.length; i++)
+            {
+                Circle c = sim.circles().get(i);
+                boolean moved = last[i] == null || last[i][0] != c.x || last[i][1] != c.y;
+                still[i] = moved ? 0 : still[i] + 1;
+                last[i] = new double[] {c.x, c.y};
+                assertTrue(c.name() + " has not moved for 2 hours at minute " + t, still[i] < 120);
+            }
+        }
+    }
 }

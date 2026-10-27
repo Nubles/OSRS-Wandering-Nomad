@@ -38,6 +38,12 @@ public final class NomadSim
     static final int OUTSIDE_SPEEDUP = 5;
     /** How hard your region circle leans toward Main once you're stranded in it. */
     static final double STRANDED_PULL = 0.05;
+    /** Deep in a peninsula (this many cells from open land), Main leans toward the way out. */
+    static final int POCKET_DEPTH = 5;
+    static final double POCKET_PULL = 0.1;
+    static final int LOOK_DIRECTIONS = 32;
+    static final int LOOK_RANGE = 96;
+    static final double LOOK_SHARE = 0.75;
 
     int seed;
     int rngState;
@@ -266,35 +272,52 @@ public final class NomadSim
             {
                 steer(c, toward.x, toward.y, pull);
             }
+            if (c.isMain() && Geography.pocketDepth(c.x, c.y) >= POCKET_DEPTH)
+            {
+                double[] out = Geography.wayOut(c.x, c.y, 2);
+                steer(c, out[0], out[1], POCKET_PULL);
+            }
             double v = (c.isMain() ? DRIFT : REGION_DRIFT) * speedup;
             double nx = c.x + StrictMath.cos(c.heading) * v;
             double ny = c.y + StrictMath.sin(c.heading) * v;
-            boolean ok = c.isMain() ? Geography.onLand(nx, ny) : c.region().contains(nx, ny);
-            if (ok)
+            Allowed allowed = c.isMain() ? Geography::onLand : c.region()::contains;
+            if (allowed.test(nx, ny))
             {
                 c.x = nx;
                 c.y = ny;
                 c.atEdge = false;
             }
-            else if (!c.isMain())
-            {
-                boolean waitingForMain = toward != null;
-                if (!waitingForMain) c.heading += turn(rng);
-                if (yours && waitingForMain && !c.waiting)
-                {
-                    log.add("Your circle is waiting at the " + c.region().name + " border, as close to Main as it can get.");
-                }
-                if (yours && !waitingForMain && !c.atEdge)
-                {
-                    log.add("Your circle reached the " + c.region().name + " border and turned back.");
-                }
-                if (yours && waitingForMain) c.waiting = true;
-                c.atEdge = true;
-            }
             else
             {
-                c.heading += turn(rng);
-                if (yours && !c.atEdge) log.add("Your circle hit the coast and turned back inland.");
+                boolean waitingForMain = !c.isMain() && toward != null;
+                if (!waitingForMain)
+                {
+                    c.heading = openHeading(c, v, rng, allowed);
+                    // Turn and step in the same minute, so a circle can never freeze against a shore.
+                    double tx = c.x + StrictMath.cos(c.heading) * v;
+                    double ty = c.y + StrictMath.sin(c.heading) * v;
+                    if (allowed.test(tx, ty))
+                    {
+                        c.x = tx;
+                        c.y = ty;
+                    }
+                }
+                if (!c.isMain())
+                {
+                    if (yours && waitingForMain && !c.waiting)
+                    {
+                        log.add("Your circle is waiting at the " + c.region().name + " border, as close to Main as it can get.");
+                    }
+                    if (yours && !waitingForMain && !c.atEdge)
+                    {
+                        log.add("Your circle reached the " + c.region().name + " border and turned back.");
+                    }
+                    if (yours && waitingForMain) c.waiting = true;
+                }
+                else if (yours && !c.atEdge)
+                {
+                    log.add("Your circle hit the coast and turned back inland.");
+                }
                 c.atEdge = true;
             }
             if (c.isMain()) maybeBoard(c, rng, log);
@@ -347,9 +370,41 @@ public final class NomadSim
         log.add("The Main circle boarded a boat at " + port.name + ", bound for " + to + ".");
     }
 
-    private static double turn(Rng rng)
+    private interface Allowed
     {
-        return Math.PI * (0.5 + rng.next() * 0.5) * (rng.next() < 0.5 ? -1 : 1);
+        boolean test(double x, double y);
+    }
+
+    /**
+     * At a coast or border the circle looks around and heads for open ground. It scores 32 headings
+     * by how far it could walk along each (from its next step, a tile at a time, out to 96 tiles),
+     * then picks one of the headings that score at least 75% of the best. A blind random turn could
+     * keep a circle bouncing around inside a peninsula like the Lighthouse's for days.
+     */
+    private static double openHeading(Circle c, double step, Rng rng, Allowed ok)
+    {
+        int[] scores = new int[LOOK_DIRECTIONS];
+        int best = 0;
+        for (int k = 0; k < LOOK_DIRECTIONS; k++)
+        {
+            double a = k * Math.PI * 2 / LOOK_DIRECTIONS;
+            double cos = StrictMath.cos(a);
+            double sin = StrictMath.sin(a);
+            int score = 0;
+            for (double d = step; d <= LOOK_RANGE && ok.test(c.x + cos * d, c.y + sin * d); d += 1)
+            {
+                score++;
+            }
+            scores[k] = score;
+            best = Math.max(best, score);
+        }
+        if (best == 0) return c.heading + Math.PI;
+        List<Integer> good = new ArrayList<>();
+        for (int k = 0; k < LOOK_DIRECTIONS; k++)
+        {
+            if (scores[k] >= best * LOOK_SHARE) good.add(k);
+        }
+        return good.get((int) (rng.next() * good.size())) * Math.PI * 2 / LOOK_DIRECTIONS;
     }
 
     private static void steer(Circle c, double tx, double ty, double weight)
