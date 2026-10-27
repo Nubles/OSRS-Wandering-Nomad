@@ -23,23 +23,27 @@ import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
 
 /**
- * The sidebar: your circle, the crossings you can take, the region's diary progress, the run log
- * and a button to start over. It only ever shows a {@link View} taken on the client thread.
+ * The sidebar: your circle, the crossings you can take, the region's diary progress, the run log,
+ * links to the website and a button to start over. It only ever shows a {@link View} taken on the client thread.
  */
 class NomadPanel extends PluginPanel
 {
     private final IntConsumer onCross;
     private final Runnable onNewRun;
+    private final Runnable onViewOnWebsite;
+    private final Runnable onCopyRunCode;
     private final JLabel title = new JLabel();
     private final JLabel detail = new JLabel();
     private final JPanel crossings = new JPanel(new GridLayout(0, 1, 0, 4));
     private final JLabel diary = new JLabel();
     private final JTextArea logArea = new JTextArea();
 
-    NomadPanel(IntConsumer onCross, Runnable onNewRun)
+    NomadPanel(IntConsumer onCross, Runnable onNewRun, Runnable onViewOnWebsite, Runnable onCopyRunCode)
     {
         this.onCross = onCross;
         this.onNewRun = onNewRun;
+        this.onViewOnWebsite = onViewOnWebsite;
+        this.onCopyRunCode = onCopyRunCode;
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
@@ -60,6 +64,19 @@ class NomadPanel extends PluginPanel
         logArea.setForeground(Color.LIGHT_GRAY);
         logArea.setRows(14);
         add(logArea);
+        add(gap());
+        add(heading("Website"));
+        JPanel web = new JPanel(new GridLayout(0, 1, 0, 4));
+        web.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        JButton view = new JButton("View on website");
+        view.setToolTipText("Opens your circles on the Nomad UIM website, exactly where they are now");
+        view.addActionListener(e -> this.onViewOnWebsite.run());
+        JButton copy = new JButton("Copy run code");
+        copy.setToolTipText("Copies a code you can paste on the website or share");
+        copy.addActionListener(e -> this.onCopyRunCode.run());
+        web.add(view);
+        web.add(copy);
+        add(web);
         add(gap());
         JButton newRun = new JButton("Start a new run");
         newRun.addActionListener(e ->

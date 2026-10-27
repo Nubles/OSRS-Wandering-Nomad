@@ -9,7 +9,7 @@ A RuneLite plugin for **Nomad UIM**: Ultimate Ironman, but everything you do hap
 - **Outside your circle**, it drifts 5x faster and shrinks a tile a minute.
 - **The volcano** (Fight Caves and Inferno) only counts while you're in Main and Main covers it.
 
-Design doc: https://claude.ai/artifact/Qixr6kDiCH9LRC9b3ZBrtU · Interactive mock-up: https://claude.ai/artifact/SgfYJt417gniq56Pxxonwd
+Website: https://nubles.github.io/OSRS-Wandering-Nomad/ · Design doc: https://claude.ai/artifact/Qixr6kDiCH9LRC9b3ZBrtU · Interactive mock-up: https://claude.ai/artifact/SgfYJt417gniq56Pxxonwd
 
 ## Status: prototype (Solo mode)
 
@@ -20,10 +20,11 @@ What works:
 - Diary progress read from the game, growing region circles automatically.
 - Your circle's edge in the game world and on the minimap, every circle on the world map, a status box and a sidebar with crossings and the run log.
 - The run saves per account and resumes where it left off.
+- **View on website** and **Copy run code** in the sidebar open your run on the website. The run travels inside the link (gzipped JSON), so nothing is uploaded anywhere.
 
 Not yet:
 
-- Boons and waystones, the Forecast cone, Passport, the hash-chained run log and Season mode.
+- Boons and waystones, the Forecast cone in game, live sync to the website, Passport, the hash-chained run log and Season mode.
 - Sailing is a config tick box for now rather than read from the game.
 
 ## The map
@@ -34,10 +35,18 @@ Not yet:
 
 - `src/main/java/com/wanderingnomad/sim/` is the rules engine: plain Java with no RuneLite types, so it's unit tested without a client.
 - `src/main/java/com/wanderingnomad/` is the RuneLite plugin: reading the game, saving, overlays and the sidebar.
+- `web/` is the website (React, TypeScript, Vite). `web/src/engine/` is a TypeScript twin of the rules engine that reads the same `world.dat`. `web/src/engine/vectors.json` is a shared test file: `SharedVectorsTest` (Java) and `sim.test.ts` (TypeScript) both replay it and must match it exactly, so the plugin and the website can never disagree about where a circle is. After changing the rules, regenerate it with `SharedVectors.main` and commit it.
 
 ## Building
 
 ```
 gradle check jar     # tests and a jar in build/libs
 gradle runClient     # RuneLite in developer mode with the plugin loaded
+
+cd web
+npm ci
+npm run dev          # the website at http://localhost:5173
+npm test             # engine tests, including the shared vectors
 ```
+
+Pushes to `main` deploy the website to GitHub Pages (`.github/workflows/website.yml`). `python3 scripts/build_world.py --site-map` rebuilds the website's map image (`web/public/map.jpg`) alongside `world.dat`.

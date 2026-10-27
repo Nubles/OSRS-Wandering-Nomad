@@ -203,7 +203,7 @@ public final class Geography
             for (int col = 0; col < WORLD.cols(); col++)
             {
                 int x = WORLD.x0() + col * step + step / 2, y = WORLD.y0() + row * step + step / 2;
-                double d = Math.hypot(x - mx, y - my);
+                double d = Circle.dist(x - mx, y - my);
                 if (d < bestD && r.contains(x, y))
                 {
                     bestD = d;
