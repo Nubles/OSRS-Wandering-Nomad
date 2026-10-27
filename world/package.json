@@ -39,11 +39,13 @@
     "xxhash-wasm": "^1.0.2"
   },
   "scripts": {
+    "engine": "node scripts/copy-engine.js",
+    "prestart": "node scripts/copy-engine.js",
+    "prebuild": "node scripts/copy-engine.js",
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",
     "lint": "prettier --write \"./**/*.{js,ts,jsx,tsx,css,md}\"",
-    "prepare": "husky install",
     "download-caches": "node scripts/download-caches.js",
     "export-textures": "npx tsx scripts/cache/export-textures.ts",
     "export-height-map": "npx tsx scripts/cache/export-height-map.ts"
@@ -68,14 +70,6 @@
       "last 1 safari version"
     ]
   },
-  "husky": {
-    "hooks": {
-      "pre-commit": "lint-staged"
-    }
-  },
-  "lint-staged": {
-    "*.{js,ts,jsx,tsx,css,md}": "prettier --write"
-  },
   "devDependencies": {
     "@craco/craco": "^7.1.0",
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
@@ -85,9 +79,7 @@
     "@types/react-modal": "^3.16.0",
     "@types/webfontloader": "^1.6.35",
     "adm-zip": "^0.5.10",
-    "husky": "^8.0.3",
     "json-minimizer-webpack-plugin": "^4.0.0",
-    "lint-staged": "^13.2.3",
     "path": "^0.12.7",
     "prettier": "^3.0.0",
     "sharp": "^0.32.6",
