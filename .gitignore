@@ -13,3 +13,4 @@ web/public/world.dat
 # Live relay worker
 workers/nomad-relay/node_modules/
 workers/nomad-relay/.wrangler/
+__pycache__/
