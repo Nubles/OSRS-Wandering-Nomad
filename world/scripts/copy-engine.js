@@ -17,9 +17,10 @@ for (const name of fs.readdirSync(from)) {
 
 const data = path.join(__dirname, "..", "public", "nomad");
 fs.mkdirSync(data, { recursive: true });
-for (const name of ["world.dat", "heights.bin"]) {
-    fs.copyFileSync(path.join(web, "public", name), path.join(data, name));
-}
+// world.dat is the plugin's own copy; the website copies it the same way when it builds.
+const worldDat = path.join(web, "..", "src", "main", "resources", "com", "wanderingnomad", "sim", "world.dat");
+fs.copyFileSync(worldDat, path.join(data, "world.dat"));
+fs.copyFileSync(path.join(web, "public", "heights.bin"), path.join(data, "heights.bin"));
 for (const name of ["heightBounds.json", "mapBounds.json"]) {
     fs.copyFileSync(path.join(web, "src", name), path.join(to, name));
 }
