@@ -9,8 +9,6 @@ A RuneLite plugin for **Nomad UIM**: Ultimate Ironman, but everything you do hap
 - **Outside your circle**, it drifts 5x faster and shrinks a tile a minute.
 - **The volcano** (Fight Caves and Inferno) only counts while you're in Main and Main covers it.
 
-Design doc: https://claude.ai/artifact/Qixr6kDiCH9LRC9b3ZBrtU · Interactive mock-up: https://claude.ai/artifact/SgfYJt417gniq56Pxxonwd
-
 ## Status: prototype (Solo mode)
 
 What works:
