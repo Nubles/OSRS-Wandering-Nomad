@@ -106,6 +106,21 @@ public final class NomadSim
         return sim;
     }
 
+    /** A deep copy, for looking ahead without touching this run. */
+    public NomadSim copy()
+    {
+        NomadSim s = new NomadSim();
+        s.seed = seed;
+        s.rngState = rngState;
+        s.minutes = minutes;
+        s.bound = bound;
+        s.outside = outside;
+        s.sailingUnlocked = sailingUnlocked;
+        s.circles = new ArrayList<>(circles.size());
+        for (Circle c : circles) s.circles.add(c.copy());
+        return s;
+    }
+
     public int seed()
     {
         return seed;
@@ -230,8 +245,16 @@ public final class NomadSim
      */
     public List<String> step(Tile player)
     {
+        return step(player, new Rng(rngState));
+    }
+
+    /**
+     * Plays one minute with the given dice instead of the run's own, as the website's twin allows.
+     * The Forecast uses it to imagine futures without spoiling the real one.
+     */
+    public List<String> step(Tile player, Rng rng)
+    {
         List<String> log = new ArrayList<>();
-        Rng rng = new Rng(rngState);
         Circle b = bound();
         Circle main = main();
 

@@ -4,8 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Forecast;
 import com.wanderingnomad.sim.Geography;
 import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Region;
 import com.wanderingnomad.sim.RunCode;
 import com.wanderingnomad.sim.SavedRun;
@@ -21,8 +23,12 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.swing.JOptionPane;
@@ -31,12 +37,17 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.MenuAction;
+import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.Scene;
+import net.runelite.api.Skill;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
@@ -45,12 +56,14 @@ import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.NpcLootReceived;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.LinkBrowser;
+import net.runelite.client.util.Text;
 import okhttp3.OkHttpClient;
 
 /**
@@ -71,6 +84,11 @@ public class NomadPlugin extends Plugin
     static final String RUN_KEY = "run";
     static final String LIVE_CODE_KEY = "liveCode";
     static final String LIVE_TOKEN_KEY = "liveToken";
+    static final String GUARD_KEY = "guard";
+    /** Played minutes between Forecasts; each one imagines 40 six-hour futures off the client thread. */
+    static final int FORECAST_EVERY = 15;
+    /** Warn once the edge will reach you within this many played minutes. */
+    static final int EDGE_WARNING = 5;
     /** Game ticks in one played minute. */
     static final int TICKS_PER_MINUTE = 100;
     private static final int LOG_LINES = 12;
@@ -94,6 +112,8 @@ public class NomadPlugin extends Plugin
     @Inject
     private OkHttpClient okHttpClient;
     @Inject
+    private ScheduledExecutorService executor;
+    @Inject
     private NomadSceneOverlay sceneOverlay;
     @Inject
     private NomadMinimapOverlay minimapOverlay;
@@ -101,6 +121,8 @@ public class NomadPlugin extends Plugin
     private NomadWorldMapOverlay worldMapOverlay;
     @Inject
     private NomadStatusOverlay statusOverlay;
+    @Inject
+    private NomadGlowOverlay glowOverlay;
 
     private NomadPanel panel;
     private LiveShare live;
@@ -112,6 +134,18 @@ public class NomadPlugin extends Plugin
     private boolean diariesRead;
     private boolean loadPending;
     private final Deque<String> runLog = new ArrayDeque<>();
+
+    private RuleGuard guard = new RuleGuard();
+    private final Map<Skill, Integer> lastXp = new EnumMap<>(Skill.class);
+    /** The next 15 minutes, worked out each minute and whenever you step onto a new tile. */
+    private Radar radar;
+    private Tile radarTile;
+    private boolean edgeWarned;
+    /** Made off the client thread, so read and written through this volatile field only. */
+    private volatile Forecast forecast;
+    private final AtomicBoolean forecasting = new AtomicBoolean();
+    /** Bumped whenever the loaded run changes, so a Forecast for the old one is thrown away. */
+    private volatile int generation;
 
     @Provides
     NomadConfig provideConfig(ConfigManager configManager)
@@ -136,6 +170,7 @@ public class NomadPlugin extends Plugin
         overlayManager.add(minimapOverlay);
         overlayManager.add(worldMapOverlay);
         overlayManager.add(statusOverlay);
+        overlayManager.add(glowOverlay);
         loadPending = client.getGameState() == GameState.LOGGED_IN;
     }
 
@@ -147,10 +182,12 @@ public class NomadPlugin extends Plugin
         overlayManager.remove(minimapOverlay);
         overlayManager.remove(worldMapOverlay);
         overlayManager.remove(statusOverlay);
+        overlayManager.remove(glowOverlay);
         clientToolbar.removeNavigation(navButton);
         sim = null;
         surface = null;
         runLog.clear();
+        forget();
     }
 
     @Subscribe
@@ -171,6 +208,7 @@ public class NomadPlugin extends Plugin
             surface = null;
             loadPending = false;
             runLog.clear();
+            forget();
             publish();
         }
     }
@@ -193,6 +231,7 @@ public class NomadPlugin extends Plugin
             readDiaries();
         }
         surface = locate();
+        if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
         // The Solo clock: circles only move while you're logged in.
         if (++ticks < TICKS_PER_MINUTE)
         {
@@ -201,8 +240,19 @@ public class NomadPlugin extends Plugin
         }
         ticks = 0;
         sim.setSailingUnlocked(config.sailingUnlocked());
+        int boundBefore = sim.boundIndex();
         List<String> lines = sim.step(surface);
         report(lines);
+        if (config.ruleGuard())
+        {
+            List<String> notes = guard.endMinute(sim.minutes());
+            report(notes);
+            if (!notes.isEmpty()) saveGuard();
+        }
+        look();
+        warnOfEdge();
+        Forecast f = forecast;
+        if (f == null || sim.boundIndex() != boundBefore || sim.minutes() - f.minutes() >= FORECAST_EVERY) forecastSoon();
         if (sim.minutes() % 5 == 0) save();
         if (config.liveShare())
         {
@@ -221,9 +271,120 @@ public class NomadPlugin extends Plugin
         }
     }
 
+    @Subscribe
+    public void onStatChanged(StatChanged ev)
+    {
+        Skill skill = ev.getSkill();
+        Integer before = lastXp.put(skill, ev.getXp());
+        // The first value per skill arrives at login; only later rises are gains.
+        if (before == null || sim == null || !config.ruleGuard() || !outsideNow()) return;
+        guard.xp(skill.getName(), ev.getXp() - before);
+    }
+
+    @Subscribe
+    public void onNpcLootReceived(NpcLootReceived ev)
+    {
+        if (sim == null || !config.ruleGuard() || !outsideNow()) return;
+        NPC npc = ev.getNpc();
+        String name = npc == null || npc.getName() == null ? "something" : Text.removeTags(npc.getName());
+        report(java.util.Collections.singletonList(guard.kill(sim.minutes(), name, ev.getItems().size())));
+        saveGuard();
+    }
+
+    @Subscribe
+    public void onMenuOptionClicked(MenuOptionClicked ev)
+    {
+        if (sim == null || !config.ruleGuard() || !outsideNow()) return;
+        MenuAction action = ev.getMenuAction();
+        boolean take = action == MenuAction.GROUND_ITEM_FIRST_OPTION || action == MenuAction.GROUND_ITEM_SECOND_OPTION
+            || action == MenuAction.GROUND_ITEM_THIRD_OPTION || action == MenuAction.GROUND_ITEM_FOURTH_OPTION
+            || action == MenuAction.GROUND_ITEM_FIFTH_OPTION;
+        if (!take || !"Take".equals(ev.getMenuOption())) return;
+        report(java.util.Collections.singletonList(guard.pickUp(sim.minutes(), Text.removeTags(ev.getMenuTarget()))));
+        saveGuard();
+    }
+
     NomadSim sim()
     {
         return sim;
+    }
+
+    Radar radar()
+    {
+        return radar;
+    }
+
+    Forecast forecast()
+    {
+        return forecast;
+    }
+
+    /** Standing outside your circle right now, by the surface tile you count as on. */
+    boolean outsideNow()
+    {
+        return sim != null && surface != null && !sim.bound().contains(surface.x, surface.y);
+    }
+
+    /** Plays the next 15 minutes on a copy of the run: a millisecond or less. */
+    private void look()
+    {
+        radar = Radar.of(sim, surface);
+        radarTile = surface;
+    }
+
+    private void warnOfEdge()
+    {
+        int in = radar == null ? -1 : radar.edgeIn;
+        if (in < 1)
+        {
+            // Inside with room to spare, or already outside: arm the warning for next time.
+            if (in < 0) edgeWarned = false;
+            return;
+        }
+        if (in <= EDGE_WARNING && !edgeWarned)
+        {
+            edgeWarned = true;
+            if (config.edgeWarning())
+            {
+                chat("The edge reaches you in about " + in + (in == 1 ? " minute" : " minutes") + ". Head toward the middle.");
+            }
+        }
+    }
+
+    /** Imagines the next six hours off the client thread, from a copy taken here. */
+    private void forecastSoon()
+    {
+        if (!config.forecast() || !forecasting.compareAndSet(false, true)) return;
+        NomadSim copy = sim.copy();
+        int made = generation;
+        executor.execute(() ->
+        {
+            try
+            {
+                Forecast f = Forecast.of(copy);
+                if (made == generation) forecast = f;
+            }
+            catch (RuntimeException e)
+            {
+                log.warn("Nomad UIM: the Forecast failed", e);
+            }
+            finally
+            {
+                forecasting.set(false);
+            }
+        });
+    }
+
+    /** Drops everything worked out for the run that was loaded. */
+    private void forget()
+    {
+        generation++;
+        radar = null;
+        radarTile = null;
+        forecast = null;
+        edgeWarned = false;
+        guard = new RuleGuard();
+        lastXp.clear();
     }
 
     Tile surface()
@@ -291,6 +452,7 @@ public class NomadPlugin extends Plugin
             int seed = seed();
             sim = NomadSim.start(seed);
             surface = null;
+            configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
             List<String> lines = new ArrayList<>();
             lines.add("A new run started with seed " + seed + ". You're in the Main circle, centred on Lumbridge.");
             report(lines);
@@ -301,9 +463,32 @@ public class NomadPlugin extends Plugin
             sim = run.sim;
             surface = run.surface;
         }
+        loadGuard();
         ticks = 0;
         diariesRead = false;
+        forecastSoon();
         publish();
+    }
+
+    private void loadGuard()
+    {
+        String saved = configManager.getRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
+        RuleGuard loaded = null;
+        try
+        {
+            loaded = saved == null ? null : gson.fromJson(saved, RuleGuard.class);
+        }
+        catch (JsonParseException e)
+        {
+            log.warn("Nomad UIM: couldn't read the rule guard's notes, so they start empty", e);
+        }
+        guard = loaded == null ? new RuleGuard() : loaded;
+        if (guard.notes == null) guard.notes = new ArrayList<>();
+    }
+
+    private void saveGuard()
+    {
+        configManager.setRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY, gson.toJson(guard));
     }
 
     private void save()
@@ -340,6 +525,9 @@ public class NomadPlugin extends Plugin
                 report(java.util.Collections.singletonList(line));
                 save();
                 live.markDirty();
+                look();
+                forecast = null;
+                forecastSoon();
             }
             publish();
         });
@@ -353,6 +541,7 @@ public class NomadPlugin extends Plugin
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY);
             sim = null;
             runLog.clear();
+            forget();
             load();
         });
     }
@@ -446,24 +635,27 @@ public class NomadPlugin extends Plugin
         {
             runLog.addFirst(NomadPanel.time(sim == null ? 0 : sim.minutes()) + "  " + line);
             while (runLog.size() > LOG_LINES) runLog.removeLast();
-            if (config.chatLog())
-            {
-                chatMessageManager.queue(QueuedMessage.builder()
-                    .type(ChatMessageType.GAMEMESSAGE)
-                    .runeLiteFormattedMessage(new ChatMessageBuilder()
-                        .append(ChatColorType.HIGHLIGHT).append("[Nomad] ")
-                        .append(ChatColorType.NORMAL).append(line)
-                        .build())
-                    .build());
-            }
+            if (config.chatLog()) chat(line);
         }
+    }
+
+    private void chat(String line)
+    {
+        chatMessageManager.queue(QueuedMessage.builder()
+            .type(ChatMessageType.GAMEMESSAGE)
+            .runeLiteFormattedMessage(new ChatMessageBuilder()
+                .append(ChatColorType.HIGHLIGHT).append("[Nomad] ")
+                .append(ChatColorType.NORMAL).append(line)
+                .build())
+            .build());
     }
 
     /** Hands the sidebar a snapshot taken on the client thread. */
     private void publish()
     {
         if (panel == null) return;
-        NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog));
+        NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
+            config.ruleGuard() ? guard : null);
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 

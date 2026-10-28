@@ -58,6 +58,42 @@ public final class Circle
         double ty;
     }
 
+    Circle copy()
+    {
+        Circle c = new Circle();
+        c.regionId = regionId;
+        c.x = x;
+        c.y = y;
+        c.heading = heading;
+        c.radius = radius;
+        c.radiusTarget = radiusTarget;
+        c.radiusMin = radiusMin;
+        c.radiusMax = radiusMax;
+        c.pulse = pulse;
+        c.tiers = tiers;
+        if (voyage != null)
+        {
+            c.voyage = new Voyage();
+            c.voyage.to = voyage.to;
+            c.voyage.tx = voyage.tx;
+            c.voyage.ty = voyage.ty;
+        }
+        c.atEdge = atEdge;
+        c.waiting = waiting;
+        c.touchingYours = touchingYours;
+        c.mood = mood;
+        c.moodLeft = moodLeft;
+        c.turn = turn;
+        c.bend = bend;
+        c.swing = swing;
+        c.speed = speed;
+        c.wx = wx;
+        c.wy = wy;
+        c.trail = trail == null ? null : trail.clone();
+        c.avoid = avoid;
+        return c;
+    }
+
     static Circle main(double heading)
     {
         Circle c = new Circle();

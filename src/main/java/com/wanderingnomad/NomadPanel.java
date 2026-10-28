@@ -3,6 +3,7 @@ package com.wanderingnomad;
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Geography;
 import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Region;
 import com.wanderingnomad.sim.Tile;
 import java.awt.BorderLayout;
@@ -37,6 +38,7 @@ class NomadPanel extends PluginPanel
     private final JLabel detail = new JLabel();
     private final JPanel crossings = new JPanel(new GridLayout(0, 1, 0, 4));
     private final JLabel diary = new JLabel();
+    private final JLabel guard = new JLabel();
     private final JTextArea logArea = new JTextArea();
 
     NomadPanel(IntConsumer onCross, Runnable onNewRun, Runnable onViewOnWebsite, Runnable onCopyRunCode,
@@ -58,6 +60,9 @@ class NomadPanel extends PluginPanel
         add(crossings);
         add(gap());
         add(diary);
+        add(gap());
+        add(heading("Rule guard"));
+        add(guard);
         add(gap());
         add(heading("Run log"));
         logArea.setEditable(false);
@@ -96,7 +101,7 @@ class NomadPanel extends PluginPanel
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.add(newRun, BorderLayout.CENTER);
         add(bottom);
-        display(View.of(null, null, Collections.<String>emptyList()));
+        display(View.of(null, null, Collections.<String>emptyList(), null, null));
     }
 
     void display(View v)
@@ -105,6 +110,7 @@ class NomadPanel extends PluginPanel
         title.setForeground(v.colour);
         detail.setText(v.detail);
         diary.setText(v.diary);
+        guard.setText(v.guard);
         crossings.removeAll();
         if (v.options.isEmpty())
         {
@@ -162,21 +168,31 @@ class NomadPanel extends PluginPanel
         Color colour = Color.WHITE;
         String detail = "Log in to start or resume your run.";
         String diary = " ";
+        String guard = " ";
         String noCrossing = " ";
         final List<Option> options = new ArrayList<>();
         List<String> log = Collections.emptyList();
 
-        static View of(NomadSim sim, Tile at, List<String> log)
+        static View of(NomadSim sim, Tile at, List<String> log, Radar radar, RuleGuard guard)
         {
             View v = new View();
             v.log = log;
             if (sim == null) return v;
+            v.guard = guard == null
+                ? "<html>Off. Turn on Rule guard in the settings to note XP, loot and kills outside.</html>"
+                : guard.clean()
+                ? "<html>Clean: nothing gained outside your circle.</html>"
+                : "<html>Outside so far: " + guard.xp + " XP, " + guard.loot + " loot, " + guard.kills + " kills."
+                    + "<br>Fighting back and travelling home are allowed.<br>"
+                    + String.join("<br>", guard.notes.subList(0, Math.min(3, guard.notes.size()))) + "</html>";
             Circle c = sim.bound();
             v.title = c.name() + " circle · " + Math.round(c.radius()) + " tiles";
             v.colour = NomadPlugin.colour(c, 255);
             Region over = Geography.regionAt(c.x(), c.y());
             String where = c.sailing() ? "at sea, bound for " + c.voyageTo() : over == null ? "on the coast" : "over " + over.name;
             v.detail = "<html>Played " + time(sim.minutes()) + ", seed " + sim.seed() + "<br>Your circle is " + where
+                + ", " + c.moodName().toLowerCase()
+                + (radar != null && radar.edgeIn > 0 ? "<br>The edge reaches you in about " + radar.edgeIn + " min." : "")
                 + (sim.isOutside() ? "<br><b>You are outside it.</b>" : "")
                 + (sim.stranded() ? "<br>Stranded: Main has moved on." : "") + "</html>";
 
@@ -188,8 +204,9 @@ class NomadPanel extends PluginPanel
                 double gap = sim.bound().gap(o);
                 boolean open = gap <= 0;
                 boolean can = sim.canCross(j, at);
+                int soon = radar == null || j >= radar.crossingIn.length ? -1 : radar.crossingIn[j];
                 String label = open ? (can ? "Cross into " + o.name() : o.name() + ": stand in the overlap")
-                    : o.name() + ": " + Math.round(gap) + " tiles apart";
+                    : o.name() + ": " + Math.round(gap) + " tiles apart" + (soon > 0 ? ", touching in ~" + soon + " min" : "");
                 all.add(new Option(j, label, can));
             }
             all.sort((a, b) -> Double.compare(sim.bound().gap(sim.circles().get(a.index)),
