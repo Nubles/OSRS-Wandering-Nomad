@@ -6,12 +6,14 @@ import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Region;
 import com.wanderingnomad.sim.Tile;
+import com.wanderingnomad.sim.Waystone;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.GridLayout;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.IntConsumer;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
@@ -30,6 +32,7 @@ import net.runelite.client.ui.PluginPanel;
 class NomadPanel extends PluginPanel
 {
     private final IntConsumer onCross;
+    private final BiConsumer<Integer, Integer> onBoon;
     private final Runnable onNewRun;
     private final Runnable onViewOnWebsite;
     private final Runnable onCopyRunCode;
@@ -39,11 +42,15 @@ class NomadPanel extends PluginPanel
     private final JPanel crossings = new JPanel(new GridLayout(0, 1, 0, 4));
     private final JLabel diary = new JLabel();
     private final JLabel guard = new JLabel();
+    private final JLabel boonsTitle = heading("Boons");
+    private final JPanel boons = new JPanel(new GridLayout(0, 1, 0, 4));
+    private final JLabel waystones = new JLabel();
     private final JTextArea logArea = new JTextArea();
 
-    NomadPanel(IntConsumer onCross, Runnable onNewRun, Runnable onViewOnWebsite, Runnable onCopyRunCode,
-        Runnable onCopyLiveLink)
+    NomadPanel(IntConsumer onCross, BiConsumer<Integer, Integer> onBoon, Runnable onNewRun, Runnable onViewOnWebsite,
+        Runnable onCopyRunCode, Runnable onCopyLiveLink)
     {
+        this.onBoon = onBoon;
         this.onCopyLiveLink = onCopyLiveLink;
         this.onCross = onCross;
         this.onNewRun = onNewRun;
@@ -58,6 +65,13 @@ class NomadPanel extends PluginPanel
         add(heading("Crossings"));
         crossings.setBackground(ColorScheme.DARK_GRAY_COLOR);
         add(crossings);
+        add(gap());
+        add(boonsTitle);
+        boons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        add(boons);
+        add(gap());
+        add(heading("Waystones"));
+        add(waystones);
         add(gap());
         add(diary);
         add(gap());
@@ -111,6 +125,17 @@ class NomadPanel extends PluginPanel
         detail.setText(v.detail);
         diary.setText(v.diary);
         guard.setText(v.guard);
+        boonsTitle.setText(("Boons " + v.boonCount + "/" + NomadSim.BOONS_HELD).toUpperCase());
+        waystones.setText(v.waystones);
+        boons.removeAll();
+        if (v.boons.isEmpty()) boons.add(new JLabel("<html>None yet. Milestones summon waystones; stand on one to claim its boon.</html>"));
+        for (Boon b : v.boons)
+        {
+            JButton button = new JButton(b.label);
+            button.setToolTipText(b.tip);
+            button.addActionListener(e -> onBoon.accept(b.index, b.side));
+            boons.add(button);
+        }
         crossings.removeAll();
         if (v.options.isEmpty())
         {
@@ -147,6 +172,59 @@ class NomadPanel extends PluginPanel
         return l;
     }
 
+    static final class Boon
+    {
+        final int index;
+        final int side;
+        final String label;
+        final String tip;
+
+        Boon(int index, int side, String label, String tip)
+        {
+            this.index = index;
+            this.side = side;
+            this.label = label;
+            this.tip = tip;
+        }
+    }
+
+    /** What each boon does, for its button's tooltip. */
+    static String describe(String boon)
+    {
+        switch (boon)
+        {
+            case NomadSim.EXPAND:
+                return "Your circle grows by 12 tiles for 2 hours";
+            case NomadSim.TAILWIND:
+                return "Your circle drifts twice as fast for 1 hour";
+            case NomadSim.ANCHOR:
+                return "Your circle stops drifting for 1 hour";
+            case NomadSim.RUDDER:
+                return "Turn your circle 45 degrees, once";
+            case NomadSim.BRIDGE:
+                return "For 10 minutes, cross to any circle within 60 tiles";
+            default:
+                return boon;
+        }
+    }
+
+    /** The boons working on a circle, such as "<br>Tailwind 34m · Expand 1h 50m". */
+    static String effects(Circle c)
+    {
+        List<String> on = new ArrayList<>();
+        if (c.expandLeft() > 0) on.add("Expand " + time(c.expandLeft()));
+        if (c.tailwindLeft() > 0) on.add("Tailwind " + time(c.tailwindLeft()));
+        if (c.anchorLeft() > 0) on.add("Anchor " + time(c.anchorLeft()));
+        return on.isEmpty() ? "" : "<br>" + String.join(" · ", on);
+    }
+
+    static String roughly(int minutes)
+    {
+        if (minutes >= 600) return "10h+";
+        int m = Math.max(5, (minutes + 4) / 5 * 5);
+        return m < 60 ? m + "m" : (m / 60) + "h " + String.format("%02d", m % 60) + "m";
+    }
+
     static final class Option
     {
         final int index;
@@ -169,6 +247,9 @@ class NomadPanel extends PluginPanel
         String detail = "Log in to start or resume your run.";
         String diary = " ";
         String guard = " ";
+        String waystones = " ";
+        int boonCount;
+        final List<Boon> boons = new ArrayList<>();
         String noCrossing = " ";
         final List<Option> options = new ArrayList<>();
         List<String> log = Collections.emptyList();
@@ -185,6 +266,37 @@ class NomadPanel extends PluginPanel
                 : "<html>Outside so far: " + guard.xp + " XP, " + guard.loot + " loot, " + guard.kills + " kills."
                     + "<br>Fighting back and travelling home are allowed.<br>"
                     + String.join("<br>", guard.notes.subList(0, Math.min(3, guard.notes.size()))) + "</html>";
+            v.boonCount = sim.boons().size();
+            for (int i = 0; i < sim.boons().size(); i++)
+            {
+                String b = sim.boons().get(i);
+                if (NomadSim.RUDDER.equals(b))
+                {
+                    v.boons.add(new Boon(i, 1, "Rudder: turn left", describe(b)));
+                    v.boons.add(new Boon(i, -1, "Rudder: turn right", describe(b)));
+                }
+                else
+                {
+                    v.boons.add(new Boon(i, 0, "Use " + b, describe(b)));
+                }
+            }
+            List<String> stones = new ArrayList<>();
+            for (Waystone w : sim.waystones())
+            {
+                Circle in = sim.circles().get(w.circle());
+                String where = w.circle() == sim.boundIndex() ? "your circle" : in.name();
+                String away = at == null ? "" : ", " + Math.round(Math.hypot(w.x() - at.x, w.y() - at.y)) + " tiles away";
+                stones.add("<b>" + w.boon() + "</b> at " + w.landmark() + " in " + where + away
+                    + ", about " + roughly(sim.minutesLeft(w)) + " left");
+            }
+            if (sim.pendingSummons() > 0)
+            {
+                stones.add(sim.pendingSummons() + " summoned, waiting for a landmark to drift into reach");
+            }
+            if (sim.bridgeLeft() > 0) stones.add("Bridge open for " + sim.bridgeLeft() + " more min");
+            v.waystones = stones.isEmpty() ? "<html>None. Every 100 total level, 25 quest points or first boss kill summons one.</html>"
+                : "<html>" + String.join("<br>", stones) + "</html>";
+
             Circle c = sim.bound();
             v.title = c.name() + " circle · " + Math.round(c.radius()) + " tiles";
             v.colour = NomadPlugin.colour(c, 255);
@@ -193,6 +305,7 @@ class NomadPanel extends PluginPanel
             v.detail = "<html>Played " + time(sim.minutes()) + ", seed " + sim.seed() + "<br>Your circle is " + where
                 + ", " + c.moodName().toLowerCase()
                 + (radar != null && radar.edgeIn > 0 ? "<br>The edge reaches you in about " + radar.edgeIn + " min." : "")
+                + effects(c)
                 + (sim.isOutside() ? "<br><b>You are outside it.</b>" : "")
                 + (sim.stranded() ? "<br>Stranded: Main has moved on." : "") + "</html>";
 

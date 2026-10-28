@@ -29,6 +29,8 @@ import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.swing.JOptionPane;
@@ -44,11 +46,13 @@ import net.runelite.api.Scene;
 import net.runelite.api.Skill;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
@@ -85,6 +89,12 @@ public class NomadPlugin extends Plugin
     static final String LIVE_CODE_KEY = "liveCode";
     static final String LIVE_TOKEN_KEY = "liveToken";
     static final String GUARD_KEY = "guard";
+    static final String MILESTONES_KEY = "milestones";
+    /** Ticks after a run loads before milestones are read, so the account's totals have arrived. */
+    private static final int MILESTONE_DELAY = 10;
+    /** "Your Zulrah kill count is: 1." and the like; the first kill of any boss summons a rare waystone. */
+    private static final Pattern KILL_COUNT = Pattern.compile(
+        "Your (?:(.+?) (?:kill|chest) count|(?:completed|subdued) (.+?) count) is: ([\\d,]+)");
     /** Played minutes between Forecasts; each one imagines 40 six-hour futures off the client thread. */
     static final int FORECAST_EVERY = 15;
     /** Warn once the edge will reach you within this many played minutes. */
@@ -136,6 +146,8 @@ public class NomadPlugin extends Plugin
     private final Deque<String> runLog = new ArrayDeque<>();
 
     private RuleGuard guard = new RuleGuard();
+    private Milestones milestones = new Milestones();
+    private int milestoneWait;
     private final Map<Skill, Integer> lastXp = new EnumMap<>(Skill.class);
     /** The next 15 minutes, worked out each minute and whenever you step onto a new tile. */
     private Radar radar;
@@ -157,8 +169,8 @@ public class NomadPlugin extends Plugin
     protected void startUp()
     {
         live = new LiveShare(okHttpClient);
-        panel = new NomadPanel(this::crossFromPanel, this::newRunFromPanel, this::viewOnWebsite, this::copyRunCode,
-            this::copyLiveLink);
+        panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
+            this::copyRunCode, this::copyLiveLink);
         navButton = NavigationButton.builder()
             .tooltip("Nomad UIM")
             .icon(icon())
@@ -231,6 +243,7 @@ public class NomadPlugin extends Plugin
             readDiaries();
         }
         surface = locate();
+        readMilestones();
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
         // The Solo clock: circles only move while you're logged in.
         if (++ticks < TICKS_PER_MINUTE)
@@ -269,6 +282,33 @@ public class NomadPlugin extends Plugin
         {
             readDiaries();
         }
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage ev)
+    {
+        if (sim == null || ev.getType() != ChatMessageType.GAMEMESSAGE) return;
+        Matcher m = KILL_COUNT.matcher(Text.removeTags(ev.getMessage()));
+        if (!m.find() || !"1".equals(m.group(3).replace(",", ""))) return;
+        summon(NomadSim.RARE, "Your first " + (m.group(1) != null ? m.group(1) : m.group(2)) + " kill");
+    }
+
+    /** Spends a boon from the sidebar; {@code side} turns a Rudder left (1) or right (-1). */
+    private void useBoonFromPanel(int index, int side)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null) return;
+            String line = sim.useBoon(index, side);
+            if (line == null) return;
+            report(java.util.Collections.singletonList(line));
+            save();
+            live.markDirty();
+            look();
+            forecast = null;
+            forecastSoon();
+            publish();
+        });
     }
 
     @Subscribe
@@ -384,6 +424,7 @@ public class NomadPlugin extends Plugin
         forecast = null;
         edgeWarned = false;
         guard = new RuleGuard();
+        milestones = new Milestones();
         lastXp.clear();
     }
 
@@ -453,6 +494,7 @@ public class NomadPlugin extends Plugin
             sim = NomadSim.start(seed);
             surface = null;
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
+            configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
             List<String> lines = new ArrayList<>();
             lines.add("A new run started with seed " + seed + ". You're in the Main circle, centred on Lumbridge.");
             report(lines);
@@ -464,10 +506,57 @@ public class NomadPlugin extends Plugin
             surface = run.surface;
         }
         loadGuard();
+        loadMilestones();
         ticks = 0;
         diariesRead = false;
         forecastSoon();
         publish();
+    }
+
+    private void loadMilestones()
+    {
+        String saved = configManager.getRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
+        Milestones loaded = null;
+        try
+        {
+            loaded = saved == null ? null : gson.fromJson(saved, Milestones.class);
+        }
+        catch (JsonParseException e)
+        {
+            log.warn("Nomad UIM: couldn't read the milestones, so they start from the account's totals", e);
+        }
+        milestones = loaded == null ? new Milestones() : loaded;
+        milestoneWait = MILESTONE_DELAY;
+    }
+
+    private void saveMilestones()
+    {
+        configManager.setRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY, gson.toJson(milestones));
+    }
+
+    /** Every 100 total level and every 25 quest points summons a common waystone. */
+    private void readMilestones()
+    {
+        if (milestoneWait > 0)
+        {
+            milestoneWait--;
+            return;
+        }
+        boolean first = milestones.levelMark < 0;
+        int earned = milestones.earned(client.getTotalLevel(), client.getVarpValue(VarPlayerID.QP));
+        if (first && milestones.levelMark >= 0) saveMilestones();
+        if (earned <= 0) return;
+        for (int i = 0; i < earned; i++) summon(NomadSim.COMMON, "A milestone");
+        saveMilestones();
+    }
+
+    private void summon(String tier, String why)
+    {
+        String line = sim.summon(tier);
+        report(java.util.Collections.singletonList(line != null ? why + " summoned a waystone. " + line
+            : why + " summoned a waystone. It rises once a landmark drifts into reach."));
+        save();
+        live.markDirty();
     }
 
     private void loadGuard()

@@ -24,6 +24,10 @@ import java.util.List;
  * quest-free boat to another port (any port once Sailing is unlocked).</li>
  * <li>Outside: while you stand outside your circle it drifts 5x faster and shrinks a tile a
  * minute.</li>
+ * <li>Waystones: a milestone summons a waystone holding a random boon of its tier at a landmark
+ * inside your circle, Main or the nearest circle you could cross into. It fades once its circle
+ * drifts off the landmark. Stand within 3 tiles of it, inside that circle, to claim the boon; you
+ * hold three at most and spend them from the sidebar.</li>
  * </ul>
  */
 public final class NomadSim
@@ -83,6 +87,30 @@ public final class NomadSim
     private static final int[] REGION_WAY = {20, 150};
     private static final int TRAIL = 3;
 
+    /** Boons, by tier, and what they do. */
+    public static final String EXPAND = "Expand";
+    public static final String TAILWIND = "Tailwind";
+    public static final String ANCHOR = "Anchor";
+    public static final String RUDDER = "Rudder";
+    public static final String BRIDGE = "Bridge";
+    public static final String COMMON = "common";
+    public static final String RARE = "rare";
+    private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR};
+    private static final String[] RARE_BOONS = {RUDDER, BRIDGE};
+    public static final int BOONS_HELD = 3;
+    public static final int CLAIM_REACH = 3;
+    static final int EXPAND_TILES = 12;
+    static final int EXPAND_MINUTES = 120;
+    static final int TAILWIND_MINUTES = 60;
+    static final int ANCHOR_MINUTES = 60;
+    static final double RUDDER_TURN = Math.PI / 4;
+    /** Rudder points the circle at somewhere this far along its new heading. */
+    static final int RUDDER_WAY = 150;
+    static final int BRIDGE_MINUTES = 10;
+    public static final int BRIDGE_REACH = 60;
+    /** A waystone prefers a landmark its circle should keep for at least this many minutes. */
+    static final int LASTING = 30;
+
     int seed;
     int rngState;
     int minutes;
@@ -90,6 +118,14 @@ public final class NomadSim
     boolean outside;
     boolean sailingUnlocked;
     List<Circle> circles;
+    /** Waystones waiting to be claimed, boons held, and summons still waiting for a landmark to drift into reach. */
+    List<Waystone> waystones = new ArrayList<>();
+    List<String> boons = new ArrayList<>();
+    List<String> pending = new ArrayList<>();
+    /** Waystones placed so far; each one's dice come from the seed and this, so they never shift the drift. */
+    int summons;
+    /** Minutes left on Bridge. */
+    int bridgeLeft;
 
     public static NomadSim start(int seed)
     {
@@ -118,6 +154,11 @@ public final class NomadSim
         s.sailingUnlocked = sailingUnlocked;
         s.circles = new ArrayList<>(circles.size());
         for (Circle c : circles) s.circles.add(c.copy());
+        for (Waystone w : waystones) s.waystones.add(w.copy());
+        s.boons.addAll(boons);
+        s.pending.addAll(pending);
+        s.summons = summons;
+        s.bridgeLeft = bridgeLeft;
         return s;
     }
 
@@ -184,13 +225,132 @@ public final class NomadSim
         return index != bound && (bound == MAIN || index == MAIN);
     }
 
-    /** You may cross when the circles touch and you stand inside both. */
+    /**
+     * You may cross when the circles touch and you stand inside both. While a Bridge is open you may
+     * also cross to any circle within 60 tiles from anywhere inside yours.
+     */
     public boolean canCross(int index, Tile player)
     {
         if (index < 0 || index >= circles.size() || !linked(index)) return false;
         Circle to = circles.get(index);
-        if (!bound().touches(to)) return false;
+        if (!bound().touches(to))
+        {
+            if (bridgeLeft <= 0 || bound().gap(to) > BRIDGE_REACH) return false;
+            return player == null || bound().contains(player.x, player.y);
+        }
         return player == null || (bound().contains(player.x, player.y) && to.contains(player.x, player.y));
+    }
+
+    public List<Waystone> waystones()
+    {
+        return Collections.unmodifiableList(waystones);
+    }
+
+    public List<String> boons()
+    {
+        return Collections.unmodifiableList(boons);
+    }
+
+    public int bridgeLeft()
+    {
+        return bridgeLeft;
+    }
+
+    /** Waystones summoned but not yet placed, because no landmark was in reach. */
+    public int pendingSummons()
+    {
+        return pending.size();
+    }
+
+    /**
+     * A milestone summons a waystone of the tier ({@link #COMMON} or {@link #RARE}). It rises at
+     * once if a landmark is in reach, and otherwise the first minute one drifts into reach.
+     * Returns the log line, or null while it waits.
+     */
+    public String summon(String tier)
+    {
+        pending.add(RARE.equals(tier) ? RARE : COMMON);
+        List<String> log = new ArrayList<>();
+        placePending(log);
+        return log.isEmpty() ? null : log.get(0);
+    }
+
+    /**
+     * Spends the boon at {@code index}. {@code side} is for Rudder: 1 turns left, -1 right.
+     * Returns the log line, or null if nothing was spent.
+     */
+    public String useBoon(int index, int side)
+    {
+        if (index < 0 || index >= boons.size()) return null;
+        String boon = boons.get(index);
+        Circle c = bound();
+        String line;
+        switch (boon)
+        {
+            case EXPAND:
+                if (c.expandLeft <= 0) shiftRange(c, EXPAND_TILES);
+                c.expandLeft = EXPAND_MINUTES;
+                c.pulse = 45;
+                line = "Expand: your circle grows by " + EXPAND_TILES + " tiles for 2 hours.";
+                break;
+            case TAILWIND:
+                c.tailwindLeft = TAILWIND_MINUTES;
+                line = "Tailwind: your circle drifts twice as fast for an hour.";
+                break;
+            case ANCHOR:
+                c.anchorLeft = ANCHOR_MINUTES;
+                line = "Anchor: your circle holds still for an hour.";
+                break;
+            case RUDDER:
+                if (side == 0) return null;
+                if (c.voyage != null) return null;
+                c.heading += (side > 0 ? 1 : -1) * RUDDER_TURN;
+                c.turn = 0;
+                int wx = (int) round(c.x + StrictMath.cos(c.heading) * RUDDER_WAY);
+                int wy = (int) round(c.y + StrictMath.sin(c.heading) * RUDDER_WAY);
+                boolean ok = c.isMain() ? Geography.onLand(wx, wy) : c.region().contains(wx, wy);
+                c.wx = ok ? wx : 0;
+                c.wy = ok ? wy : 0;
+                line = "Rudder: your circle turns 45 degrees to the " + (side > 0 ? "left" : "right") + ".";
+                break;
+            case BRIDGE:
+                bridgeLeft = BRIDGE_MINUTES;
+                line = "Bridge: for 10 minutes you can cross to any circle within " + BRIDGE_REACH
+                    + " tiles, and walking between them doesn't count as outside.";
+                break;
+            default:
+                return null;
+        }
+        boons.remove(index);
+        return line;
+    }
+
+    /**
+     * Roughly how many played minutes before a waystone's circle drifts off it, if it keeps its
+     * heading and pace. Waystones show this so you know what the walk is for; it's an estimate.
+     */
+    public int minutesLeft(Waystone w)
+    {
+        return minutesLeft(circles.get(w.circle), w.x, w.y);
+    }
+
+    private static int minutesLeft(Circle c, int x, int y)
+    {
+        return c.anchorLeft + minutesLeftMoving(c, x, y);
+    }
+
+    private static int minutesLeftMoving(Circle c, int x, int y)
+    {
+        double v = c.voyage != null ? SAIL_SPEED
+            : (c.isMain() ? DRIFT : REGION_DRIFT) * Temperament.of(c.regionId).speed * Math.max(0.15, c.speed)
+                * (c.tailwindLeft > 0 ? 2 : 1);
+        double h = c.voyage != null ? StrictMath.atan2(c.voyage.ty - c.y, c.voyage.tx - c.x) : c.heading;
+        double px = x - c.x;
+        double py = y - c.y;
+        double b = px * StrictMath.cos(h) + py * StrictMath.sin(h);
+        double disc = b * b - (px * px + py * py) + c.radius * c.radius;
+        if (disc < 0) return 0;
+        return (int) Math.max(0, (b + Math.sqrt(disc)) / v);
     }
 
     /** Crosses and returns the log line, or null when the crossing isn't open. */
@@ -226,7 +386,7 @@ public final class NomadSim
             boolean grew = clamped > c.tiers;
             c.tiers = clamped;
             double bonus = r.diaries.isEmpty() ? 0 : 4.0 * clamped / r.diaries.size();
-            double shift = Circle.REGION_MIN + bonus - c.radiusMin;
+            double shift = Circle.REGION_MIN + bonus + c.expand - c.radiusMin;
             c.radiusMin += shift;
             c.radiusMax += shift;
             c.radius = clamp(c.radius + shift, c.radiusMin, c.radiusMax);
@@ -258,7 +418,8 @@ public final class NomadSim
         Circle b = bound();
         Circle main = main();
 
-        boolean out = player != null && !b.contains(player.x, player.y);
+        // An open Bridge lets you walk between circles without it counting as outside.
+        boolean out = player != null && !b.contains(player.x, player.y) && bridgeLeft <= 0;
         if (out != outside)
         {
             outside = out;
@@ -282,9 +443,11 @@ public final class NomadSim
             Circle toward = pulled ? main : null;
             double pull = pulled ? STRANDED_PULL : 0;
             Tile lean = yours && !out && player != null && dist(c, player) >= c.radius - LEAN_BAND ? player : null;
-            move(c, rng, yours && out ? OUTSIDE_SPEEDUP : 1, yours, toward, pull, lean, log);
+            int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1);
+            move(c, rng, speedup, yours, toward, pull, lean, log);
         }
         minutes++;
+        tickBoons(log);
 
         if (minutes % 5 == 0)
         {
@@ -304,15 +467,154 @@ public final class NomadSim
                 c.touchingYours = touching;
             }
         }
+        waystones(player, log);
         rngState = rng.state();
         return log;
+    }
+
+    /** Counts down the boons on each circle and the Bridge, and undoes Expand when it ends. */
+    private void tickBoons(List<String> log)
+    {
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            boolean yours = j == bound;
+            if (c.tailwindLeft > 0 && --c.tailwindLeft == 0 && yours) log.add("The Tailwind has died down.");
+            if (c.anchorLeft > 0 && --c.anchorLeft == 0 && yours) log.add("Your circle lifted its Anchor and drifts again.");
+            if (c.expandLeft > 0 && --c.expandLeft == 0)
+            {
+                shiftRange(c, -c.expand);
+                if (yours) log.add("Expand wore off: your circle shrank back by " + EXPAND_TILES + " tiles.");
+            }
+        }
+        if (bridgeLeft > 0 && --bridgeLeft == 0) log.add("The Bridge closed.");
+    }
+
+    /** Moves a circle's whole range, and its radius with it, by {@code tiles}. */
+    private static void shiftRange(Circle c, int tiles)
+    {
+        c.expand += tiles;
+        c.radiusMin += tiles;
+        c.radiusMax += tiles;
+        c.radius = clamp(c.radius + tiles, c.radiusMin, c.radiusMax);
+        c.radiusTarget = clamp(c.radiusTarget + tiles, c.radiusMin, c.radiusMax);
+    }
+
+    /** Claims a waystone you stand on, fades those whose circle drifted off, and places waiting summons. */
+    private void waystones(Tile player, List<String> log)
+    {
+        if (player != null && boons.size() < BOONS_HELD)
+        {
+            for (int i = 0; i < waystones.size(); i++)
+            {
+                Waystone w = waystones.get(i);
+                if (w.circle != bound || !bound().contains(player.x, player.y)) continue;
+                if (Circle.dist(player.x - w.x, player.y - w.y) > CLAIM_REACH) continue;
+                waystones.remove(i);
+                boons.add(w.boon);
+                log.add("You claimed the waystone at " + w.landmark + ": " + w.boon + ". Spend it from the sidebar.");
+                break;
+            }
+        }
+        for (int i = waystones.size() - 1; i >= 0; i--)
+        {
+            Waystone w = waystones.get(i);
+            if (circles.get(w.circle).contains(w.x, w.y)) continue;
+            waystones.remove(i);
+            log.add("The waystone at " + w.landmark + " faded: its circle drifted off it.");
+        }
+        placePending(log);
+    }
+
+    private void placePending(List<String> log)
+    {
+        while (!pending.isEmpty())
+        {
+            String line = place(pending.get(0));
+            if (line == null) return;
+            pending.remove(0);
+            log.add(line);
+        }
+    }
+
+    /**
+     * Places a waystone at a landmark inside your circle, Main, or the region circle nearest yours
+     * while you're in Main, with its own dice, so a milestone never changes where the circles go.
+     * Returns the log line, or null if no landmark is in reach.
+     */
+    private String place(String tier)
+    {
+        List<Integer> reach = new ArrayList<>();
+        reach.add(bound);
+        if (bound != MAIN)
+        {
+            reach.add(MAIN);
+        }
+        else
+        {
+            int nearest = -1;
+            for (int j = 0; j < circles.size(); j++)
+            {
+                if (!linked(j)) continue;
+                if (nearest < 0 || bound().gap(circles.get(j)) < bound().gap(circles.get(nearest))) nearest = j;
+            }
+            if (nearest >= 0) reach.add(nearest);
+        }
+        List<int[]> options = new ArrayList<>();
+        for (int j : reach)
+        {
+            Circle c = circles.get(j);
+            for (int k = 0; k < Landmarks.ALL.size(); k++)
+            {
+                Landmarks.Landmark l = Landmarks.ALL.get(k);
+                if (!c.contains(l.x, l.y) || taken(l)) continue;
+                options.add(new int[]{k, j});
+            }
+        }
+        if (options.isEmpty()) return null;
+        // Prefer landmarks the circle won't leave for a while, so there's time for the walk.
+        List<int[]> lasting = new ArrayList<>();
+        for (int[] o : options)
+        {
+            Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
+            if (minutesLeft(circles.get(o[1]), l.x, l.y) >= LASTING) lasting.add(o);
+        }
+        if (!lasting.isEmpty()) options = lasting;
+        Rng rng = new Rng(seed ^ ((summons + 1) * 0x9E3779B9));
+        summons++;
+        int[] o = options.get((int) (rng.next() * options.size()));
+        String[] pool = RARE.equals(tier) ? RARE_BOONS : COMMON_BOONS;
+        Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
+        Waystone w = new Waystone();
+        w.landmark = l.name;
+        w.x = l.x;
+        w.y = l.y;
+        w.circle = o[1];
+        w.boon = pool[(int) (rng.next() * pool.length)];
+        waystones.add(w);
+        Circle c = circles.get(w.circle);
+        return "A waystone rose at " + l.name + (w.circle == bound ? " in your circle" : " in " + c.name())
+            + ", holding " + w.boon + " (" + (RARE.equals(tier) ? "rare" : "common") + ").";
+    }
+
+    private boolean taken(Landmarks.Landmark l)
+    {
+        for (Waystone w : waystones)
+        {
+            if (w.x == l.x && w.y == l.y) return true;
+        }
+        return false;
     }
 
     private void move(Circle c, Rng rng, int speedup, boolean yours, Circle toward, double pull, Tile lean, List<String> log)
     {
         Temperament t = Temperament.of(c.regionId);
         Allowed allowed = c.isMain() ? Geography::onLand : c.region()::contains;
-        if (c.voyage != null)
+        if (c.anchorLeft > 0)
+        {
+            // Anchored: it holds its place, voyage and all, and only breathes.
+        }
+        else if (c.voyage != null)
         {
             double d = Circle.dist(c.voyage.tx - c.x, c.voyage.ty - c.y);
             if (d <= SAIL_SPEED)

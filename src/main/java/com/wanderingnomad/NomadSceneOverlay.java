@@ -4,6 +4,7 @@ import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Tile;
+import com.wanderingnomad.sim.Waystone;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -30,7 +31,8 @@ import net.runelite.client.ui.overlay.OverlayUtil;
  * The living edge in the game world. Your circle's edge rises out of the ground as a glowing
  * curtain, with bands of light running along it and sparks drifting up. Where a circle you can
  * cross into reaches inside yours, its wall stands brighter: that stretch is the gateway. An arrow
- * on the ground points to the nearest open crossing, or one the Radar says opens soon.
+ * on the ground points to the nearest open crossing, or one the Radar says opens soon, and a gold
+ * one to the nearest waystone you can claim. Waystones stand as pillars of light.
  * Only on the surface: underground or in an instance the edge isn't where you are.
  */
 class NomadSceneOverlay extends Overlay
@@ -48,6 +50,9 @@ class NomadSceneOverlay extends Overlay
     private static final BasicStroke YOURS = new BasicStroke(2f);
     private static final BasicStroke OTHER = new BasicStroke(1f);
     private static final BasicStroke ARROW = new BasicStroke(1.5f);
+    private static final Color GOLD = new Color(0xFFD54F);
+    /** A waystone's pillar, in local units: about seven tiles tall. */
+    private static final int BEACON_HEIGHT = 900;
 
     private final Client client;
     private final NomadPlugin plugin;
@@ -90,7 +95,12 @@ class NomadSceneOverlay extends Overlay
                 if (wall) drawWall(graphics, view, c, mine ? null : yours, at, now);
             }
         }
-        if (config.compass()) drawCompass(graphics, view, sim, at);
+        drawBeacons(graphics, view, sim, now);
+        if (config.compass())
+        {
+            drawCompass(graphics, view, sim, at);
+            drawWaystoneArrow(graphics, view, sim, at);
+        }
         return null;
     }
 
@@ -213,6 +223,69 @@ class NomadSceneOverlay extends Overlay
         }
 
         double[] target = crossingPoint(yours, to);
+        double d = Math.hypot(target[0] - at.getX(), target[1] - at.getY());
+        String text = to.name() + " · " + Math.round(d) + " tiles" + (in > 0 ? " · opens in ~" + in + " min" : "");
+        drawArrow(graphics, view, at, target, NomadPlugin.colour(to, 255), brighter(to), text);
+    }
+
+    /** A gold arrow to the nearest waystone in your circle, while you have room for its boon. */
+    private void drawWaystoneArrow(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at)
+    {
+        if (sim.boons().size() >= NomadSim.BOONS_HELD) return;
+        Waystone best = null;
+        double bestD = 0;
+        for (Waystone w : sim.waystones())
+        {
+            if (w.circle() != sim.boundIndex()) continue;
+            double d = Math.hypot(w.x() - at.getX(), w.y() - at.getY());
+            if (best == null || d < bestD)
+            {
+                best = w;
+                bestD = d;
+            }
+        }
+        if (best == null || bestD <= NomadSim.CLAIM_REACH) return;
+        String text = best.boon() + " waystone · " + Math.round(bestD) + " tiles · ~" + NomadPanel.roughly(sim.minutesLeft(best)) + " left";
+        drawArrow(graphics, view, at, new double[]{best.x(), best.y()}, GOLD, GOLD, text);
+    }
+
+    /** Waystones in the scene stand as pillars of light, with their boon and time left above. */
+    private void drawBeacons(Graphics2D graphics, WorldView view, NomadSim sim, long now)
+    {
+        int plane = view.getPlane();
+        for (Waystone w : sim.waystones())
+        {
+            LocalPoint lp = LocalPoint.fromWorld(view, w.x(), w.y());
+            if (lp == null) continue;
+            Point ground = Perspective.localToCanvas(client, lp, plane, 0);
+            Point top = Perspective.localToCanvas(client, lp, plane, BEACON_HEIGHT);
+            if (ground == null || top == null) continue;
+            boolean claimable = w.circle() == sim.boundIndex();
+            Color colour = claimable ? GOLD : NomadPlugin.colour(sim.circles().get(w.circle()), 255);
+            double pulse = 0.5 + 0.5 * Math.sin(now / 400.0);
+            Paint before = graphics.getPaint();
+            for (int width = 14; width >= 4; width -= 5)
+            {
+                int a = (int) ((width == 4 ? 220 : 70) * (0.7 + 0.3 * pulse));
+                graphics.setPaint(new GradientPaint(ground.getX(), ground.getY(), alpha(colour, a), top.getX(), top.getY(), alpha(colour, 0)));
+                graphics.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                graphics.drawLine(ground.getX(), ground.getY(), top.getX(), top.getY());
+            }
+            graphics.setPaint(before);
+            Polygon tile = Perspective.getCanvasTilePoly(client, lp);
+            if (tile != null) OverlayUtil.renderPolygon(graphics, tile, colour, alpha(colour, 60), YOURS);
+            Point label = Perspective.localToCanvas(client, lp, plane, BEACON_HEIGHT / 3);
+            if (label != null)
+            {
+                String text = w.boon() + " · ~" + NomadPanel.roughly(sim.minutesLeft(w)) + (claimable ? "" : " · in " + sim.circles().get(w.circle()).name());
+                OverlayUtil.renderTextLocation(graphics, label, text, colour);
+            }
+        }
+    }
+
+    /** An arrow on the ground from about 1.5 to 4 tiles out toward {@code target}, labelled at its tip. */
+    private void drawArrow(Graphics2D graphics, WorldView view, WorldPoint at, double[] target, Color fill, Color label, String text)
+    {
         double dx = target[0] - at.getX();
         double dy = target[1] - at.getY();
         double d = Math.sqrt(dx * dx + dy * dy);
@@ -239,16 +312,15 @@ class NomadSceneOverlay extends Overlay
         }
         Polygon arrow = new Polygon(xs, ys, shape.length);
         double pulse = 0.5 + 0.5 * Math.sin(System.currentTimeMillis() / 300.0);
-        graphics.setColor(NomadPlugin.colour(to, (int) (120 + 90 * pulse)));
+        graphics.setColor(alpha(fill, (int) (120 + 90 * pulse)));
         graphics.fill(arrow);
         graphics.setStroke(ARROW);
         graphics.setColor(alpha(Color.WHITE, 200));
         graphics.draw(arrow);
 
-        String text = to.name() + " · " + Math.round(d) + " tiles" + (in > 0 ? " · opens in ~" + in + " min" : "");
         LocalPoint tip = local(view, at.getX() + ux * 4.6, at.getY() + uy * 4.6);
-        Point label = tip == null ? null : Perspective.localToCanvas(client, tip, view.getPlane(), 40);
-        if (label != null) OverlayUtil.renderTextLocation(graphics, label, text, brighter(to));
+        Point where = tip == null ? null : Perspective.localToCanvas(client, tip, view.getPlane(), 40);
+        if (where != null) OverlayUtil.renderTextLocation(graphics, where, text, label);
     }
 
     /**

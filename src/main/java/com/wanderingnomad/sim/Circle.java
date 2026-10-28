@@ -50,6 +50,11 @@ public final class Circle
     int[] trail;
     /** Minutes in a row spent turning away from a coast or border ahead. */
     int avoid;
+    /** Boons on this circle: tiles Expand added to its range, and the minutes left on each. */
+    int expand;
+    int expandLeft;
+    int tailwindLeft;
+    int anchorLeft;
 
     static final class Voyage
     {
@@ -91,6 +96,10 @@ public final class Circle
         c.wy = wy;
         c.trail = trail == null ? null : trail.clone();
         c.avoid = avoid;
+        c.expand = expand;
+        c.expandLeft = expandLeft;
+        c.tailwindLeft = tailwindLeft;
+        c.anchorLeft = anchorLeft;
         return c;
     }
 
@@ -186,6 +195,22 @@ public final class Circle
     public int tiers()
     {
         return tiers;
+    }
+
+    /** Played minutes left on Expand, Tailwind and Anchor, 0 when not active. */
+    public int expandLeft()
+    {
+        return expandLeft;
+    }
+
+    public int tailwindLeft()
+    {
+        return tailwindLeft;
+    }
+
+    public int anchorLeft()
+    {
+        return anchorLeft;
     }
 
     public boolean pulsing()

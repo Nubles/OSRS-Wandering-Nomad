@@ -4,6 +4,7 @@ import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Tile;
+import com.wanderingnomad.sim.Waystone;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
@@ -83,6 +84,22 @@ class NomadStatusOverlay extends OverlayPanel
                 panelComponent.getChildren().add(LineComponent.builder()
                     .left("Crossing soon").right(o.name() + " ~" + radar.crossingIn[j] + "m").rightColor(NomadPlugin.colour(o, 200)).build());
             }
+        }
+        Waystone near = null;
+        for (Waystone w : sim.waystones())
+        {
+            if (w.circle() != sim.boundIndex() || at == null) continue;
+            if (near == null || Math.hypot(w.x() - at.x, w.y() - at.y) < Math.hypot(near.x() - at.x, near.y() - at.y)) near = w;
+        }
+        if (near != null)
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Waystone")
+                .right(near.boon() + " " + Math.round(Math.hypot(near.x() - at.x, near.y() - at.y)) + "t ~" + NomadPanel.roughly(sim.minutesLeft(near)))
+                .rightColor(new Color(0xFFD54F)).build());
+        }
+        if (!sim.boons().isEmpty())
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Boons").right(String.join(", ", sim.boons())).build());
         }
         if (sim.volcanoOpen())
         {

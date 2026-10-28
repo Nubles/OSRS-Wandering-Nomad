@@ -3,7 +3,7 @@ import { MapCanvas, MapScene } from '../components/MapCanvas';
 import type { Geography, Tile } from '../engine/geography';
 import { forecast } from '../engine/forecast';
 import { decodeRun, encodeRun } from '../engine/runcode';
-import { contains, MAIN, NomadSim } from '../engine/sim';
+import { BOONS_HELD, COMMON, contains, MAIN, NomadSim, RARE, RUDDER } from '../engine/sim';
 import { ago, fetchLive, isLive, LIVE_CODE_RE, LiveRun, POLL_MS } from '../live';
 import type { Route } from '../router';
 
@@ -236,6 +236,20 @@ export function MapPage({ geo, route }: Props) {
     refresh();
   };
 
+  const summon = (tier: string) => {
+    if (!s) return;
+    const line = s.sim.summon(tier) ?? 'A waystone was summoned. It rises once a landmark drifts into reach.';
+    setLog((l) => [{ minute: s.sim.state.minutes, line }, ...l].slice(0, LOG_LIMIT));
+    refresh();
+  };
+
+  const spendBoon = (i: number, side: number) => {
+    if (!s) return;
+    const line = s.sim.useBoon(i, side);
+    if (line) setLog((l) => [{ minute: s.sim.state.minutes, line }, ...l].slice(0, LOG_LIMIT));
+    refresh();
+  };
+
   const setDiary = (regionId: string, tiers: number) => {
     if (!s) return;
     const line = s.sim.setDiaryTiers(regionId, tiers);
@@ -460,6 +474,65 @@ export function MapPage({ geo, route }: Props) {
         </section>
 
         <section>
+          <h3>
+            Waystones and boons ({sim.state.boons.length}/{BOONS_HELD})
+          </h3>
+          {sim.state.waystones.length === 0 && sim.state.pending.length === 0 ? (
+            <p className="muted small">
+              None yet. In the plugin, every 100 total level, 25 quest points or first boss kill summons one. Stand within 3 tiles of it,
+              inside its circle, to claim its boon.
+            </p>
+          ) : (
+            <ul className="crossings">
+              {sim.state.waystones.map((w) => (
+                <li key={`${w.x},${w.y}`}>
+                  <span className="dot" style={{ background: w.circle === sim.state.bound ? '#ffd54f' : hex(sim.colour(sim.circles[w.circle])) }} />
+                  <span className="grow name">
+                    {w.boon} at {w.landmark}
+                    <span className="muted small"> · {w.circle === sim.state.bound ? 'your circle' : sim.name(sim.circles[w.circle])} · ~{roughly(sim.minutesLeft(w))} left</span>
+                  </span>
+                </li>
+              ))}
+              {sim.state.pending.length > 0 && <li className="muted small">{sim.state.pending.length} waiting for a landmark to drift into reach</li>}
+            </ul>
+          )}
+          {sim.state.boons.length > 0 && (
+            <ul className="crossings">
+              {sim.state.boons.map((b, i) => (
+                <li key={i}>
+                  <span className="grow name">{b}</span>
+                  {b === RUDDER ? (
+                    <>
+                      <button type="button" className="btn btn-small" disabled={loaded === 'live'} onClick={() => spendBoon(i, 1)}>
+                        Left
+                      </button>
+                      <button type="button" className="btn btn-small" disabled={loaded === 'live'} onClick={() => spendBoon(i, -1)}>
+                        Right
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" className="btn btn-small" disabled={loaded === 'live'} onClick={() => spendBoon(i, 0)}>
+                      Use
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {loaded !== 'live' && (
+            <p className="small">
+              Try it:{' '}
+              <button type="button" className="btn btn-small" onClick={() => summon(COMMON)}>
+                Summon common
+              </button>{' '}
+              <button type="button" className="btn btn-small" onClick={() => summon(RARE)}>
+                Summon rare
+              </button>
+            </p>
+          )}
+        </section>
+
+        <section>
           <h3>Map</h3>
           <label className="check">
             <input type="checkbox" checked={fog} onChange={(e) => setFog(e.target.checked)} /> Fog outside your circle
@@ -558,4 +631,11 @@ export function hex(rgb: number): string {
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
+}
+
+/** Minutes as a rough time, such as "1h 05m", rounded up to 5 minutes. */
+function roughly(minutes: number): string {
+  if (minutes >= 600) return '10h+';
+  const m = Math.max(5, Math.ceil(minutes / 5) * 5);
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 }

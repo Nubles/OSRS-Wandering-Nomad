@@ -11,11 +11,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Test vectors shared with the website's TypeScript copy of the sim (web/src/engine). Each case
- * plays a seed through a script of events (standing somewhere, crossing, diaries, Sailing) and
+ * plays a seed through a script of events (standing somewhere, crossing, diaries, Sailing,
+ * summoning waystones and spending boons) and
  * records the circles every hour, every log line and the final saved state. The Java test and the
  * web test both replay the script and must match the file exactly.
  *
@@ -24,9 +26,11 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
+    /** Stays in Main and summons often, so waystones get claimed and every boon spent. */
+    static final int BOON_SEED = 2024;
 
     private SharedVectors()
     {
@@ -56,6 +60,7 @@ public final class SharedVectors
     {
         // Left alone, this seed's Main circle boards a boat, which covers voyages and docking.
         if (seed == VOYAGE_SEED) return new JsonArray();
+        if (seed == BOON_SEED) return boonScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
         Circle m = probe.main();
@@ -69,7 +74,113 @@ public final class SharedVectors
         events.add(event(700, "diary", "kandarin", 5));
         events.add(event(900, "player", 3000, 3300));
         events.add(event(1200, "diary", "misthalin", 1));
+        // Waystones: summon one, walk onto it if it rose in your circle, then spend the boon.
+        for (int k = 0; k < 4; k++)
+        {
+            int at = 300 + k * 140;
+            events.add(event(at, "summon", k % 2 == 0 ? NomadSim.COMMON : NomadSim.RARE));
+            int[] found = findWaystone(seed, events, at, at + 100);
+            if (found != null)
+            {
+                events.add(event(found[0], "player", found[1], found[2]));
+                events.add(event(found[0] + 3, "player"));
+            }
+            events.add(event(at + 110, "boon", 0, k % 2 == 0 ? 1 : -1));
+        }
+        // A rare one late on, left to fade.
+        events.add(event(1300, "summon", NomadSim.RARE));
         return events;
+    }
+
+    static JsonArray boonScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        events.add(event(0, "sailing", true));
+        int at = 30;
+        for (int k = 0; k < 14 && at < MINUTES - 60; k++)
+        {
+            events.add(event(at, "summon", k % 2 == 1 ? NomadSim.RARE : NomadSim.COMMON));
+            int[] found = findWaystone(seed, events, at, Math.min(MINUTES - 20, at + 200));
+            if (found == null)
+            {
+                at += 60;
+                continue;
+            }
+            events.add(event(found[0], "player", found[1], found[2]));
+            events.add(event(found[0] + 3, "player"));
+            // Spend it half an hour later: Rudder alternates sides.
+            events.add(event(found[0] + 30, "boon", 0, k % 2 == 0 ? 1 : -1));
+            // Crossing only opens if they touch, or through a Bridge.
+            events.add(event(found[0] + 31, "cross"));
+            at = found[0] + 60;
+        }
+        events.add(event(at, "boon", 1, 1));
+        events.add(event(at + 1, "boon", 0, -1));
+        // Two left unclaimed, to fade or wait.
+        events.add(event(at, "summon", NomadSim.COMMON));
+        events.add(event(at, "summon", NomadSim.RARE));
+        return events;
+    }
+
+    /**
+     * Plays the script from the start and returns the first minute in [from, to) at which a
+     * waystone stands in your circle, with its tile, or null if none does.
+     */
+    static int[] findWaystone(int seed, JsonArray events, int from, int to)
+    {
+        NomadSim sim = NomadSim.start(seed);
+        Tile[] player = {null};
+        for (int minute = 0; minute < to; minute++)
+        {
+            apply(sim, events, minute, player);
+            if (minute >= from)
+            {
+                for (Waystone w : sim.waystones())
+                {
+                    if (w.circle() == sim.boundIndex()) return new int[]{minute, w.x(), w.y()};
+                }
+            }
+            sim.step(player[0]);
+        }
+        return null;
+    }
+
+    /** Applies the events at {@code minute} and returns the log lines they made. */
+    private static List<String> apply(NomadSim sim, JsonArray events, int minute, Tile[] player)
+    {
+        List<String> lines = new ArrayList<>();
+        for (JsonElement el : events)
+        {
+            JsonObject e = el.getAsJsonObject();
+            if (e.get("at").getAsInt() != minute) continue;
+            JsonArray a = e.getAsJsonArray("args");
+            String line = null;
+            switch (e.get("kind").getAsString())
+            {
+                case "player":
+                    player[0] = a.size() == 0 ? null : new Tile(a.get(0).getAsInt(), a.get(1).getAsInt());
+                    break;
+                case "cross":
+                    for (int i = 0; i < sim.circles().size() && line == null; i++) line = sim.crossTo(i, null);
+                    break;
+                case "diary":
+                    line = sim.setDiaryTiers(a.get(0).getAsString(), a.get(1).getAsInt());
+                    break;
+                case "sailing":
+                    sim.setSailingUnlocked(a.get(0).getAsBoolean());
+                    break;
+                case "summon":
+                    line = sim.summon(a.get(0).getAsString());
+                    break;
+                case "boon":
+                    line = sim.useBoon(a.get(0).getAsInt(), a.get(1).getAsInt());
+                    break;
+                default:
+                    throw new IllegalArgumentException(e.toString());
+            }
+            if (line != null) lines.add(line);
+        }
+        return lines;
     }
 
     private static JsonObject event(int at, String kind, Object... args)
@@ -91,37 +202,13 @@ public final class SharedVectors
     static JsonObject play(int seed, JsonArray events)
     {
         NomadSim sim = NomadSim.start(seed);
-        Tile player = null;
+        Tile[] player = {null};
         JsonArray log = new JsonArray();
         JsonArray hours = new JsonArray();
         for (int minute = 0; minute < MINUTES; minute++)
         {
-            for (JsonElement el : events)
-            {
-                JsonObject e = el.getAsJsonObject();
-                if (e.get("at").getAsInt() != minute) continue;
-                JsonArray a = e.getAsJsonArray("args");
-                String line = null;
-                switch (e.get("kind").getAsString())
-                {
-                    case "player":
-                        player = a.size() == 0 ? null : new Tile(a.get(0).getAsInt(), a.get(1).getAsInt());
-                        break;
-                    case "cross":
-                        for (int i = 0; i < sim.circles().size() && line == null; i++) line = sim.crossTo(i, null);
-                        break;
-                    case "diary":
-                        line = sim.setDiaryTiers(a.get(0).getAsString(), a.get(1).getAsInt());
-                        break;
-                    case "sailing":
-                        sim.setSailingUnlocked(a.get(0).getAsBoolean());
-                        break;
-                    default:
-                        throw new IllegalArgumentException(e.toString());
-                }
-                if (line != null) log.add(entry(minute, line));
-            }
-            List<String> lines = sim.step(player);
+            for (String line : apply(sim, events, minute, player)) log.add(entry(minute, line));
+            List<String> lines = sim.step(player[0]);
             for (String line : lines) log.add(entry(minute, line));
             if (sim.minutes() % 60 == 0) hours.add(snapshot(sim));
         }

@@ -24,6 +24,14 @@ What works:
 - The run saves per account and resumes where it left off.
 - **View on website** and **Copy run code** in the sidebar open your run on the website. The run travels inside the link (gzipped JSON), so nothing is uploaded anywhere.
 
+### Waystones and boons
+
+- **Milestones summon waystones:** every 100 total level and every 25 quest points summons a common one, and the first kill of any boss (any "kill count is: 1" message) a rare one. Only progress made during the run counts.
+- **A waystone** rises at one of 93 landmarks (`sim/Landmarks.java`, open surface tiles in towns and well-known places) inside your circle, Main, or the region circle nearest yours, preferring one its circle should keep for at least half an hour. If none is in reach, it waits until one drifts in. It fades once its circle drifts off the landmark.
+- **Claim it** by standing within 3 tiles of it, inside its circle. You hold three boons at most. In game it stands as a pillar of light, gold when it's in your circle, a gold arrow on the ground points to it, and the world map shows every waystone with its boon and roughly how long it has left.
+- **Boons** are spent from the sidebar: **Expand** (+12 tiles for 2 hours), **Tailwind** (twice the drift for an hour), **Anchor** (holds still for an hour) and the rare **Rudder** (turn 45 degrees left or right, once) and **Bridge** (for 10 minutes, cross to any circle within 60 tiles, and the walk doesn't count as outside).
+- A waystone's dice come from the seed and how many have been placed, never from the drift's own, so earning a boon never changes where the circles go. The website's engine does the same, and the shared vectors cover summoning, claiming and every boon.
+
 ### The living edge
 
 - **The Wall:** your circle's edge rises out of the ground as a glowing curtain, with bands of light running along it and sparks drifting up. It stands taller while the circle pulses. Where a circle you can cross into reaches inside yours, its wall stands brighter: that stretch is the gateway. (Edge style: Wall, Tiles or Both.)
@@ -35,7 +43,7 @@ What works:
 
 Not yet:
 
-- Boons and waystones, Forks, Passport, the hash-chained run log and Season mode.
+- Campfire (the fourth-circle boon), Forks, Passport, the hash-chained run log and Season mode.
 - Sailing is a config tick box for now rather than read from the game.
 
 ## The map

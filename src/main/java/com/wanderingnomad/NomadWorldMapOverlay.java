@@ -3,6 +3,8 @@ package com.wanderingnomad;
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Forecast;
 import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Waystone;
+import java.awt.Color;
 import java.awt.BasicStroke;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
@@ -97,6 +99,7 @@ class NomadWorldMapOverlay extends Overlay
             double tick = pr + Math.max(8, 18 * zoom / 4);
             graphics.draw(new Line2D.Double(px, py, px + Math.cos(c.heading()) * tick, py - Math.sin(c.heading()) * tick));
         }
+        drawWaystones(graphics, sim, bounds, west, south, zoom);
         graphics.setClip(before);
         return null;
     }
@@ -140,6 +143,37 @@ class NomadWorldMapOverlay extends Overlay
                 graphics.draw(shape);
                 graphics.drawString(Forecast.HORIZONS[h] / 60 + "h", (float) top[0] - 6, (float) top[1] - 4);
             }
+        }
+    }
+
+    /**
+     * Each waystone as a diamond, gold if it's in your circle, with its boon and roughly how long
+     * before its circle drifts off it, so you can judge whether the walk is worth it.
+     */
+    private static void drawWaystones(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)
+    {
+        for (Waystone w : sim.waystones())
+        {
+            double px = bounds.x + (w.x() - west) * zoom;
+            double py = bounds.y + bounds.height - (w.y() - south) * zoom;
+            boolean yours = w.circle() == sim.boundIndex();
+            Color colour = yours ? new Color(0xFFD54F) : NomadPlugin.colour(sim.circles().get(w.circle()), 255);
+            Path2D.Double diamond = new Path2D.Double();
+            diamond.moveTo(px, py - 7);
+            diamond.lineTo(px + 5, py);
+            diamond.lineTo(px, py + 7);
+            diamond.lineTo(px - 5, py);
+            diamond.closePath();
+            graphics.setColor(colour);
+            graphics.fill(diamond);
+            graphics.setStroke(new BasicStroke(1f));
+            graphics.setColor(Color.BLACK);
+            graphics.draw(diamond);
+            String text = w.boon() + " ~" + NomadPanel.roughly(sim.minutesLeft(w));
+            graphics.setColor(Color.BLACK);
+            graphics.drawString(text, (float) px + 8, (float) py + 5);
+            graphics.setColor(colour);
+            graphics.drawString(text, (float) px + 7, (float) py + 4);
         }
     }
 

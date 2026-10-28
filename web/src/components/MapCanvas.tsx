@@ -212,6 +212,24 @@ export function MapCanvas({ scene, zoom = 1, interactive = true, onPick, classNa
         }
       }
 
+      // Waystones: diamonds, gold in your circle, with their boon.
+      for (const w of sim.state.waystones) {
+        const [wx, wy] = toScreen(v, w.x, w.y);
+        const colour = w.circle === sim.state.bound ? '#ffd54f' : hex(sim.colour(sim.circles[w.circle]));
+        ctx.fillStyle = colour;
+        ctx.beginPath();
+        ctx.moveTo(wx, wy - 8);
+        ctx.lineTo(wx + 6, wy);
+        ctx.lineTo(wx, wy + 8);
+        ctx.lineTo(wx - 6, wy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        rsText(ctx, w.boon, wx, wy - 11, colour, 'RSSmall');
+      }
+
       if (s.player) {
         const [px, py] = toScreen(v, s.player.x, s.player.y);
         const inside = contains(yours, s.player.x, s.player.y);

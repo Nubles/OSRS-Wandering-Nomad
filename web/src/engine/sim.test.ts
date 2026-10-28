@@ -47,6 +47,8 @@ describe('the TypeScript sim matches the plugin', () => {
           else if (e.kind === 'cross') for (let i = 0; i < sim.circles.length && line == null; i++) line = sim.crossTo(i, null);
           else if (e.kind === 'diary') line = sim.setDiaryTiers(e.args[0] as string, e.args[1] as number);
           else if (e.kind === 'sailing') sim.state.sailingUnlocked = e.args[0] as boolean;
+          else if (e.kind === 'summon') line = sim.summon(e.args[0] as string);
+          else if (e.kind === 'boon') line = sim.useBoon(e.args[0] as number, e.args[1] as number);
           if (line != null) log.push([minute, line]);
         }
         for (const line of sim.step(player)) log.push([minute, line]);
