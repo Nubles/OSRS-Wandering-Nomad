@@ -2,6 +2,7 @@ package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Tile;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -62,14 +63,25 @@ class NomadStatusOverlay extends OverlayPanel
             String edge = d <= c.radius() ? (int) Math.floor(c.radius() - d) + " tiles" : (int) Math.ceil(d - c.radius()) + " out";
             panelComponent.getChildren().add(LineComponent.builder().left("To edge").right(edge).build());
         }
+        Radar radar = plugin.radar();
+        if (radar != null && radar.edgeIn > 0)
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Edge reaches you")
+                .right("~" + radar.edgeIn + " min").rightColor(radar.edgeIn <= NomadPlugin.EDGE_WARNING ? OUTSIDE : STRANDED).build());
+        }
         panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").build());
         for (int j = 0; j < sim.circles().size(); j++)
         {
-            if (sim.linked(j) && sim.bound().touches(sim.circles().get(j)))
+            Circle o = sim.circles().get(j);
+            if (sim.linked(j) && sim.bound().touches(o))
             {
-                Circle o = sim.circles().get(j);
                 panelComponent.getChildren().add(LineComponent.builder()
                     .left("Crossing").right(o.name()).rightColor(NomadPlugin.colour(o, 255)).build());
+            }
+            else if (radar != null && radar.crossingIn[j] > 0)
+            {
+                panelComponent.getChildren().add(LineComponent.builder()
+                    .left("Crossing soon").right(o.name() + " ~" + radar.crossingIn[j] + "m").rightColor(NomadPlugin.colour(o, 200)).build());
             }
         }
         if (sim.volcanoOpen())

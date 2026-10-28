@@ -24,9 +24,18 @@ What works:
 - The run saves per account and resumes where it left off.
 - **View on website** and **Copy run code** in the sidebar open your run on the website. The run travels inside the link (gzipped JSON), so nothing is uploaded anywhere.
 
+### The living edge
+
+- **The Wall:** your circle's edge rises out of the ground as a glowing curtain, with bands of light running along it and sparks drifting up. It stands taller while the circle pulses. Where a circle you can cross into reaches inside yours, its wall stands brighter: that stretch is the gateway. (Edge style: Wall, Tiles or Both.)
+- **Radar:** every minute, and whenever you step onto a new tile, the plugin plays a copy of your run 15 minutes ahead while you stand still. The status box and sidebar say when the edge will reach you and when each crossing opens, and a chat warning fires 5 minutes out. Fifteen minutes is short enough not to spoil the run.
+- **Edge glow:** the game view's border glows amber as the edge closes in, and pulses red while you're outside.
+- **Crossing compass:** an arrow on the ground points to the nearest open crossing, or one opening soon, with its name and distance.
+- **Forecast:** the website's 1, 3 and 6 hour cones on the in-game world map, for Main and your circle. Like the website's, it imagines 40 futures with made-up dice, so it shows where a circle could get to, never where it will. It runs off the client thread every 15 played minutes.
+- **Rule guard:** XP, loot, ground pickups and kills while you're outside your circle are noted in the run log and the sidebar. The rules allow fighting back and travelling home, so these are notes for the run's record, not verdicts, and nothing is ever blocked.
+
 Not yet:
 
-- Boons and waystones, the Forecast cone in game, live sync to the website, Passport, the hash-chained run log and Season mode.
+- Boons and waystones, Forks, Passport, the hash-chained run log and Season mode.
 - Sailing is a config tick box for now rather than read from the game.
 
 ## The map
