@@ -136,6 +136,73 @@
             "misthalin",
             1
           ]
+        },
+        {
+          "at": 300,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 410,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 440,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 550,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 580,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 690,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 720,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 830,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 1300,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
         }
       ],
       "hours": [
@@ -2149,8 +2216,20 @@
           "You are back inside your circle."
         ],
         [
+          300,
+          "A waystone rose at Shantay Pass in Kharidian Desert, holding Expand (common)."
+        ],
+        [
+          335,
+          "The waystone at Shantay Pass faded: its circle drifted off it."
+        ],
+        [
           382,
           "Your circle sets off for somewhere new."
+        ],
+        [
+          561,
+          "A waystone rose at Varrock Square in Misthalin, holding Rudder (rare)."
         ],
         [
           566,
@@ -2163,6 +2242,10 @@
         [
           677,
           "Your circle hit the coast and turned back inland."
+        ],
+        [
+          678,
+          "The waystone at Varrock Square faded: its circle drifted off it."
         ],
         [
           700,
@@ -2189,6 +2272,14 @@
           "Your circle slows to a crawl."
         ],
         [
+          1017,
+          "A waystone rose at Rimmington in your circle, holding Anchor (common)."
+        ],
+        [
+          1055,
+          "The waystone at Rimmington faded: its circle drifted off it."
+        ],
+        [
           1059,
           "Your circle breaks into a dash."
         ],
@@ -2205,6 +2296,14 @@
           "Your circle hit the coast and turned back inland."
         ],
         [
+          1170,
+          "A waystone rose at Rimmington in your circle, holding Bridge (rare)."
+        ],
+        [
+          1189,
+          "The waystone at Rimmington faded: its circle drifted off it."
+        ],
+        [
           1235,
           "Your circle breaks into a dash."
         ],
@@ -2217,8 +2316,16 @@
           "Your circle starts to meander."
         ],
         [
+          1426,
+          "A waystone rose at Shilo Village in Karamja, holding Rudder (rare)."
+        ],
+        [
           1472,
           "Your circle hit the coast and turned back inland."
+        ],
+        [
+          1477,
+          "The waystone at Shilo Village faded: its circle drifted off it."
         ]
       ],
       "final": {
@@ -2254,7 +2361,11 @@
               2824,
               3099
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kandarin",
@@ -2286,7 +2397,11 @@
               2504,
               3349
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "fremennik",
@@ -2314,7 +2429,11 @@
               2647,
               4027
             ],
-            "avoid": 3
+            "avoid": 3,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "asgarnia",
@@ -2346,7 +2465,11 @@
               2845,
               3659
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "misthalin",
@@ -2378,7 +2501,11 @@
               3247,
               3339
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "desert",
@@ -2410,7 +2537,11 @@
               3181,
               2784
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "morytania",
@@ -2442,7 +2573,11 @@
               3582,
               3500
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "wilderness",
@@ -2474,7 +2609,11 @@
               3051,
               3762
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "karamja",
@@ -2506,7 +2645,11 @@
               2898,
               2894
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kourend",
@@ -2538,7 +2681,11 @@
               1480,
               3558
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "tirannwn",
@@ -2566,7 +2713,11 @@
               2301,
               3370
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "varlamore",
@@ -2598,9 +2749,18 @@
               1692,
               3111
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           }
-        ]
+        ],
+        "waystones": [],
+        "boons": [],
+        "pending": [],
+        "summons": 5,
+        "bridgeLeft": 0
       }
     },
     {
@@ -2737,6 +2897,73 @@
           "args": [
             "misthalin",
             1
+          ]
+        },
+        {
+          "at": 300,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 410,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 440,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 550,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 580,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 690,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 720,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 830,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 1300,
+          "kind": "summon",
+          "args": [
+            "rare"
           ]
         }
       ],
@@ -4743,8 +4970,16 @@
           "You are back inside your circle."
         ],
         [
+          300,
+          "A waystone rose at Digsite in Misthalin, holding Expand (common)."
+        ],
+        [
           332,
           "Your circle sets off for somewhere new."
+        ],
+        [
+          434,
+          "The waystone at Digsite faded: its circle drifted off it."
         ],
         [
           488,
@@ -4771,6 +5006,14 @@
           "Your circle drifts aimlessly."
         ],
         [
+          973,
+          "A waystone rose at Varrock Square in your circle, holding Rudder (rare)."
+        ],
+        [
+          989,
+          "The waystone at Varrock Square faded: its circle drifted off it."
+        ],
+        [
           1096,
           "Your circle breaks into a dash."
         ],
@@ -4779,12 +5022,36 @@
           "Your circle sets off for somewhere new."
         ],
         [
+          1173,
+          "A waystone rose at Burthorpe in Asgarnia, holding Expand (common)."
+        ],
+        [
           1191,
           "Your circle starts to meander."
         ],
         [
+          1249,
+          "The waystone at Burthorpe faded: its circle drifted off it."
+        ],
+        [
           1256,
           "Your circle sets off for somewhere new."
+        ],
+        [
+          1286,
+          "A waystone rose at Edgeville in your circle, holding Rudder (rare)."
+        ],
+        [
+          1297,
+          "The waystone at Edgeville faded: its circle drifted off it."
+        ],
+        [
+          1398,
+          "A waystone rose at Varrock Square in your circle, holding Bridge (rare)."
+        ],
+        [
+          1406,
+          "The waystone at Varrock Square faded: its circle drifted off it."
         ],
         [
           1425,
@@ -4826,7 +5093,11 @@
               3040,
               3560
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kandarin",
@@ -4858,7 +5129,11 @@
               2477,
               3507
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "fremennik",
@@ -4888,7 +5163,11 @@
               2518,
               3892
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "asgarnia",
@@ -4920,7 +5199,11 @@
               2871,
               3539
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "misthalin",
@@ -4952,7 +5235,11 @@
               3255,
               3545
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "desert",
@@ -4984,7 +5271,11 @@
               3348,
               3110
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "morytania",
@@ -5016,7 +5307,11 @@
               3497,
               3350
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "wilderness",
@@ -5048,7 +5343,11 @@
               3265,
               3763
             ],
-            "avoid": 1
+            "avoid": 1,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "karamja",
@@ -5080,7 +5379,11 @@
               2825,
               3053
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kourend",
@@ -5112,7 +5415,11 @@
               1724,
               3851
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "tirannwn",
@@ -5144,7 +5451,11 @@
               2181,
               3212
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "varlamore",
@@ -5176,9 +5487,18 @@
               1242,
               3341
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           }
-        ]
+        ],
+        "waystones": [],
+        "boons": [],
+        "pending": [],
+        "summons": 5,
+        "bridgeLeft": 0
       }
     },
     {
@@ -5315,6 +5635,73 @@
           "args": [
             "misthalin",
             1
+          ]
+        },
+        {
+          "at": 300,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 410,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 440,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 550,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 580,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 690,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 720,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 830,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 1300,
+          "kind": "summon",
+          "args": [
+            "rare"
           ]
         }
       ],
@@ -7361,8 +7748,24 @@
           "Your circle hit the coast and turned back inland."
         ],
         [
+          733,
+          "A waystone rose at Champions\u0027 Guild in Misthalin, holding Expand (common)."
+        ],
+        [
+          768,
+          "The waystone at Champions\u0027 Guild faded: its circle drifted off it."
+        ],
+        [
+          795,
+          "A waystone rose at Varrock Square in Misthalin, holding Bridge (rare)."
+        ],
+        [
           809,
           "Your circle breaks into a dash."
+        ],
+        [
+          843,
+          "The waystone at Varrock Square faded: its circle drifted off it."
         ],
         [
           865,
@@ -7385,8 +7788,16 @@
           "Your circle drifts aimlessly."
         ],
         [
+          994,
+          "A waystone rose at Varrock Square in Misthalin, holding Expand (common)."
+        ],
+        [
           995,
           "Your circle hit the coast and turned back inland."
+        ],
+        [
+          1057,
+          "The waystone at Varrock Square faded: its circle drifted off it."
         ],
         [
           1073,
@@ -7409,8 +7820,24 @@
           "Your circle starts to circle round."
         ],
         [
+          1282,
+          "A waystone rose at Al Kharid in Kharidian Desert, holding Bridge (rare)."
+        ],
+        [
+          1345,
+          "The waystone at Al Kharid faded: its circle drifted off it."
+        ],
+        [
+          1369,
+          "A waystone rose at Bedabin Camp in your circle, holding Rudder (rare)."
+        ],
+        [
           1384,
           "Your circle drifts aimlessly."
+        ],
+        [
+          1390,
+          "The waystone at Bedabin Camp faded: its circle drifted off it."
         ]
       ],
       "final": {
@@ -7446,7 +7873,11 @@
               2864,
               2924
             ],
-            "avoid": 1
+            "avoid": 1,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kandarin",
@@ -7478,7 +7909,11 @@
               2680,
               3275
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "fremennik",
@@ -7506,7 +7941,11 @@
               2764,
               3869
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "asgarnia",
@@ -7534,7 +7973,11 @@
               2822,
               3335
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "misthalin",
@@ -7566,7 +8009,11 @@
               3263,
               3335
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "desert",
@@ -7598,7 +8045,11 @@
               3292,
               3061
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "morytania",
@@ -7630,7 +8081,11 @@
               3561,
               3430
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "wilderness",
@@ -7662,7 +8117,11 @@
               2982,
               3799
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "karamja",
@@ -7694,7 +8153,11 @@
               2833,
               3192
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kourend",
@@ -7726,7 +8189,11 @@
               1494,
               3827
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "tirannwn",
@@ -7758,7 +8225,11 @@
               2185,
               3202
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "varlamore",
@@ -7790,9 +8261,18 @@
               1524,
               3278
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           }
-        ]
+        ],
+        "waystones": [],
+        "boons": [],
+        "pending": [],
+        "summons": 5,
+        "bridgeLeft": 0
       }
     },
     {
@@ -7929,6 +8409,73 @@
           "args": [
             "misthalin",
             1
+          ]
+        },
+        {
+          "at": 300,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 410,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 440,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 550,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 580,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 690,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 720,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 830,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 1300,
+          "kind": "summon",
+          "args": [
+            "rare"
           ]
         }
       ],
@@ -9943,12 +10490,28 @@
           "You are back inside your circle."
         ],
         [
+          300,
+          "A waystone rose at Draynor Manor in Misthalin, holding Tailwind (common)."
+        ],
+        [
           407,
           "Your circle starts to meander."
         ],
         [
+          456,
+          "The waystone at Draynor Manor faded: its circle drifted off it."
+        ],
+        [
+          524,
+          "A waystone rose at Barbarian Village in Misthalin, holding Rudder (rare)."
+        ],
+        [
           546,
           "Your circle starts to circle round."
+        ],
+        [
+          558,
+          "The waystone at Barbarian Village faded: its circle drifted off it."
         ],
         [
           692,
@@ -9971,8 +10534,24 @@
           "You are outside your circle. It drifts 5x faster and shrinks 1 tile a minute."
         ],
         [
+          915,
+          "A waystone rose at Digsite in your circle, holding Anchor (common)."
+        ],
+        [
           924,
           "Your circle starts to meander."
+        ],
+        [
+          924,
+          "The waystone at Digsite faded: its circle drifted off it."
+        ],
+        [
+          986,
+          "A waystone rose at Paterdomus in your circle, holding Bridge (rare)."
+        ],
+        [
+          1002,
+          "The waystone at Paterdomus faded: its circle drifted off it."
         ],
         [
           1060,
@@ -10017,6 +10596,14 @@
         [
           1289,
           "Your circle starts to meander."
+        ],
+        [
+          1304,
+          "A waystone rose at Canifis in your circle, holding Rudder (rare)."
+        ],
+        [
+          1309,
+          "The waystone at Canifis faded: its circle drifted off it."
         ],
         [
           1339,
@@ -10076,7 +10663,11 @@
               3571,
               3555
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kandarin",
@@ -10108,7 +10699,11 @@
               2281,
               3462
             ],
-            "avoid": 2
+            "avoid": 2,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "fremennik",
@@ -10140,7 +10735,11 @@
               2587,
               3870
             ],
-            "avoid": 2
+            "avoid": 2,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "asgarnia",
@@ -10172,7 +10771,11 @@
               3007,
               3146
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "misthalin",
@@ -10204,7 +10807,11 @@
               3253,
               3529
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "desert",
@@ -10236,7 +10843,11 @@
               3401,
               2782
             ],
-            "avoid": 3
+            "avoid": 3,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "morytania",
@@ -10268,7 +10879,11 @@
               3497,
               3411
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "wilderness",
@@ -10300,7 +10915,11 @@
               3063,
               3855
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "karamja",
@@ -10332,7 +10951,11 @@
               2786,
               2968
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kourend",
@@ -10364,7 +10987,11 @@
               1608,
               3951
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "tirannwn",
@@ -10396,7 +11023,11 @@
               2198,
               3232
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "varlamore",
@@ -10426,9 +11057,18 @@
               1606,
               3098
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           }
-        ]
+        ],
+        "waystones": [],
+        "boons": [],
+        "pending": [],
+        "summons": 5,
+        "bridgeLeft": 0
       }
     },
     {
@@ -12532,7 +13172,11 @@
               2749,
               3169
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kandarin",
@@ -12564,7 +13208,11 @@
               2451,
               2938
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "fremennik",
@@ -12592,7 +13240,11 @@
               2726,
               3749
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "asgarnia",
@@ -12624,7 +13276,11 @@
               3042,
               3328
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "misthalin",
@@ -12656,7 +13312,11 @@
               3167,
               3267
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "desert",
@@ -12688,7 +13348,11 @@
               3351,
               2908
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "morytania",
@@ -12720,7 +13384,11 @@
               3521,
               3215
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "wilderness",
@@ -12752,7 +13420,11 @@
               3206,
               3943
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "karamja",
@@ -12780,7 +13452,11 @@
               2901,
               3157
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "kourend",
@@ -12812,7 +13488,11 @@
               1588,
               3786
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "tirannwn",
@@ -12844,7 +13524,11 @@
               2258,
               3081
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           },
           {
             "regionId": "varlamore",
@@ -12876,9 +13560,3080 @@
               1692,
               3149
             ],
-            "avoid": 0
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
           }
+        ],
+        "waystones": [],
+        "boons": [],
+        "pending": [],
+        "summons": 0,
+        "bridgeLeft": 0
+      }
+    },
+    {
+      "seed": 2024,
+      "minutes": 1500,
+      "events": [
+        {
+          "at": 0,
+          "kind": "sailing",
+          "args": [
+            true
+          ]
+        },
+        {
+          "at": 30,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 30,
+          "kind": "player",
+          "args": [
+            3222,
+            3218
+          ]
+        },
+        {
+          "at": 33,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 60,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 61,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 90,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 90,
+          "kind": "player",
+          "args": [
+            3222,
+            3218
+          ]
+        },
+        {
+          "at": 93,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 120,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 121,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 150,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 150,
+          "kind": "player",
+          "args": [
+            3222,
+            3218
+          ]
+        },
+        {
+          "at": 153,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 180,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 181,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 210,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 210,
+          "kind": "player",
+          "args": [
+            3222,
+            3218
+          ]
+        },
+        {
+          "at": 213,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 240,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 241,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 270,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 270,
+          "kind": "player",
+          "args": [
+            3222,
+            3218
+          ]
+        },
+        {
+          "at": 273,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 300,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 301,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 330,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 330,
+          "kind": "player",
+          "args": [
+            3222,
+            3218
+          ]
+        },
+        {
+          "at": 333,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 360,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 361,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 390,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 450,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 510,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 570,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 630,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 690,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 859,
+          "kind": "player",
+          "args": [
+            3365,
+            3266
+          ]
+        },
+        {
+          "at": 862,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 889,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 890,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 919,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 919,
+          "kind": "player",
+          "args": [
+            3365,
+            3266
+          ]
+        },
+        {
+          "at": 922,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 949,
+          "kind": "boon",
+          "args": [
+            0,
+            1
+          ]
+        },
+        {
+          "at": 950,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 979,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        },
+        {
+          "at": 979,
+          "kind": "player",
+          "args": [
+            3365,
+            3266
+          ]
+        },
+        {
+          "at": 982,
+          "kind": "player",
+          "args": []
+        },
+        {
+          "at": 1009,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 1010,
+          "kind": "cross",
+          "args": []
+        },
+        {
+          "at": 1039,
+          "kind": "boon",
+          "args": [
+            1,
+            1
+          ]
+        },
+        {
+          "at": 1040,
+          "kind": "boon",
+          "args": [
+            0,
+            -1
+          ]
+        },
+        {
+          "at": 1039,
+          "kind": "summon",
+          "args": [
+            "common"
+          ]
+        },
+        {
+          "at": 1039,
+          "kind": "summon",
+          "args": [
+            "rare"
+          ]
+        }
+      ],
+      "hours": [
+        {
+          "minute": 60,
+          "bound": 0,
+          "rngState": -80921185,
+          "circles": [
+            [
+              3223.3527370579504,
+              3204.426467254353,
+              24.0,
+              4.489230198748436
+            ],
+            [
+              2553.0354863443,
+              3247.8993593150994,
+              19.833333333333343,
+              6.106710540331506
+            ],
+            [
+              2587.3461077457346,
+              3856.5220489566595,
+              20.0,
+              3.5305234046689993
+            ],
+            [
+              2910.935288142406,
+              3421.4832844667426,
+              20.0,
+              2.327452935849136
+            ],
+            [
+              3197.836411217054,
+              3403.463533313585,
+              20.483333333333306,
+              3.0264351911162684
+            ],
+            [
+              3298.3063938948712,
+              3034.9038618747895,
+              20.0,
+              1.4388732169946103
+            ],
+            [
+              3575.538461435052,
+              3303.973672529724,
+              19.833333333333343,
+              3.354228925200585
+            ],
+            [
+              3222.9795552915825,
+              3724.075921250459,
+              20.0,
+              -1.0067509374790975
+            ],
+            [
+              2838.803913514479,
+              3093.5673628580494,
+              20.0,
+              0.9611557944508697
+            ],
+            [
+              1538.3724382713312,
+              3653.4560014006524,
+              20.0,
+              4.35751438613199
+            ],
+            [
+              2274.944908075761,
+              3202.7888743331705,
+              20.78333333333329,
+              5.39475960783227
+            ],
+            [
+              1471.2139802468964,
+              3137.1711620776086,
+              20.0,
+              4.482651260533399
+            ]
+          ]
+        },
+        {
+          "minute": 120,
+          "bound": 0,
+          "rngState": -67597997,
+          "circles": [
+            [
+              3223.3527370579504,
+              3204.426467254353,
+              24.0,
+              4.489230198748436
+            ],
+            [
+              2582.8965781360794,
+              3240.919740232556,
+              18.8333333333334,
+              6.622872627172604
+            ],
+            [
+              2554.7534106280805,
+              3856.4143134631595,
+              20.0,
+              2.6306190764500883
+            ],
+            [
+              2881.249687595526,
+              3452.0725631732234,
+              20.0,
+              2.3365098427532756
+            ],
+            [
+              3196.390954700865,
+              3419.994149071102,
+              21.48333333333325,
+              1.2011787486905268
+            ],
+            [
+              3300.5536452981623,
+              3076.6173663993686,
+              19.516666666666694,
+              0.9994211291955895
+            ],
+            [
+              3515.4284609869865,
+              3286.9144409987425,
+              19.53333333333336,
+              3.664739987142578
+            ],
+            [
+              3266.655527718674,
+              3672.8256756525493,
+              20.0,
+              -1.216170397292825
+            ],
+            [
+              2877.290184438078,
+              3102.326119703941,
+              20.0,
+              0.1911697827634373
+            ],
+            [
+              1517.2558745451313,
+              3637.350588924394,
+              19.233333333333377,
+              2.5454393568970777
+            ],
+            [
+              2298.7456048610816,
+              3163.3100593655013,
+              21.783333333333232,
+              5.395616617849079
+            ],
+            [
+              1464.4208543660902,
+              3161.674691268843,
+              20.0,
+              1.5414446963507036
+            ]
+          ]
+        },
+        {
+          "minute": 180,
+          "bound": 0,
+          "rngState": 1386067522,
+          "circles": [
+            [
+              3210.426237987396,
+              3206.4227884580055,
+              24.0,
+              2.1531260787183575
+            ],
+            [
+              2588.290294878535,
+              3280.49524925962,
+              17.833333333333456,
+              8.093848585770575
+            ],
+            [
+              2540.80520002169,
+              3871.717733761027,
+              20.0,
+              2.1450336407258668
+            ],
+            [
+              2917.476701383104,
+              3438.396862111998,
+              20.0,
+              6.013720806942894
+            ],
+            [
+              3212.4568743484024,
+              3446.186947959857,
+              30.266666666666538,
+              0.9699605868668779
+            ],
+            [
+              3351.46297536045,
+              3071.67328413466,
+              19.91666666666667,
+              -1.1773771041196583
+            ],
+            [
+              3458.4993103650513,
+              3258.6849636095662,
+              20.533333333333303,
+              3.3543437990292615
+            ],
+            [
+              3206.9783160353663,
+              3628.070416695327,
+              20.0,
+              -3.1309419653681134
+            ],
+            [
+              2914.5289431812057,
+              3087.5850733572847,
+              19.750000000000014,
+              -0.7015879855584484
+            ],
+            [
+              1523.3390669835144,
+              3669.845333267829,
+              18.233333333333434,
+              1.132520721492938
+            ],
+            [
+              2341.4058066700654,
+              3141.677570263813,
+              22.783333333333175,
+              6.077147513466114
+            ],
+            [
+              1486.73432792634,
+              3204.351982631446,
+              19.657368476502597,
+              0.8604969114907458
+            ]
+          ]
+        },
+        {
+          "minute": 240,
+          "bound": 0,
+          "rngState": 759978740,
+          "circles": [
+            [
+              3212.121491270801,
+              3219.5070583273173,
+              36.0,
+              0.7565211751467705
+            ],
+            [
+              2571.9044104491118,
+              3321.3030006941676,
+              17.440174411050975,
+              8.51505097658515
+            ],
+            [
+              2532.0254398746556,
+              3889.952442946991,
+              20.0,
+              1.9479600051010513
+            ],
+            [
+              2947.7365235076127,
+              3407.5853457927565,
+              20.0,
+              5.51768197911096
+            ],
+            [
+              3230.0512887902632,
+              3472.2664926156644,
+              30.266666666666538,
+              0.9390243951162893
+            ],
+            [
+              3363.7758113592095,
+              3042.9211818611807,
+              20.916666666666615,
+              -0.7998506627753627
+            ],
+            [
+              3422.0367172135007,
+              3270.818688654961,
+              13.049999999999946,
+              2.183305188206222
+            ],
+            [
+              3142.328368860309,
+              3655.1274209930402,
+              20.0,
+              -3.8478127487545697
+            ],
+            [
+              2942.188464179892,
+              3054.3224385431927,
+              18.883333333333397,
+              -1.3363207822169396
+            ],
+            [
+              1541.4245806121962,
+              3700.873076324616,
+              17.23333333333349,
+              1.004753227852071
+            ],
+            [
+              2361.399899988002,
+              3202.802625681596,
+              23.78333333333312,
+              8.055024674364411
+            ],
+            [
+              1513.3371215479578,
+              3240.8404724415586,
+              19.657368476502597,
+              0.9481232445787682
+            ]
+          ]
+        },
+        {
+          "minute": 300,
+          "bound": 0,
+          "rngState": -2145264234,
+          "circles": [
+            [
+              3224.805597602959,
+              3222.8688294372464,
+              24.0,
+              -0.06336021975530315
+            ],
+            [
+              2549.9029891894706,
+              3353.150011631596,
+              12.0,
+              7.685629828581187
+            ],
+            [
+              2544.061308508896,
+              3896.558948066433,
+              20.516666666666637,
+              -0.3788556575617589
+            ],
+            [
+              2965.6163615433506,
+              3386.304597480528,
+              12.0,
+              6.044840425786629
+            ],
+            [
+              3246.443952441206,
+              3499.1322051253046,
+              30.049999999999883,
+              1.0965445918228578
+            ],
+            [
+              3374.879966179256,
+              2970.4689289560934,
+              21.14633742067963,
+              -1.7042053506922947
+            ],
+            [
+              3397.9505510693057,
+              3302.6943436631605,
+              13.8823103447381,
+              2.240790496329989
+            ],
+            [
+              3085.1049813082705,
+              3679.037935172295,
+              20.416666666666643,
+              -3.4416832016172685
+            ],
+            [
+              2927.2056656860645,
+              3021.051043329803,
+              17.883333333333454,
+              -2.8335501174508924
+            ],
+            [
+              1560.5680159744118,
+              3731.3469350565133,
+              16.900000000000176,
+              1.0252738411302282
+            ],
+            [
+              2358.3809269681624,
+              3249.7898519361634,
+              24.751447642222047,
+              7.348396497393761
+            ],
+            [
+              1564.075131245972,
+              3267.180143510634,
+              19.657368476502597,
+              0.15404220855915438
+            ]
+          ]
+        },
+        {
+          "minute": 360,
+          "bound": 0,
+          "rngState": -1635564070,
+          "circles": [
+            [
+              3247.1042638758527,
+              3233.64606326964,
+              24.0,
+              1.224783086002058
+            ],
+            [
+              2560.8571996478377,
+              3349.889382452346,
+              12.0,
+              3.192202014945568
+            ],
+            [
+              2549.3000997121258,
+              3897.3040773970624,
+              21.51666666666658,
+              1.4596500358013966
+            ],
+            [
+              2981.198557367075,
+              3378.3161044305475,
+              12.0,
+              5.404588597360231
+            ],
+            [
+              3260.5518681221574,
+              3512.770235908117,
+              29.04999999999994,
+              0.5038508932555361
+            ],
+            [
+              3367.0260808076837,
+              2954.1457215871633,
+              20.59633742067966,
+              -1.938721736048968
+            ],
+            [
+              3407.6711985928955,
+              3274.1746511615056,
+              13.8823103447381,
+              4.6880149415821535
+            ],
+            [
+              3034.8770839303525,
+              3705.5876198546434,
+              21.416666666666586,
+              -2.6500475371064254
+            ],
+            [
+              2887.2703264779097,
+              3015.4009120490223,
+              17.983333333333448,
+              -2.9623691173136804
+            ],
+            [
+              1579.3719699806227,
+              3762.0191714999387,
+              17.90000000000012,
+              1.0397736813590086
+            ],
+            [
+              2375.941336413298,
+              3293.5737983066597,
+              24.718114308888715,
+              7.567654772030375
+            ],
+            [
+              1607.121520711239,
+              3290.7391292051475,
+              19.657368476502597,
+              0.8305256573431976
+            ]
+          ]
+        },
+        {
+          "minute": 420,
+          "bound": 0,
+          "rngState": -174322251,
+          "circles": [
+            [
+              3260.650396804516,
+              3239.967400858997,
+              24.0,
+              0.45643448186878105
+            ],
+            [
+              2554.927380844582,
+              3388.8733398779727,
+              12.833333333333375,
+              1.125951053359591
+            ],
+            [
+              2544.878860366993,
+              3898.5767100749003,
+              22.516666666666524,
+              3.7651493160783778
+            ],
+            [
+              2969.167983937907,
+              3339.337957892037,
+              12.0,
+              3.8953134230954825
+            ],
+            [
+              3264.0720224784636,
+              3517.255461886116,
+              28.049999999999997,
+              1.1614612102990807
+            ],
+            [
+              3431.149907424869,
+              2932.1832413337174,
+              20.26438139881938,
+              -0.12147072652626555
+            ],
+            [
+              3402.43008765377,
+              3229.56298099516,
+              14.265643678071452,
+              4.505416031197749
+            ],
+            [
+              3007.0743724689964,
+              3647.101282075938,
+              22.41666666666653,
+              -1.75997406893563
+            ],
+            [
+              2856.032182212327,
+              2996.0569558594552,
+              17.11666666666683,
+              -1.6497900212292114
+            ],
+            [
+              1592.9250377209805,
+              3792.9759197801554,
+              18.900000000000063,
+              1.2323211141986234
+            ],
+            [
+              2408.081002741331,
+              3324.604593812077,
+              23.718114308888772,
+              6.043735286166336
+            ],
+            [
+              1641.8467714487738,
+              3307.3107276658243,
+              19.657368476502597,
+              -0.08537043077982799
+            ]
+          ]
+        },
+        {
+          "minute": 480,
+          "bound": 0,
+          "rngState": -112210466,
+          "circles": [
+            [
+              3273.8951245762905,
+              3246.0680347974876,
+              24.0,
+              0.1414085850723233
+            ],
+            [
+              2590.4289095654167,
+              3385.7445159142067,
+              20.86666666666671,
+              -1.43308007026341
+            ],
+            [
+              2537.6624675689563,
+              3880.0448319905117,
+              23.516666666666467,
+              4.553487086710693
+            ],
+            [
+              2922.728548757076,
+              3282.960053875279,
+              12.0,
+              4.583664530830155
+            ],
+            [
+              3247.235993318488,
+              3520.841236878806,
+              27.050000000000054,
+              3.386874336123535
+            ],
+            [
+              3458.0660629286062,
+              2946.205789821391,
+              21.264381398819324,
+              1.3963016220367817
+            ],
+            [
+              3408.4313954888935,
+              3213.598384313129,
+              15.265643678071502,
+              1.2728710828402612
+            ],
+            [
+              2966.800149687848,
+              3633.0073689898927,
+              23.416666666666472,
+              -4.40546716356058
+            ],
+            [
+              2861.7871457797487,
+              2985.1976294547776,
+              16.116666666666887,
+              -1.470706486474829
+            ],
+            [
+              1618.6862909311128,
+              3811.306554019292,
+              19.23350782878697,
+              0.39693063809246093
+            ],
+            [
+              2417.018716839505,
+              3284.11109566126,
+              22.71811430888883,
+              4.598028824026635
+            ],
+            [
+              1670.7979076422082,
+              3281.0976967059128,
+              19.657368476502597,
+              -1.322173421199463
+            ]
+          ]
+        },
+        {
+          "minute": 540,
+          "bound": 0,
+          "rngState": 205666107,
+          "circles": [
+            [
+              3286.482552903155,
+              3241.7405749122213,
+              24.0,
+              -0.11137852957467162
+            ],
+            [
+              2552.874103547924,
+              3335.0677156822376,
+              20.86666666666671,
+              -2.5011539231361253
+            ],
+            [
+              2535.0298862981617,
+              3857.8131169240123,
+              24.51666666666641,
+              4.604741267589645
+            ],
+            [
+              2933.6664459422896,
+              3242.970273650255,
+              12.0,
+              6.299202710427136
+            ],
+            [
+              3220.2177787487117,
+              3513.9810453173045,
+              26.316666666666762,
+              3.8470630257678
+            ],
+            [
+              3491.1560597091593,
+              2939.1728026819223,
+              22.264381398819268,
+              2.4705735686264356
+            ],
+            [
+              3429.2917321524815,
+              3250.669934307205,
+              16.265643678071523,
+              0.8129909962858577
+            ],
+            [
+              3011.082293911699,
+              3696.7107213938552,
+              24.416666666666416,
+              -5.9977385579224896
+            ],
+            [
+              2852.371537159931,
+              2955.2501252351353,
+              15.11666666666685,
+              -2.1600098931732323
+            ],
+            [
+              1653.5356956415658,
+              3816.7545277788613,
+              19.23350782878697,
+              0.2294782879950054
+            ],
+            [
+              2375.310541257498,
+              3278.0835589236954,
+              21.718114308888886,
+              2.4891676307811776
+            ],
+            [
+              1672.6192035687634,
+              3246.196357453618,
+              20.374035143169223,
+              -1.7391472428334123
+            ]
+          ]
+        },
+        {
+          "minute": 600,
+          "bound": 0,
+          "rngState": -356481478,
+          "circles": [
+            [
+              3300.9683563230014,
+              3244.5730638080886,
+              24.0,
+              0.3152424592260993
+            ],
+            [
+              2516.1070740221103,
+              3321.6628289579157,
+              20.86666666666671,
+              -4.076448228160759
+            ],
+            [
+              2543.0294162932996,
+              3837.6910766931974,
+              24.583333333333073,
+              5.299795264212828
+            ],
+            [
+              2983.349399959699,
+              3304.075976350955,
+              12.0,
+              7.632656395821201
+            ],
+            [
+              3199.5513181006827,
+              3490.6080032823475,
+              27.316666666666706,
+              3.931732818643931
+            ],
+            [
+              3484.8401312553033,
+              2959.021330462218,
+              23.26438139881921,
+              1.775762554175322
+            ],
+            [
+              3454.912448125642,
+              3281.9135575876862,
+              17.265643678071466,
+              0.7729262157655733
+            ],
+            [
+              3100.0509001212877,
+              3731.88076245043,
+              25.41666666666636,
+              -5.251704589272043
+            ],
+            [
+              2882.3521352879043,
+              2925.6573910577863,
+              15.31666666666686,
+              0.2953344967097982
+            ],
+            [
+              1689.2967438209423,
+              3819.16044961918,
+              19.23350782878697,
+              -0.119141517422083
+            ],
+            [
+              2345.1331984541584,
+              3310.8894523724,
+              20.718114308888943,
+              2.240631137115965
+            ],
+            [
+              1659.6579927894238,
+              3236.4732068911785,
+              21.374035143169166,
+              -2.347342179002396
+            ]
+          ]
+        },
+        {
+          "minute": 660,
+          "bound": 0,
+          "rngState": 2048725696,
+          "circles": [
+            [
+              3313.744761306575,
+              3252.3372785787624,
+              24.0,
+              0.5946387595812198
+            ],
+            [
+              2539.026840951691,
+              3352.5126385173444,
+              21.433333333333344,
+              -6.023605183022752
+            ],
+            [
+              2538.7524229408673,
+              3819.742253311248,
+              23.58333333333313,
+              3.4344960713533688
+            ],
+            [
+              2994.0029797776556,
+              3347.4846260792715,
+              12.0,
+              7.158067293417832
+            ],
+            [
+              3177.9320782279656,
+              3467.7309619769076,
+              28.140298265963793,
+              3.9141421258127385
+            ],
+            [
+              3457.848380432514,
+              2929.9819226204518,
+              24.264381398819154,
+              4.670384173398855
+            ],
+            [
+              3468.360220561014,
+              3323.10907426006,
+              17.298977011404798,
+              1.5231420809914624
+            ],
+            [
+              3105.9885878544865,
+              3791.029342100504,
+              26.416666666666302,
+              -4.294413066300766
+            ],
+            [
+              2925.2874457525313,
+              2978.86053394722,
+              16.316666666666876,
+              1.0426584235436407
+            ],
+            [
+              1718.2060100147805,
+              3799.2276135095613,
+              19.23350782878697,
+              -0.9594696152798309
+            ],
+            [
+              2304.3207849682735,
+              3326.985617674309,
+              20.351447642222297,
+              3.0577155484347953
+            ],
+            [
+              1630.1324094886015,
+              3207.990658725914,
+              22.37403514316911,
+              -2.726709902169754
+            ]
+          ]
+        },
+        {
+          "minute": 720,
+          "bound": 0,
+          "rngState": -96799214,
+          "circles": [
+            [
+              3320.140167920258,
+              3255.797088878719,
+              24.0,
+              0.6679791539431829
+            ],
+            [
+              2593.3012057469487,
+              3337.413665790674,
+              22.433333333333287,
+              -6.8065370061422135
+            ],
+            [
+              2544.1337665451006,
+              3826.6306646042594,
+              12.099999999999767,
+              0.03235214013982736
+            ],
+            [
+              3030.0200222172657,
+              3361.992845437907,
+              12.0,
+              6.185302788502553
+            ],
+            [
+              3155.376864179584,
+              3445.7541717890686,
+              28.140298265963793,
+              3.91441318258606
+            ],
+            [
+              3468.353574854936,
+              2984.5656411742225,
+              25.264381398819097,
+              8.04894332336987
+            ],
+            [
+              3469.893163445672,
+              3368.005160054468,
+              16.298977011404855,
+              1.4558338867526852
+            ],
+            [
+              3091.5741106457144,
+              3729.508634672025,
+              27.416666666666245,
+              -1.4241150654391066
+            ],
+            [
+              2959.3324842176303,
+              3009.9527495893367,
+              17.31666666666682,
+              0.6929522906219
+            ],
+            [
+              1715.7985347635758,
+              3765.532609883728,
+              19.23350782878697,
+              -2.138900220843741
+            ],
+            [
+              2238.131437648139,
+              3322.9526247140957,
+              21.35144764222224,
+              3.038771553351954
+            ],
+            [
+              1651.5080080456205,
+              3201.238804152326,
+              23.374035143169053,
+              -0.016367488985440576
+            ]
+          ]
+        },
+        {
+          "minute": 780,
+          "bound": 0,
+          "rngState": 852913029,
+          "circles": [
+            [
+              3324.645498747571,
+              3257.0509360760557,
+              24.0,
+              0.34370808843378575
+            ],
+            [
+              2621.7799248018505,
+              3303.5176347133124,
+              31.349999999999902,
+              -7.622599291019507
+            ],
+            [
+              2547.625613644039,
+              3821.350306531098,
+              12.099999999999767,
+              1.6728223649800944
+            ],
+            [
+              3061.6431131931963,
+              3343.730849405437,
+              12.0,
+              4.772519142771677
+            ],
+            [
+              3131.9584697088508,
+              3431.4199057454257,
+              28.140298265963793,
+              3.9876294412571003
+            ],
+            [
+              3472.640288787176,
+              3025.377692693023,
+              26.26438139881904,
+              8.418000515824835
+            ],
+            [
+              3476.9280845365633,
+              3403.9360828869862,
+              15.99897701140487,
+              1.616293504917958
+            ],
+            [
+              3080.485096451697,
+              3659.0967019443206,
+              28.41666666666619,
+              -1.9281389636214101
+            ],
+            [
+              2933.878511700943,
+              2994.2175568709354,
+              18.316666666666762,
+              4.887897333387504
+            ],
+            [
+              1692.4767902458025,
+              3742.1112752172917,
+              19.23350782878697,
+              -2.0896430950720504
+            ],
+            [
+              2182.529033581897,
+              3309.77120958098,
+              29.634780975555557,
+              4.031614067517582
+            ],
+            [
+              1656.0883614177844,
+              3163.1847458514885,
+              24.374035143168996,
+              -2.139669190370098
+            ]
+          ]
+        },
+        {
+          "minute": 840,
+          "bound": 0,
+          "rngState": 162883050,
+          "circles": [
+            [
+              3336.8677721314307,
+              3263.5666067340253,
+              24.0,
+              0.5940683561938093
+            ],
+            [
+              2629.289204934715,
+              3262.521014493642,
+              31.349999999999902,
+              -7.146355239400229
+            ],
+            [
+              2540.109121181739,
+              3839.7841232373958,
+              12.099999999999767,
+              2.3481175750949417
+            ],
+            [
+              3055.932249431723,
+              3327.236955876181,
+              12.0,
+              4.257658224089281
+            ],
+            [
+              3127.3839032462797,
+              3424.101191760889,
+              28.140298265963793,
+              4.3077057939164165
+            ],
+            [
+              3459.0949612577006,
+              3050.221480159709,
+              27.264381398818983,
+              8.858141799933696
+            ],
+            [
+              3489.623924038859,
+              3416.2752123218324,
+              16.998977011404815,
+              0.38175037666122347
+            ],
+            [
+              3134.8822572627796,
+              3655.098195455658,
+              29.10773487109691,
+              1.0848576562085908
+            ],
+            [
+              2972.9251470433023,
+              2975.57827617879,
+              18.883333333333397,
+              5.9464003412830415
+            ],
+            [
+              1685.755974598756,
+              3710.6491278774597,
+              19.23350782878697,
+              -1.9347712375420316
+            ],
+            [
+              2172.558766316353,
+              3290.7824091037983,
+              30.434780975555512,
+              0.910313635838878
+            ],
+            [
+              1631.1725643531477,
+              3132.0383965863894,
+              25.37403514316894,
+              -2.304949152749676
+            ]
+          ]
+        },
+        {
+          "minute": 900,
+          "bound": 0,
+          "rngState": 224994835,
+          "circles": [
+            [
+              3352.5231260704572,
+              3272.907030600659,
+              24.0,
+              0.5786841318668278
+            ],
+            [
+              2634.6209093676207,
+              3261.0951890981305,
+              31.349999999999902,
+              1.597825115544968
+            ],
+            [
+              2532.47610764869,
+              3858.1193143356736,
+              12.099999999999767,
+              1.99028013453156
+            ],
+            [
+              3023.703436828535,
+              3326.3634977973593,
+              12.0,
+              2.317445983269104
+            ],
+            [
+              3127.9067748212838,
+              3402.170101792837,
+              28.140298265963793,
+              4.74233688881857
+            ],
+            [
+              3425.083479740786,
+              3010.811975270618,
+              28.264381398818927,
+              9.761469706630246
+            ],
+            [
+              3549.4762494888796,
+              3448.4431818953535,
+              17.998977011404758,
+              0.8561064229840368
+            ],
+            [
+              3159.627875771351,
+              3726.706288785329,
+              21.10773487109691,
+              0.22271999989792557
+            ],
+            [
+              2959.8049745546473,
+              2961.8288022632073,
+              17.883333333333454,
+              4.298908302388355
+            ],
+            [
+              1696.3572547978883,
+              3686.295669381841,
+              19.23350782878697,
+              0.10541110656469951
+            ],
+            [
+              2182.9966261809122,
+              3333.4983881853836,
+              29.50144764222223,
+              1.0859254265864993
+            ],
+            [
+              1621.634043089771,
+              3119.326900373922,
+              26.374035143168882,
+              -1.7991021676203056
+            ]
+          ]
+        },
+        {
+          "minute": 960,
+          "bound": 0,
+          "rngState": 806212496,
+          "circles": [
+            [
+              3355.810426842803,
+              3274.9809271094027,
+              24.0,
+              0.5352962606665227
+            ],
+            [
+              2660.84209445028,
+              3295.0786721337527,
+              31.349999999999902,
+              0.5341661576547435
+            ],
+            [
+              2518.126663460275,
+              3872.9920631622554,
+              12.099999999999767,
+              2.326939381913763
+            ],
+            [
+              3019.814471367916,
+              3369.253098305056,
+              12.0,
+              1.3771926400184895
+            ],
+            [
+              3126.8791079782186,
+              3374.682113740793,
+              28.140298265963793,
+              5.079841568585052
+            ],
+            [
+              3384.80022540643,
+              3016.4092931870186,
+              27.964381398818944,
+              8.774204338030493
+            ],
+            [
+              3567.890028023462,
+              3486.6113807828483,
+              18.9989770114047,
+              1.3639457223548574
+            ],
+            [
+              3228.414829829176,
+              3697.2243258712106,
+              21.10773487109691,
+              -1.2894935333056554
+            ],
+            [
+              2915.2576975562447,
+              2958.0529334557505,
+              16.88333333333351,
+              2.5462446677971537
+            ],
+            [
+              1728.8602034774697,
+              3700.494956991025,
+              19.066841162120312,
+              0.4163282070472136
+            ],
+            [
+              2223.0948165315804,
+              3358.6782653928317,
+              28.50144764222229,
+              0.012851225264251045
+            ],
+            [
+              1634.9698511288223,
+              3082.4020537944675,
+              27.374035143168825,
+              -0.6488847401623467
+            ]
+          ]
+        },
+        {
+          "minute": 1020,
+          "bound": 0,
+          "rngState": -1971148084,
+          "circles": [
+            [
+              3369.446543106712,
+              3284.1271634034974,
+              36.18333333333332,
+              0.6087626656883521
+            ],
+            [
+              2691.9203380474164,
+              3283.5965834387202,
+              31.349999999999902,
+              -1.6801722722988455
+            ],
+            [
+              2508.1293198710882,
+              3881.0517575227836,
+              13.066666666666482,
+              2.1931561191988873
+            ],
+            [
+              3023.7994925034895,
+              3393.817300198873,
+              12.0,
+              0.7983818395419738
+            ],
+            [
+              3126.9232278640693,
+              3346.088561038697,
+              27.80696493263048,
+              4.443605613956196
+            ],
+            [
+              3354.603258631719,
+              3062.8155157556516,
+              26.964381398819,
+              7.516918366022056
+            ],
+            [
+              3582.1171940444683,
+              3525.572276739011,
+              19.998977011404644,
+              0.6071448170276261
+            ],
+            [
+              3302.6857049624427,
+              3652.795625405594,
+              21.10773487109691,
+              -0.19437106519848502
+            ],
+            [
+              2878.9901537527644,
+              2985.3026382024996,
+              16.21666666666688,
+              2.485242856171441
+            ],
+            [
+              1758.268334679886,
+              3720.977040662132,
+              18.06684116212037,
+              0.6515827036433368
+            ],
+            [
+              2236.384371173511,
+              3316.83480201876,
+              27.501447642222345,
+              -1.7044628337193797
+            ],
+            [
+              1672.575483643505,
+              3059.5001961596295,
+              28.37403514316877,
+              -0.2882908783939837
+            ]
+          ]
+        },
+        {
+          "minute": 1080,
+          "bound": 0,
+          "rngState": -254141477,
+          "circles": [
+            [
+              3373.5032698481386,
+              3286.3583394582606,
+              37.183333333333266,
+              -0.5590714586382878
+            ],
+            [
+              2656.2310196028434,
+              3271.090216304058,
+              31.505131263285875,
+              1.5489476157186468
+            ],
+            [
+              2505.3479665053223,
+              3883.7409895928076,
+              14.066666666666531,
+              2.379450219448556
+            ],
+            [
+              3045.4082592979526,
+              3416.396547956543,
+              12.0,
+              0.7337600465270541
+            ],
+            [
+              3120.5315783192514,
+              3315.659018974319,
+              26.806964932630535,
+              4.769316104044727
+            ],
+            [
+              3349.883308226234,
+              3078.7482848427762,
+              25.964381398819057,
+              8.552548288052341
+            ],
+            [
+              3618.0441167709646,
+              3517.8708925659744,
+              20.198977011404633,
+              -0.19681734054371192
+            ],
+            [
+              3361.586504889188,
+              3658.632564684425,
+              29.10773487109691,
+              1.067606776393525
+            ],
+            [
+              2839.8777313641986,
+              3007.533696841025,
+              24.816666666666848,
+              2.5918174391093043
+            ],
+            [
+              1788.1130618169536,
+              3740.870827191427,
+              17.569020742550492,
+              0.4508169096190994
+            ],
+            [
+              2224.4753858832983,
+              3268.840446596316,
+              26.501447642222402,
+              -1.8954873138719246
+            ],
+            [
+              1712.1455039055518,
+              3067.124008513085,
+              29.07403514316873,
+              0.043947344974513136
+            ]
+          ]
+        },
+        {
+          "minute": 1140,
+          "bound": 0,
+          "rngState": -1391759835,
+          "circles": [
+            [
+              3378.8411150847014,
+              3278.97480130059,
+              26.18333333333321,
+              -1.41371887247316
+            ],
+            [
+              2631.1656291102418,
+              3278.8666471926263,
+              31.505131263285875,
+              4.144393371714818
+            ],
+            [
+              2503.7641189781184,
+              3879.3293391451607,
+              15.066666666666581,
+              5.26572126885326
+            ],
+            [
+              3063.461035947855,
+              3437.8510408446896,
+              12.0,
+              1.7749572991815474
+            ],
+            [
+              3135.2163268847335,
+              3290.839891277802,
+              25.84813687298447,
+              5.690483086490759
+            ],
+            [
+              3312.5032335430597,
+              3111.63297450195,
+              24.964381398819114,
+              9.257746950338694
+            ],
+            [
+              3628.0386196908366,
+              3510.483370982052,
+              19.19897701140469,
+              -1.682223337238185
+            ],
+            [
+              3359.313872900058,
+              3703.25319850546,
+              29.10773487109691,
+              1.5374548495398435
+            ],
+            [
+              2810.36022526624,
+              3007.881738321707,
+              24.816666666666848,
+              5.1963641759554
+            ],
+            [
+              1811.786960832613,
+              3752.2095780117634,
+              17.569020742550492,
+              -0.06177499465629219
+            ],
+            [
+              2197.9979804603954,
+              3231.476237153502,
+              25.50144764222246,
+              -2.361182826987319
+            ],
+            [
+              1760.2549324690904,
+              3062.7730274897453,
+              28.074035143168786,
+              -0.5185122902008199
+            ]
+          ]
+        },
+        {
+          "minute": 1200,
+          "bound": 0,
+          "rngState": -1322071750,
+          "circles": [
+            [
+              3374.4079426911053,
+              3266.648361833529,
+              27.183333333333152,
+              -2.343010065674198
+            ],
+            [
+              2605.3661070321896,
+              3248.2248439461396,
+              31.505131263285875,
+              3.8745416310090666
+            ],
+            [
+              2505.0389226753937,
+              3857.921662457867,
+              16.066666666666624,
+              4.657636939049697
+            ],
+            [
+              3069.298679908596,
+              3448.3497784103142,
+              12.0,
+              -0.4262207179850102
+            ],
+            [
+              3162.7895732113193,
+              3287.0096236402082,
+              25.84813687298447,
+              5.853599940170612
+            ],
+            [
+              3312.035946258249,
+              3050.482970347876,
+              23.96438139881917,
+              11.21612909286963
+            ],
+            [
+              3601.9614921420475,
+              3480.495734310087,
+              18.198977011404747,
+              -2.6823288952406754
+            ],
+            [
+              3276.0106517394975,
+              3752.768677566153,
+              28.774401537763595,
+              2.9703893949295077
+            ],
+            [
+              2840.490533381804,
+              3013.7614394228704,
+              16.816666666666848,
+              7.62235319032238
+            ],
+            [
+              1817.1003564996602,
+              3748.5278779437394,
+              17.569020742550492,
+              -1.2584551680474994
+            ],
+            [
+              2184.848144027875,
+              3170.7625604749583,
+              24.501447642222516,
+              -1.9551817251307801
+            ],
+            [
+              1735.0609060698955,
+              3024.8702990239717,
+              27.074035143168842,
+              3.587423930769184
+            ]
+          ]
+        },
+        {
+          "minute": 1260,
+          "bound": 0,
+          "rngState": -1068136374,
+          "circles": [
+            [
+              3373.943600719953,
+              3251.6923436655634,
+              27.716666666666455,
+              -0.6386135251670771
+            ],
+            [
+              2578.9274708832,
+              3232.2767209620474,
+              31.505131263285875,
+              3.258571171575632
+            ],
+            [
+              2510.368231000423,
+              3837.2076489071706,
+              16.95725493412465,
+              4.559881339957121
+            ],
+            [
+              3040.332538356268,
+              3416.032347671973,
+              12.150000000000007,
+              3.6368144681809795
+            ],
+            [
+              3182.5099096529107,
+              3280.5985636756586,
+              26.648136872984423,
+              5.099705539954231
+            ],
+            [
+              3303.8336849015664,
+              3019.7391537331523,
+              22.964381398819228,
+              10.217403447858299
+            ],
+            [
+              3587.797778725387,
+              3450.1737927496188,
+              17.198977011404804,
+              -0.6360196336576163
+            ],
+            [
+              3200.319429927544,
+              3755.8312315298754,
+              27.77440153776365,
+              3.0306202897523375
+            ],
+            [
+              2833.1995865764184,
+              3053.0495898011104,
+              16.816666666666848,
+              7.870546465523063
+            ],
+            [
+              1810.2161908670664,
+              3740.258013289396,
+              17.569020742550492,
+              -2.2905902423338036
+            ],
+            [
+              2183.488733997379,
+              3131.0972736031536,
+              23.70485085397962,
+              -0.6210849803051346
+            ],
+            [
+              1691.4585154966514,
+              3015.522289059627,
+              26.0740351431689,
+              3.125716042493873
+            ]
+          ]
+        },
+        {
+          "minute": 1320,
+          "bound": 0,
+          "rngState": -182365328,
+          "circles": [
+            [
+              3396.3127194088624,
+              3240.563082507978,
+              28.7166666666664,
+              -0.5255705309157087
+            ],
+            [
+              2565.793044460308,
+              3211.526193972558,
+              31.505131263285875,
+              4.69893601942231
+            ],
+            [
+              2506.0705008715067,
+              3851.2167094430306,
+              16.95725493412465,
+              2.834741788929209
+            ],
+            [
+              2991.4897565395618,
+              3433.7894976921325,
+              12.0,
+              1.896889418622434
+            ],
+            [
+              3182.622035258466,
+              3273.5949407407334,
+              27.270608691498637,
+              5.433229065440552
+            ],
+            [
+              3328.290336654733,
+              2995.3664324091187,
+              22.238087521865964,
+              12.585357442511903
+            ],
+            [
+              3628.451464315164,
+              3445.3526217294684,
+              16.19897701140486,
+              0.30814645364174476
+            ],
+            [
+              3128.893963513732,
+              3787.761034016528,
+              26.77440153776371,
+              2.6553419507509988
+            ],
+            [
+              2839.000648533377,
+              3092.601550282469,
+              16.816666666666848,
+              7.942951350222535
+            ],
+            [
+              1794.1020922482169,
+              3711.2089072863655,
+              17.569020742550492,
+              -1.9087993450130725
+            ],
+            [
+              2230.1472120585927,
+              3116.2521546879193,
+              22.70485085397968,
+              -0.17772116501302573
+            ],
+            [
+              1674.6758168959025,
+              2990.8301522044303,
+              25.074035143168956,
+              5.043222678717031
+            ]
+          ]
+        },
+        {
+          "minute": 1380,
+          "bound": 0,
+          "rngState": 1399182585,
+          "circles": [
+            [
+              3410.0363708974623,
+              3233.144763408823,
+              29.71666666666634,
+              -0.3233663489280159
+            ],
+            [
+              2560.8793514173835,
+              3170.5373961267624,
+              31.505131263285875,
+              5.001447014611901
+            ],
+            [
+              2497.8696046041787,
+              3868.535433403682,
+              16.95725493412465,
+              1.4862650990151758
+            ],
+            [
+              2980.0580018202413,
+              3477.547491110462,
+              12.0,
+              2.0644056114483558
+            ],
+            [
+              3208.250213429703,
+              3272.289248627243,
+              27.9206086914986,
+              6.75658553767459
+            ],
+            [
+              3315.878037625151,
+              3005.668468422488,
+              22.238087521865964,
+              16.0005239080226
+            ],
+            [
+              3657.868310232624,
+              3472.916955676258,
+              15.19897701140483,
+              1.8683340070376988
+            ],
+            [
+              3054.0785076751167,
+              3734.055553709895,
+              25.774401537763765,
+              4.534130021550996
+            ],
+            [
+              2863.7372124600292,
+              3116.228455898108,
+              16.683333333333522,
+              6.393875911335474
+            ],
+            [
+              1785.3760281358911,
+              3676.538945108615,
+              17.569020742550492,
+              -1.7481055198228943
+            ],
+            [
+              2275.010647098631,
+              3126.156078351203,
+              21.704850853979735,
+              0.9153995418659397
+            ],
+            [
+              1702.9671616656813,
+              3003.0235606670876,
+              24.074035143169013,
+              -0.27436842374594916
+            ]
+          ]
+        },
+        {
+          "minute": 1440,
+          "bound": 0,
+          "rngState": -2130319759,
+          "circles": [
+            [
+              3424.7358874158676,
+              3230.1432576067054,
+              30.716666666666285,
+              -0.17725691671897295
+            ],
+            [
+              2589.8278029305993,
+              3118.724031312057,
+              32.0,
+              5.545610820318743
+            ],
+            [
+              2506.2538453241123,
+              3885.000542468411,
+              16.95725493412465,
+              1.964425107928995
+            ],
+            [
+              2946.332702133675,
+              3499.042183784479,
+              12.0,
+              2.600339398197818
+            ],
+            [
+              3229.9794952042844,
+              3293.975638449204,
+              28.298195677809417,
+              7.18776694753615
+            ],
+            [
+              3262.569963153043,
+              2974.4793236651026,
+              22.13808752186597,
+              15.352452120429563
+            ],
+            [
+              3623.250718693312,
+              3492.4139784234067,
+              14.19897701140478,
+              2.7442776728130895
+            ],
+            [
+              3067.9254660974266,
+              3662.3705005785223,
+              24.774401537763822,
+              5.394596828823467
+            ],
+            [
+              2904.0474210758152,
+              3114.1712518922645,
+              16.350000000000207,
+              6.165828528137058
+            ],
+            [
+              1790.7322521205697,
+              3641.3380932278324,
+              18.302354075883784,
+              -1.6379999432101675
+            ],
+            [
+              2300.322851591794,
+              3161.3215885759246,
+              20.704850853979792,
+              0.40106868830059617
+            ],
+            [
+              1736.2175437809078,
+              2975.733531566544,
+              23.07403514316907,
+              -1.171695152733113
+            ]
+          ]
+        },
+        {
+          "minute": 1500,
+          "bound": 0,
+          "rngState": -932419028,
+          "circles": [
+            [
+              3439.505338802558,
+              3228.192542467882,
+              31.716666666666228,
+              -0.3344934319455262
+            ],
+            [
+              2581.313462532582,
+              3055.5476857453395,
+              32.0,
+              4.132404738162385
+            ],
+            [
+              2501.909910762902,
+              3894.0049154350413,
+              17.857254934124597,
+              4.526832040377445
+            ],
+            [
+              2970.9611908251104,
+              3520.7426668571798,
+              12.316666666666682,
+              -0.2040655956091347
+            ],
+            [
+              3253.981261315215,
+              3305.834576487525,
+              28.298195677809417,
+              6.49621854513545
+            ],
+            [
+              3246.826297219272,
+              2959.330761182888,
+              21.138087521866026,
+              17.08751164504446
+            ],
+            [
+              3584.535988235721,
+              3487.225119200214,
+              13.19897701140473,
+              3.4169246360707697
+            ],
+            [
+              3129.1847047078663,
+              3642.794681320239,
+              23.77440153776388,
+              6.1629651317247705
+            ],
+            [
+              2904.4153428768286,
+              3089.733517985355,
+              25.283333333333488,
+              3.2938964546136793
+            ],
+            [
+              1769.9679203631772,
+              3617.12344838637,
+              19.302354075883727,
+              -2.9990738890154582
+            ],
+            [
+              2339.5702338776255,
+              3178.470790956602,
+              19.70485085397985,
+              1.1329932192931982
+            ],
+            [
+              1751.7371529654138,
+              2939.0441732857407,
+              22.074035143169127,
+              -1.782471746238396
+            ]
+          ]
+        }
+      ],
+      "log": [
+        [
+          0,
+          "Your circle starts to circle round."
+        ],
+        [
+          30,
+          "A waystone rose at Lumbridge Castle in your circle, holding Anchor (common)."
+        ],
+        [
+          30,
+          "You claimed the waystone at Lumbridge Castle: Anchor. Spend it from the sidebar."
+        ],
+        [
+          60,
+          "Anchor: your circle holds still for an hour."
+        ],
+        [
+          90,
+          "A waystone rose at Lumbridge Castle in your circle, holding Rudder (rare)."
+        ],
+        [
+          90,
+          "You claimed the waystone at Lumbridge Castle: Rudder. Spend it from the sidebar."
+        ],
+        [
+          119,
+          "Your circle lifted its Anchor and drifts again."
+        ],
+        [
+          120,
+          "Rudder: your circle turns 45 degrees to the right."
+        ],
+        [
+          128,
+          "Your circle drifts aimlessly."
+        ],
+        [
+          150,
+          "A waystone rose at Lumbridge Castle in your circle, holding Expand (common)."
+        ],
+        [
+          150,
+          "You claimed the waystone at Lumbridge Castle: Expand. Spend it from the sidebar."
+        ],
+        [
+          180,
+          "Expand: your circle grows by 12 tiles for 2 hours."
+        ],
+        [
+          194,
+          "Your circle starts to circle round."
+        ],
+        [
+          210,
+          "A waystone rose at Lumbridge Castle in your circle, holding Bridge (rare)."
+        ],
+        [
+          210,
+          "You claimed the waystone at Lumbridge Castle: Bridge. Spend it from the sidebar."
+        ],
+        [
+          240,
+          "Bridge: for 10 minutes you can cross to any circle within 60 tiles, and walking between them doesn\u0027t count as outside."
+        ],
+        [
+          249,
+          "The Bridge closed."
+        ],
+        [
+          270,
+          "A waystone rose at Lumbridge Castle in your circle, holding Tailwind (common)."
+        ],
+        [
+          270,
+          "You claimed the waystone at Lumbridge Castle: Tailwind. Spend it from the sidebar."
+        ],
+        [
+          299,
+          "Expand wore off: your circle shrank back by 12 tiles."
+        ],
+        [
+          300,
+          "Tailwind: your circle drifts twice as fast for an hour."
+        ],
+        [
+          317,
+          "Your circle sets off for somewhere new."
+        ],
+        [
+          330,
+          "A waystone rose at Lumbridge Castle in your circle, holding Rudder (rare)."
+        ],
+        [
+          330,
+          "You claimed the waystone at Lumbridge Castle: Rudder. Spend it from the sidebar."
+        ],
+        [
+          359,
+          "The Tailwind has died down."
+        ],
+        [
+          360,
+          "Rudder: your circle turns 45 degrees to the right."
+        ],
+        [
+          452,
+          "Your circle starts to circle round."
+        ],
+        [
+          524,
+          "Your circle sets off for somewhere new."
+        ],
+        [
+          666,
+          "Your circle slows to a crawl."
+        ],
+        [
+          756,
+          "Your circle sets off for somewhere new."
+        ],
+        [
+          850,
+          "Your circle breaks into a dash."
+        ],
+        [
+          858,
+          "A waystone rose at Emir\u0027s Arena in your circle, holding Anchor (common)."
+        ],
+        [
+          859,
+          "You claimed the waystone at Emir\u0027s Arena: Anchor. Spend it from the sidebar."
+        ],
+        [
+          859,
+          "A waystone rose at Emir\u0027s Arena in your circle, holding Bridge (rare)."
+        ],
+        [
+          860,
+          "You claimed the waystone at Emir\u0027s Arena: Bridge. Spend it from the sidebar."
+        ],
+        [
+          860,
+          "A waystone rose at Emir\u0027s Arena in your circle, holding Expand (common)."
+        ],
+        [
+          861,
+          "You claimed the waystone at Emir\u0027s Arena: Expand. Spend it from the sidebar."
+        ],
+        [
+          861,
+          "A waystone rose at Emir\u0027s Arena in your circle, holding Rudder (rare)."
+        ],
+        [
+          879,
+          "Your circle sets off for somewhere new."
+        ],
+        [
+          889,
+          "Anchor: your circle holds still for an hour."
+        ],
+        [
+          919,
+          "You claimed the waystone at Emir\u0027s Arena: Rudder. Spend it from the sidebar."
+        ],
+        [
+          919,
+          "A waystone rose at Emir\u0027s Arena in your circle, holding Anchor (common)."
+        ],
+        [
+          948,
+          "Your circle lifted its Anchor and drifts again."
+        ],
+        [
+          949,
+          "Bridge: for 10 minutes you can cross to any circle within 60 tiles, and walking between them doesn\u0027t count as outside."
+        ],
+        [
+          958,
+          "The Bridge closed."
+        ],
+        [
+          963,
+          "A waystone rose at Draynor Manor in Misthalin, holding Rudder (rare)."
+        ],
+        [
+          979,
+          "You claimed the waystone at Emir\u0027s Arena: Anchor. Spend it from the sidebar."
+        ],
+        [
+          979,
+          "A waystone rose at Emir\u0027s Arena in your circle, holding Anchor (common)."
+        ],
+        [
+          1009,
+          "Expand: your circle grows by 12 tiles for 2 hours."
+        ],
+        [
+          1024,
+          "Your circle starts to circle round."
+        ],
+        [
+          1039,
+          "Anchor: your circle holds still for an hour."
+        ],
+        [
+          1040,
+          "Rudder: your circle turns 45 degrees to the right."
+        ],
+        [
+          1056,
+          "The waystone at Draynor Manor faded: its circle drifted off it."
+        ],
+        [
+          1098,
+          "Your circle lifted its Anchor and drifts again."
+        ],
+        [
+          1108,
+          "A waystone rose at Shantay Pass in Kharidian Desert, holding Rudder (rare)."
+        ],
+        [
+          1128,
+          "Expand wore off: your circle shrank back by 12 tiles."
+        ],
+        [
+          1170,
+          "The waystone at Shantay Pass faded: its circle drifted off it."
+        ],
+        [
+          1210,
+          "A waystone rose at Fred\u0027s farm in Misthalin, holding Expand (common)."
+        ],
+        [
+          1222,
+          "Pulse! Your circle shrank by 8 tiles."
+        ],
+        [
+          1224,
+          "Your circle breaks into a dash."
+        ],
+        [
+          1239,
+          "Pulse! Your circle grew by 8 tiles."
+        ],
+        [
+          1280,
+          "Your circle sets off for somewhere new."
+        ],
+        [
+          1283,
+          "The waystone at Emir\u0027s Arena faded: its circle drifted off it."
+        ],
+        [
+          1401,
+          "The waystone at Fred\u0027s farm faded: its circle drifted off it."
+        ],
+        [
+          1440,
+          "Your circle drifts aimlessly."
         ]
+      ],
+      "final": {
+        "seed": 2024,
+        "rngState": -932419028,
+        "minutes": 1500,
+        "bound": 0,
+        "outside": false,
+        "sailingUnlocked": true,
+        "circles": [
+          {
+            "x": 3439.505338802558,
+            "y": 3228.192542467882,
+            "heading": -0.3344934319455262,
+            "radius": 31.716666666666228,
+            "radiusTarget": 38.87296445388347,
+            "radiusMin": 12.0,
+            "radiusMax": 48.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 5,
+            "moodLeft": 35,
+            "turn": 0.005917048621442043,
+            "bend": 0.0241,
+            "swing": 60,
+            "speed": 1.0000141551542063,
+            "wx": 3501,
+            "wy": 3207,
+            "trail": [
+              3182,
+              2967,
+              3263,
+              3532,
+              3690,
+              3217
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "kandarin",
+            "x": 2581.313462532582,
+            "y": 3055.5476857453395,
+            "heading": 4.132404738162385,
+            "radius": 32.0,
+            "radiusTarget": 32.0,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 20,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 2,
+            "moodLeft": 46,
+            "turn": -0.018897819739740338,
+            "bend": -0.0266,
+            "swing": 14,
+            "speed": 1.4326855921164137,
+            "wx": 2548,
+            "wy": 2995,
+            "trail": [
+              2548,
+              2995,
+              2591,
+              3098,
+              2582,
+              3227
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "fremennik",
+            "x": 2501.909910762902,
+            "y": 3894.0049154350413,
+            "heading": 4.526832040377445,
+            "radius": 17.857254934124597,
+            "radiusTarget": 27.307772727683187,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 0,
+            "moodLeft": 70,
+            "turn": 0.007577038592220864,
+            "bend": -0.023,
+            "swing": 75,
+            "speed": 0.997865738621647,
+            "wx": 2376,
+            "wy": 3895,
+            "trail": [
+              2376,
+              3895,
+              2506,
+              3838,
+              2511,
+              3881
+            ],
+            "avoid": 5,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "asgarnia",
+            "x": 2970.9611908251104,
+            "y": 3520.7426668571798,
+            "heading": -0.2040655956091347,
+            "radius": 12.316666666666682,
+            "radiusTarget": 19.650272380560637,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 0,
+            "moodLeft": 91,
+            "turn": 8.66231589831581E-4,
+            "bend": -0.0349,
+            "swing": 63,
+            "speed": 0.9961370996366142,
+            "wx": 2984,
+            "wy": 3503,
+            "trail": [
+              2984,
+              3503,
+              3026,
+              3407,
+              2926,
+              3297
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "misthalin",
+            "x": 3253.981261315215,
+            "y": 3305.834576487525,
+            "heading": 6.49621854513545,
+            "radius": 28.298195677809417,
+            "radiusTarget": 28.298195677809417,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 4,
+            "moodLeft": 93,
+            "turn": -0.0026939737461305763,
+            "bend": -0.0235,
+            "swing": 22,
+            "speed": 0.4249614697170175,
+            "wx": 3367,
+            "wy": 3337,
+            "trail": [
+              3367,
+              3337,
+              3260,
+              3303,
+              3116,
+              3303
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "desert",
+            "x": 3246.826297219272,
+            "y": 2959.330761182888,
+            "heading": 17.08751164504446,
+            "radius": 21.138087521866026,
+            "radiusTarget": 14.507074028253555,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 3,
+            "moodLeft": 19,
+            "turn": 0.007146915935384646,
+            "bend": -0.02,
+            "swing": 23,
+            "speed": 1.5870623711496092,
+            "wx": 3245,
+            "wy": 2909,
+            "trail": [
+              3245,
+              2909,
+              3323,
+              2999,
+              3325,
+              3103
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "morytania",
+            "x": 3584.535988235721,
+            "y": 3487.225119200214,
+            "heading": 3.4169246360707697,
+            "radius": 13.19897701140473,
+            "radiusTarget": 12.004761214253525,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 1,
+            "moodLeft": 29,
+            "turn": -0.019479410080281506,
+            "bend": 0.03,
+            "swing": 143,
+            "speed": 0.9000639000419296,
+            "wx": 3512,
+            "wy": 3441,
+            "trail": [
+              3512,
+              3441,
+              3656,
+              3464,
+              3584,
+              3467
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "wilderness",
+            "x": 3129.1847047078663,
+            "y": 3642.794681320239,
+            "heading": 6.1629651317247705,
+            "radius": 23.77440153776388,
+            "radiusTarget": 12.022638542577624,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 2,
+            "moodLeft": 31,
+            "turn": 0.025544264349059254,
+            "bend": 0.0212,
+            "swing": 25,
+            "speed": 0.9285156619254915,
+            "wx": 2973,
+            "wy": 3624,
+            "trail": [
+              2973,
+              3624,
+              3106,
+              3656,
+              3089,
+              3790
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "karamja",
+            "x": 2904.4153428768286,
+            "y": 3089.733517985355,
+            "heading": 3.2938964546136793,
+            "radius": 25.283333333333488,
+            "radiusTarget": 25.283333333333488,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 40,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 1,
+            "moodLeft": 108,
+            "turn": -0.03302157924656261,
+            "bend": 0.03,
+            "swing": 70,
+            "speed": 0.9000000000541072,
+            "wx": 2849,
+            "wy": 3148,
+            "trail": [
+              2849,
+              3148,
+              2828,
+              3016,
+              2964,
+              2953
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "kourend",
+            "x": 1769.9679203631772,
+            "y": 3617.12344838637,
+            "heading": -2.9990738890154582,
+            "radius": 19.302354075883727,
+            "radiusTarget": 24.796545983292162,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 2,
+            "moodLeft": 148,
+            "turn": -0.03283450953028257,
+            "bend": -0.0309,
+            "swing": 46,
+            "speed": 0.9094458168935841,
+            "wx": 1707,
+            "wy": 3545,
+            "trail": [
+              1707,
+              3545,
+              1782,
+              3628,
+              1808,
+              3754
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "tirannwn",
+            "x": 2339.5702338776255,
+            "y": 3178.470790956602,
+            "heading": 1.1329932192931982,
+            "radius": 19.70485085397985,
+            "radiusTarget": 14.874187305569649,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 0,
+            "moodLeft": 31,
+            "turn": -0.006325818005939401,
+            "bend": -0.0204,
+            "swing": 34,
+            "speed": 0.9825763710646058,
+            "wx": 2338,
+            "wy": 3242,
+            "trail": [
+              2338,
+              3242,
+              2268,
+              3118,
+              2198,
+              3185
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          },
+          {
+            "regionId": "varlamore",
+            "x": 1751.7371529654138,
+            "y": 2939.0441732857407,
+            "heading": -1.782471746238396,
+            "radius": 22.074035143169127,
+            "radiusTarget": 14.383776847273111,
+            "radiusMin": 12.0,
+            "radiusMax": 32.0,
+            "pulse": 0,
+            "tiers": 0,
+            "atEdge": false,
+            "waiting": false,
+            "touchingYours": false,
+            "mood": 0,
+            "moodLeft": 81,
+            "turn": 0.0017379899773903172,
+            "bend": 0.0197,
+            "swing": 16,
+            "speed": 0.9572003551933589,
+            "wx": 1632,
+            "wy": 2914,
+            "trail": [
+              1632,
+              2914,
+              1758,
+              2951,
+              1745,
+              3079
+            ],
+            "avoid": 0,
+            "expand": 0,
+            "expandLeft": 0,
+            "tailwindLeft": 0,
+            "anchorLeft": 0
+          }
+        ],
+        "waystones": [],
+        "boons": [],
+        "pending": [
+          "rare"
+        ],
+        "summons": 15,
+        "bridgeLeft": 0
       }
     }
   ]
