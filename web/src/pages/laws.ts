@@ -8,11 +8,16 @@ export const LAWS = [
   {
     name: 'Drift',
     short: 'Main roams Gielinor at about 15 tiles an hour. Kingdom circles patrol their kingdom at about 45.',
-    long: 'Circles only move while you are logged in, one step per played minute, each on its own slowly wandering heading. The path is fixed by your seed, so nobody, you included, knows where it goes next.',
+    long: 'Circles only move while you are logged in, one step per played minute. Every hour or two each one changes mood: it roams off somewhere new, meanders, loops, dashes, lingers or drifts, and it bends away from coasts before it reaches them. Each kingdom has its own temperament: the Desert dashes and rests, Asgarnia patrols in loops, Fremennik is slow but pulses hard. The path is fixed by your seed, so nobody, you included, knows where it goes next.',
+  },
+  {
+    name: 'Lean',
+    short: 'Stand at the edge of your circle and it slowly turns toward you.',
+    long: 'Within 2 tiles of the edge, your circle turns up to 3 degrees a minute your way. It never speeds up, and as it turns the edge moves off you, so steering means chasing the edge instead of playing.',
   },
   {
     name: 'Breathe',
-    short: 'Circles slowly grow and shrink, and now and then pulse by 8 tiles.',
+    short: 'Circles slowly grow and shrink, and now and then pulse by 8 tiles (12 in Fremennik).',
     long: "Main's radius ranges from 12 to 48 tiles and starts at 24. A kingdom circle's radius ranges from 12 to 32 and starts at 20.",
   },
   {

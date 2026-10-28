@@ -32,6 +32,24 @@ public final class Circle
     boolean atEdge;
     boolean waiting;
     boolean touchingYours;
+    /** The current mood (see {@link Temperament}) and the played minutes it has left. */
+    int mood;
+    int moodLeft;
+    /** How fast the heading is turning, in radians a minute, so paths curve instead of running straight. */
+    double turn;
+    /** The turn a loop holds, or a meander swings around, this mood. */
+    double bend;
+    /** Minutes into a meander's swing. */
+    int swing;
+    /** Multiplies the drift speed; eases toward the mood's own speed. */
+    double speed;
+    /** Where this mood is heading, 0 when nowhere in particular. */
+    int wx;
+    int wy;
+    /** The last few places it headed for, as x, y pairs, so the next one favours new ground. */
+    int[] trail;
+    /** Minutes in a row spent turning away from a coast or border ahead. */
+    int avoid;
 
     static final class Voyage
     {
@@ -49,6 +67,7 @@ public final class Circle
         c.radius = c.radiusTarget = MAIN_START;
         c.radiusMin = MAIN_MIN;
         c.radiusMax = MAIN_MAX;
+        c.speed = 1;
         return c;
     }
 
@@ -62,7 +81,20 @@ public final class Circle
         c.radius = c.radiusTarget = REGION_START;
         c.radiusMin = REGION_MIN;
         c.radiusMax = REGION_MAX;
+        c.speed = 1;
         return c;
+    }
+
+    /** The current mood's name, such as "Meandering". */
+    public String moodName()
+    {
+        return NomadSim.MOOD_NAMES[mood];
+    }
+
+    /** This circle's temperament, such as "Sandstorm" for the Desert. */
+    public String temperament()
+    {
+        return Temperament.of(regionId).name;
     }
 
     public boolean isMain()

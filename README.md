@@ -4,6 +4,8 @@ A RuneLite plugin for **Nomad UIM**: Ultimate Ironman, but everything you do hap
 
 - **The Main circle** is where you start, over Lumbridge. It roams the whole world and turns back at the coast. While a port sits inside it, it may board a quest-free boat (Veos, Captain Barnaby, the charter ships and others), or sail to any port once Sailing is unlocked.
 - **Eleven region circles** (Kandarin, Fremennik, Asgarnia, Misthalin, the Desert, Morytania, the Wilderness, Karamja, Kourend & Kebos, Tirannwn and Varlamore) each patrol their own kingdom, three times as fast as Main, and never follow it.
+- **Moods and temperaments:** every hour or two each circle changes mood (roaming somewhere new, meandering, looping, dashing, lingering or drifting), its path curves, and it bends away from coasts before reaching them. Each kingdom has a temperament that sets which moods it favours and how fast it goes (`Temperament.java`); Main heads for far-off waypoints that favour ground it hasn't covered lately.
+- **Lean:** standing within 2 tiles of your circle's edge turns it toward you, up to 3 degrees a minute.
 - **Crossing:** where Main touches a region circle, you can cross into it. The only way out of a region circle is back into Main. If Main moves on, you're stranded until it comes back, and your circle edges toward the border nearest it.
 - **Achievement Diaries** grow their region's circle: from 12–32 tiles up to 28–48 with every tier done.
 - **Outside your circle**, it drifts 5x faster and shrinks a tile a minute.

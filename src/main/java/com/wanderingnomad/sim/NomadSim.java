@@ -11,8 +11,12 @@ import java.util.List;
  *
  * <p>The laws, as the design doc states them:
  * <ul>
- * <li>Drift: Main moves about 15 tiles per played hour and region circles about 45, each on its own slowly
- * wandering heading.</li>
+ * <li>Drift: Main moves about 15 tiles per played hour and region circles about 45. Each switches
+ * between moods every hour or two (roaming somewhere new, meandering, looping, dashing, lingering or
+ * drifting), its path curves, and it senses coasts ahead and bends away from them. Each kingdom's
+ * temperament sets which moods it favours.</li>
+ * <li>Lean: standing within 2 tiles of your circle's edge turns its heading toward you, up to 3
+ * degrees a minute.</li>
  * <li>Breathe: the radius eases toward a new target now and then, and sometimes pulses by 8.</li>
  * <li>Cross: from Main you may cross into any of the eleven region circles it touches; from a region
  * circle only back into Main. A region circle never leaves its kingdom.</li>
@@ -40,10 +44,44 @@ public final class NomadSim
     static final double STRANDED_PULL = 0.05;
     /** Deep in a peninsula (this many cells from open land), Main leans toward the way out. */
     static final int POCKET_DEPTH = 5;
+    static final int CRAMPED_DEPTH = 2;
     static final double POCKET_PULL = 0.1;
     static final int LOOK_DIRECTIONS = 32;
     static final int LOOK_RANGE = 96;
     static final double LOOK_SHARE = 0.75;
+
+    /** Lean: within this many tiles of the edge, your circle turns toward you, up to 3 degrees a minute. */
+    static final double LEAN_BAND = 2;
+    static final double LEAN = 3 * Math.PI / 180;
+
+    static final String[] MOOD_NAMES = {"Roaming", "Meandering", "Looping", "Dashing", "Lingering", "Drifting"};
+    private static final String[] MOOD_LOG = {
+        "sets off for somewhere new", "starts to meander", "starts to circle round", "breaks into a dash",
+        "slows to a crawl", "drifts aimlessly"};
+    /** Per mood: speed, shortest and longest minutes, turn wobble, and how hard it heads for its waypoint. */
+    private static final double[] MOOD_SPEED = {1.0, 0.9, 0.9, 2.2, 0.15, 1.0};
+    private static final int[] MOOD_MIN = {90, 60, 60, 20, 30, 60};
+    private static final int[] MOOD_MAX = {240, 180, 150, 60, 90, 180};
+    private static final double[] MOOD_WOBBLE = {0.006, 0.004, 0.003, 0.002, 0.03, 0.012};
+    private static final double[] MOOD_PULL = {0.05, 0.02, 0.008, 0.06, 0, 0.01};
+    /** The turn rate eases this share of the way to its target each minute, and never passes TURN_MAX. */
+    private static final double TURN_EASE = 0.1;
+    private static final double TURN_MAX = 0.08;
+    private static final double SPEED_EASE = 0.05;
+    private static final double MEANDER_SWING = 0.03;
+    private static final double MEANDER_STEP = Math.PI * 2 / 80;
+    private static final double LOOP_MIN = 0.018;
+    private static final double LOOP_MAX = 0.035;
+    /** Looks ahead about half an hour of drift; bends away this much a minute when the way ahead is blocked. */
+    private static final int FEEL_MINUTES = 30;
+    private static final double FEEL_SPLAY = 0.6;
+    private static final double AVOID_TURN = 0.06;
+    private static final int AVOID_GIVE_UP = 45;
+    /** Waypoints: this many tries, this far away, remembering this many past ones. */
+    private static final int WAY_TRIES = 8;
+    private static final int[] MAIN_WAY = {150, 500};
+    private static final int[] REGION_WAY = {20, 150};
+    private static final int TRAIL = 3;
 
     int seed;
     int rngState;
@@ -220,7 +258,8 @@ public final class NomadSim
             boolean pulled = yours && stranded && !c.isMain();
             Circle toward = pulled ? main : null;
             double pull = pulled ? STRANDED_PULL : 0;
-            move(c, rng, yours && out ? OUTSIDE_SPEEDUP : 1, yours, toward, pull, log);
+            Tile lean = yours && !out && player != null && dist(c, player) >= c.radius - LEAN_BAND ? player : null;
+            move(c, rng, yours && out ? OUTSIDE_SPEEDUP : 1, yours, toward, pull, lean, log);
         }
         minutes++;
 
@@ -246,8 +285,10 @@ public final class NomadSim
         return log;
     }
 
-    private void move(Circle c, Rng rng, int speedup, boolean yours, Circle toward, double pull, List<String> log)
+    private void move(Circle c, Rng rng, int speedup, boolean yours, Circle toward, double pull, Tile lean, List<String> log)
     {
+        Temperament t = Temperament.of(c.regionId);
+        Allowed allowed = c.isMain() ? Geography::onLand : c.region()::contains;
         if (c.voyage != null)
         {
             double d = Circle.dist(c.voyage.tx - c.x, c.voyage.ty - c.y);
@@ -258,6 +299,8 @@ public final class NomadSim
                 if (yours) log.add("Your circle docked at " + c.voyage.to + ".");
                 c.voyage = null;
                 c.heading = rng.next() * Math.PI * 2;
+                c.turn = 0;
+                c.moodLeft = 0;
             }
             else
             {
@@ -267,20 +310,75 @@ public final class NomadSim
         }
         else
         {
-            c.heading += (rng.next() - 0.5) * 0.09;
+            if (c.moodLeft <= 0) startMood(c, t, rng, allowed, yours, log);
+            c.moodLeft--;
+            int m = c.mood;
+            // In a peninsula or cove, Main forgets its mood and keeps a steady pace until it's out,
+            // and deep inside one it heads for the way out.
+            int depth = c.isMain() ? Geography.pocketDepth(c.x, c.y) : 0;
+            boolean cramped = depth >= CRAMPED_DEPTH;
+            boolean pocket = depth >= POCKET_DEPTH;
+
+            // The turn rate eases toward the mood's own (straight, a held loop, or a meander's swing)
+            // and wobbles, so the heading curves rather than running in straight lines.
+            double target = cramped ? 0
+                : m == Temperament.LOOP ? c.bend
+                : m == Temperament.MEANDER ? c.bend * StrictMath.sin(c.swing * MEANDER_STEP) : 0;
+            c.swing++;
+            c.turn += (target - c.turn) * TURN_EASE + (rng.next() - 0.5) * 2 * MOOD_WOBBLE[m];
+            c.turn = clamp(c.turn, -TURN_MAX, TURN_MAX);
+            c.heading += c.turn;
+            c.speed += ((cramped ? 1 : MOOD_SPEED[m]) - c.speed) * SPEED_EASE;
+
+            if (c.wx != 0 && Circle.dist(c.wx - c.x, c.wy - c.y) < c.radius / 2)
+            {
+                // Arrived: it'll pick a new mood, and somewhere new to head for, next minute.
+                c.wx = c.wy = 0;
+                c.moodLeft = 0;
+            }
+            if (c.wx != 0 && MOOD_PULL[m] > 0 && !cramped) steer(c, c.wx, c.wy, MOOD_PULL[m]);
             if (toward != null)
             {
                 steer(c, toward.x, toward.y, pull);
             }
-            if (c.isMain() && Geography.pocketDepth(c.x, c.y) >= POCKET_DEPTH)
+            if (pocket)
             {
                 double[] out = Geography.wayOut(c.x, c.y, 2);
                 steer(c, out[0], out[1], POCKET_PULL);
             }
-            double v = (c.isMain() ? DRIFT : REGION_DRIFT) * speedup;
+            if (lean != null)
+            {
+                double d = StrictMath.atan2(lean.y - c.y, lean.x - c.x) - c.heading;
+                d = StrictMath.atan2(StrictMath.sin(d), StrictMath.cos(d));
+                c.heading += clamp(d, -LEAN, LEAN);
+            }
+
+            double v = (c.isMain() ? DRIFT : REGION_DRIFT) * t.speed * c.speed * speedup;
+            // Feel the way ahead and bend away from a coast or border before reaching it. A stranded
+            // circle doesn't, since it's meant to wait at the border nearest Main, and nor does a circle
+            // finding its way out of a peninsula, whose way out is often a narrow neck.
+            if (toward == null && !pocket && !feelClear(c, c.heading, v, allowed))
+            {
+                boolean left = feelClear(c, c.heading + FEEL_SPLAY, v, allowed);
+                boolean right = feelClear(c, c.heading - FEEL_SPLAY, v, allowed);
+                double side = left == right ? (c.turn >= 0 ? 1 : -1) : left ? 1 : -1;
+                c.heading += side * AVOID_TURN;
+                c.turn = side * Math.abs(c.turn);
+                if (++c.avoid >= AVOID_GIVE_UP)
+                {
+                    // Pressed against the shore for most of an hour: forget this waypoint and change mood.
+                    c.wx = c.wy = 0;
+                    c.moodLeft = 0;
+                    c.avoid = 0;
+                }
+            }
+            else
+            {
+                c.avoid = 0;
+            }
+
             double nx = c.x + StrictMath.cos(c.heading) * v;
             double ny = c.y + StrictMath.sin(c.heading) * v;
-            Allowed allowed = c.isMain() ? Geography::onLand : c.region()::contains;
             if (allowed.test(nx, ny))
             {
                 c.x = nx;
@@ -293,6 +391,7 @@ public final class NomadSim
                 if (!waitingForMain)
                 {
                     c.heading = openHeading(c, v, rng, allowed);
+                    c.turn = 0;
                     // Turn and step in the same minute, so a circle can never freeze against a shore.
                     double tx = c.x + StrictMath.cos(c.heading) * v;
                     double ty = c.y + StrictMath.sin(c.heading) * v;
@@ -323,15 +422,16 @@ public final class NomadSim
             if (c.isMain()) maybeBoard(c, rng, log);
         }
 
-        if (rng.next() < RETARGET_CHANCE)
+        if (rng.next() < RETARGET_CHANCE * t.breathing)
         {
-            c.radiusTarget = c.radiusMin + rng.next() * (c.radiusMax - c.radiusMin);
+            double u = rng.next();
+            c.radiusTarget = c.radiusMin + (t.hungry ? u * u : u) * (c.radiusMax - c.radiusMin);
         }
         double dr = c.radiusTarget - c.radius;
         c.radius += Math.signum(dr) * Math.min(Math.abs(dr), RADIUS_EASE);
-        if (rng.next() < PULSE_CHANCE)
+        if (rng.next() < PULSE_CHANCE * t.pulses)
         {
-            double nr = clamp(c.radius + (rng.next() < 0.5 ? PULSE : -PULSE), c.radiusMin, c.radiusMax);
+            double nr = clamp(c.radius + (rng.next() < 0.5 ? t.pulse : -t.pulse), c.radiusMin, c.radiusMax);
             if (yours && Math.abs(nr - c.radius) > 0.5)
             {
                 log.add("Pulse! Your circle " + (nr > c.radius ? "grew" : "shrank") + " by "
@@ -342,6 +442,99 @@ public final class NomadSim
             c.pulse = 45;
         }
         if (c.pulse > 0) c.pulse--;
+    }
+
+    /**
+     * Picks the next mood: never the same one twice running, weighted by the temperament. Then a
+     * length, a loop direction or meander swing, and, once it has reached its last one or given up
+     * on it, a waypoint. The waypoint is the best of a few random spots, the one furthest from where
+     * the circle has headed lately, so it tours the map over many moods.
+     */
+    private static void startMood(Circle c, Temperament t, Rng rng, Allowed allowed, boolean yours, List<String> log)
+    {
+        double total = 0;
+        for (int k = 0; k < Temperament.MOODS; k++)
+        {
+            if (k != c.mood) total += t.weights[k];
+        }
+        double pick = rng.next() * total;
+        int mood = -1;
+        for (int k = 0; k < Temperament.MOODS; k++)
+        {
+            if (k == c.mood || t.weights[k] <= 0) continue;
+            mood = k;
+            pick -= t.weights[k];
+            if (pick < 0) break;
+        }
+        if (mood < 0) mood = c.mood;
+        c.mood = mood;
+        c.moodLeft = (int) round((MOOD_MIN[mood] + rng.next() * (MOOD_MAX[mood] - MOOD_MIN[mood])) * t.duration);
+        double side = rng.next() < 0.5 ? -1 : 1;
+        // Rounded so saved runs stay short.
+        c.bend = round(side * (mood == Temperament.MEANDER ? MEANDER_SWING : LOOP_MIN + rng.next() * (LOOP_MAX - LOOP_MIN)) * 1e4) / 1e4;
+        c.swing = 0;
+
+        if (c.wx != 0)
+        {
+            if (yours) log.add("Your circle " + MOOD_LOG[mood] + ".");
+            return;
+        }
+        int[] range = c.isMain() ? MAIN_WAY : REGION_WAY;
+        boolean island = c.isMain() && Geography.pocketDepth(c.x, c.y) < 0;
+        double bestScore = -1;
+        int bx = 0, by = 0;
+        for (int k = 0; k < WAY_TRIES; k++)
+        {
+            double a = rng.next() * Math.PI * 2;
+            double d = range[0] + rng.next() * (range[1] - range[0]);
+            int x = (int) round(c.x + StrictMath.cos(a) * d);
+            int y = (int) round(c.y + StrictMath.sin(a) * d);
+            if (!allowed.test(x, y)) continue;
+            // Main can't walk to another island, so on the mainland it aims for open mainland, never
+            // into a peninsula or onto an island.
+            if (c.isMain() && !island && Geography.pocketDepth(x, y) != 0) continue;
+            double score = Circle.dist(x - c.x, y - c.y);
+            if (c.trail != null)
+            {
+                for (int i = 0; i + 1 < c.trail.length; i += 2)
+                {
+                    score = Math.min(score, Circle.dist(x - c.trail[i], y - c.trail[i + 1]));
+                }
+            }
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bx = x;
+                by = y;
+            }
+        }
+        c.wx = bx;
+        c.wy = by;
+        if (bx != 0)
+        {
+            int[] old = c.trail == null ? new int[0] : c.trail;
+            int keep = Math.min(old.length, 2 * (TRAIL - 1));
+            int[] next = new int[keep + 2];
+            next[0] = bx;
+            next[1] = by;
+            System.arraycopy(old, 0, next, 2, keep);
+            c.trail = next;
+        }
+        if (yours) log.add("Your circle " + MOOD_LOG[mood] + ".");
+    }
+
+    /** Whether the drift about half an hour ahead along a heading, and halfway there, is still allowed. */
+    private static boolean feelClear(Circle c, double heading, double v, Allowed allowed)
+    {
+        double reach = clamp(v * FEEL_MINUTES, 6, 40);
+        double cos = StrictMath.cos(heading);
+        double sin = StrictMath.sin(heading);
+        return allowed.test(c.x + cos * reach, c.y + sin * reach) && allowed.test(c.x + cos * reach / 2, c.y + sin * reach / 2);
+    }
+
+    private static double dist(Circle c, Tile p)
+    {
+        return Circle.dist(p.x - c.x, p.y - c.y);
     }
 
     /** While a port sits inside Main, each minute there's a small chance Main boards a boat from it. */
@@ -412,6 +605,12 @@ public final class NomadSim
         double d = StrictMath.atan2(ty - c.y, tx - c.x) - c.heading;
         d = StrictMath.atan2(StrictMath.sin(d), StrictMath.cos(d));
         c.heading += d * weight;
+    }
+
+    /** Rounds halves up, exactly as the website's twin does. */
+    private static double round(double v)
+    {
+        return Math.floor(v + 0.5);
     }
 
     private static double clamp(double v, double lo, double hi)
