@@ -298,4 +298,74 @@ public class NomadSimTest
             }
         }
     }
+
+    @Test
+    public void circlesSwitchMoodsAndTheDesertOnlyDashesAndRests()
+    {
+        NomadSim sim = NomadSim.start(3);
+        List<java.util.Set<Integer>> moods = new ArrayList<>();
+        for (int i = 0; i < sim.circles().size(); i++) moods.add(new java.util.HashSet<>());
+        for (int m = 0; m < 100 * 60; m++)
+        {
+            sim.step(null);
+            for (int i = 0; i < moods.size(); i++) moods.get(i).add(sim.circles().get(i).mood);
+        }
+        for (int i = 0; i < moods.size(); i++)
+        {
+            Circle c = sim.circles().get(i);
+            if ("desert".equals(c.regionId))
+            {
+                assertEquals(new java.util.HashSet<>(java.util.Arrays.asList(Temperament.DASH, Temperament.LINGER)), moods.get(i));
+            }
+            else
+            {
+                assertTrue(c.name() + " only had moods " + moods.get(i), moods.get(i).size() >= 3);
+            }
+        }
+    }
+
+    @Test
+    public void mainChangesPace()
+    {
+        // The old drift covered exactly 15 tiles every hour. Now Main lingers and dashes.
+        NomadSim sim = NomadSim.start(2);
+        Circle main = sim.main();
+        double slowest = Double.MAX_VALUE, fastest = 0, px = main.x, py = main.y;
+        for (int m = 1; m <= 300 * 60; m++)
+        {
+            sim.step(null);
+            if (m % 60 != 0) continue;
+            if (!main.sailing())
+            {
+                double d = Circle.dist(main.x - px, main.y - py);
+                slowest = Math.min(slowest, d);
+                fastest = Math.max(fastest, d);
+            }
+            px = main.x;
+            py = main.y;
+        }
+        assertTrue("slowest hour " + slowest, slowest < 8);
+        assertTrue("fastest hour " + fastest, fastest > 20);
+    }
+
+    @Test
+    public void leaningAtTheEdgeTurnsYourCircleTowardYou()
+    {
+        NomadSim leaned = NomadSim.start(11);
+        NomadSim control = NomadSim.start(11);
+        double h = leaned.main().heading;
+        double x0 = leaned.main().x, y0 = leaned.main().y;
+        for (int m = 0; m < 60; m++)
+        {
+            Circle c = leaned.main();
+            // Stand just inside the edge, square to the circle's left.
+            Tile edge = new Tile((int) Math.round(c.x + Math.cos(h + Math.PI / 2) * (c.radius - 1)),
+                (int) Math.round(c.y + Math.sin(h + Math.PI / 2) * (c.radius - 1)));
+            leaned.step(edge);
+            control.step(null);
+        }
+        double left = -Math.sin(h) * (leaned.main().x - x0) + Math.cos(h) * (leaned.main().y - y0);
+        double controlLeft = -Math.sin(h) * (control.main().x - x0) + Math.cos(h) * (control.main().y - y0);
+        assertTrue("leaned " + left + " vs " + controlLeft, left > controlLeft + 3);
+    }
 }
