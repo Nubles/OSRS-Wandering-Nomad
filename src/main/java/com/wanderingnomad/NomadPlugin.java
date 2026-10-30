@@ -241,8 +241,7 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onGameTick(GameTick tick)
     {
-        edgeWall.update(sim, config.drawEdge() && config.edge3d() && config.edgeStyle() != NomadConfig.EdgeStyle.TILES,
-            config.edge3d() ? config.dimOutside() : 0);
+        edgeWall.update(sim, config.drawEdge() && config.edge3d() && config.edgeStyle() != NomadConfig.EdgeStyle.TILES);
         if (sim == null)
         {
             if (loadPending && client.getAccountHash() != -1 && client.getLocalPlayer() != null)

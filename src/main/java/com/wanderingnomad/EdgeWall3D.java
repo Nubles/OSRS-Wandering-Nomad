@@ -26,9 +26,8 @@ import net.runelite.api.coords.WorldPoint;
  * Each panel is a flat four-cornered model from the game's cache, reshaped to run between two
  * points on the edge and fade upward in bands. Every panel is built at a few brightnesses, and a
  * wave of light runs along the curtain by swapping between them, which costs nothing per frame.
- * The ground outside your circle is darkened the same way, by translucent black sheets lying on
- * it that follow the curve of the edge. Everything is rebuilt only when the circle moves or you
- * walk far enough that new ground comes into reach. Runs on the client thread only.
+ * Panels are rebuilt only when the circle moves or you walk far enough that new stretches come
+ * into reach. Runs on the client thread only.
  */
 @Singleton
 class EdgeWall3D
@@ -39,15 +38,6 @@ class EdgeWall3D
     private static final short QUAD_COLOUR = 6689;
     /** Tiles around you that get panels. */
     private static final int REACH = 32;
-    /** Tiles around you whose ground outside the circle is darkened. */
-    private static final int DIM_REACH = 24;
-    /** Ground sheets are grouped into blocks this many tiles square, one in-game object each. */
-    private static final int BLOCK = 2;
-    /**
-     * How far the sheets float above the ground, in local units. Ground isn't flat across a tile, and
-     * HD's ground sits a little differently, so close to it the terrain pokes through in patches.
-     */
-    private static final int LIFT = 16;
     /** Rebuild once you're this many tiles from where the panels were last built. */
     private static final int REBUILD_STEP = 6;
     /** Each panel is about a tile long. */
@@ -61,7 +51,6 @@ class EdgeWall3D
 
     private final Client client;
     private final List<Panel> panels = new ArrayList<>();
-    private final List<RuneLiteObject> ground = new ArrayList<>();
     private ModelData quad;
     private String builtFor;
 
@@ -81,15 +70,12 @@ class EdgeWall3D
         this.client = client;
     }
 
-    /**
-     * Brings the panels in line with the run, or takes them down when there's no run. {@code walls}
-     * stands the curtain; {@code dim} darkens the ground outside your circle by that percent, 0 not at all.
-     */
-    void update(NomadSim sim, boolean walls, int dim)
+    /** Brings the panels in line with the run, or takes them down when {@code on} is false or there's no run. */
+    void update(NomadSim sim, boolean on)
     {
         Player player = client.getLocalPlayer();
         WorldView view = client.getTopLevelWorldView();
-        if (!walls && dim <= 0 || sim == null || player == null || view == null || view.getScene() == null || view.getScene().isInstance())
+        if (!on || sim == null || player == null || view == null || view.getScene() == null || view.getScene().isInstance())
         {
             clear();
             return;
@@ -97,7 +83,7 @@ class EdgeWall3D
         WorldPoint at = player.getWorldLocation();
         if (at == null) return;
 
-        String key = key(sim, view, at) + '|' + walls + '|' + dim;
+        String key = key(sim, view, at);
         if (key.equals(builtFor)) return;
         clear();
         if (quad == null) quad = client.loadModelData(QUAD_MODEL);
@@ -105,16 +91,12 @@ class EdgeWall3D
         builtFor = key;
 
         Circle yours = sim.bound();
-        if (walls)
+        build(view, yours, null, at);
+        for (int j = 0; j < sim.circles().size(); j++)
         {
-            build(view, yours, null, at);
-            for (int j = 0; j < sim.circles().size(); j++)
-            {
-                Circle c = sim.circles().get(j);
-                if (j != sim.boundIndex() && sim.linked(j) && yours.touches(c)) build(view, c, yours, at);
-            }
+            Circle c = sim.circles().get(j);
+            if (j != sim.boundIndex() && sim.linked(j) && yours.touches(c)) build(view, c, yours, at);
         }
-        if (dim > 0) darken(view, yours, at, dim);
     }
 
     /** Runs the wave of light along the curtain. Called every client tick; only swaps models. */
@@ -134,9 +116,7 @@ class EdgeWall3D
     void clear()
     {
         for (Panel p : panels) p.object.setActive(false);
-        for (RuneLiteObject o : ground) o.setActive(false);
         panels.clear();
-        ground.clear();
         builtFor = null;
     }
 
@@ -235,71 +215,6 @@ class EdgeWall3D
         }
         // A high ambient light so the curtain glows rather than shading like a wall.
         return client.mergeModels(parts.toArray(new ModelData[0])).light(128, 300, -50, -50, -10);
-    }
-
-    /**
-     * Darkens the ground outside your circle near you with black sheets lying on it. Tiles the edge
-     * runs through are cut along the curve, and the first tile past the edge is lighter, so the
-     * shade fades in from the edge instead of starting on a tile boundary.
-     */
-    private void darken(WorldView view, Circle yours, WorldPoint at, int percent)
-    {
-        int plane = view.getPlane();
-        int solid = Math.max(0, 255 - percent * 255 / 100);
-        int soft = 255 - (255 - solid) / 2;
-        int x0 = Math.floorDiv(at.getX() - DIM_REACH, BLOCK) * BLOCK;
-        int y0 = Math.floorDiv(at.getY() - DIM_REACH, BLOCK) * BLOCK;
-        for (int bx = x0; bx <= at.getX() + DIM_REACH; bx += BLOCK)
-        {
-            for (int by = y0; by <= at.getY() + DIM_REACH; by += BLOCK)
-            {
-                double cx = bx + (BLOCK - 1) / 2.0;
-                double cy = by + (BLOCK - 1) / 2.0;
-                LocalPoint centre = local(view, cx, cy);
-                if (centre == null) continue;
-                int gc = Perspective.getTileHeight(client, centre, plane);
-                List<ModelData> parts = new ArrayList<>();
-                for (int x = bx; x < bx + BLOCK; x++)
-                {
-                    for (int y = by; y < by + BLOCK; y++)
-                    {
-                        double[][] part = outsidePart(yours, x, y);
-                        if (part == null) continue;
-                        double past = Math.hypot(x - yours.x(), y - yours.y()) - yours.radius();
-                        int clear = past < 1 ? soft : solid;
-                        float[][] pts = new float[part.length][];
-                        boolean ok = true;
-                        for (int k = 0; k < part.length && ok; k++)
-                        {
-                            LocalPoint lp = local(view, part[k][0], part[k][1]);
-                            if (lp == null)
-                            {
-                                ok = false;
-                                break;
-                            }
-                            int h = Perspective.getTileHeight(client, lp, plane) - gc - LIFT;
-                            pts[k] = new float[]{lp.getX() - centre.getX(), h, lp.getY() - centre.getY()};
-                        }
-                        if (!ok) continue;
-                        // A convex outline of up to five corners, as a fan of four-cornered sheets.
-                        for (int k = 1; k + 1 < pts.length; k += 2)
-                        {
-                            float[] last = k + 2 < pts.length ? pts[k + 2] : pts[k + 1];
-                            float[][] corners = {pts[0], pts[k], pts[k + 1], last};
-                            parts.add(sheet(corners, false, (short) 0, clear));
-                            parts.add(sheet(corners, true, (short) 0, clear));
-                        }
-                    }
-                }
-                if (parts.isEmpty()) continue;
-                Model model = client.mergeModels(parts.toArray(new ModelData[0])).light(128, 768, -50, -50, -10);
-                RuneLiteObject o = client.createRuneLiteObject();
-                o.setModel(model);
-                o.setLocation(centre, plane);
-                o.setActive(true);
-                ground.add(o);
-            }
-        }
     }
 
     /**

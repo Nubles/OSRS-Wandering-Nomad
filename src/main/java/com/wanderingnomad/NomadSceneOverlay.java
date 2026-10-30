@@ -5,6 +5,7 @@ import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Tile;
 import com.wanderingnomad.sim.Waystone;
+import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -17,6 +18,7 @@ import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.geom.Area;
 import java.awt.geom.Path2D;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
@@ -71,7 +73,11 @@ class NomadSceneOverlay extends Overlay
     };
     private static final int[] GLOW_ALPHA = {28, 55, 120};
     /** Tiles from the player that are dimmed when outside your circle: the whole loaded scene. */
-    private static final int DIM_REACH = 52;    /** Within this many tiles of the edge, your tile shows whether you're inside or out. */
+    private static final int DIM_REACH = 52;
+    /** Things inside your circle within this many tiles of its edge stay bright over the shade. */
+    private static final int SHIELD = 12;
+    /** The 3D curtain's height in local units (EdgeWall3D's top band). */
+    private static final int CURTAIN_HEIGHT = 210;    /** Within this many tiles of the edge, your tile shows whether you're inside or out. */
     private static final double FEET_NEAR = 3;
     private static final Color INSIDE = new Color(0x66E08A);
     private static final Color OUTSIDE = new Color(0xFF5A4F);
@@ -84,6 +90,8 @@ class NomadSceneOverlay extends Overlay
 
     private final Client client;
     private final NomadPlugin plugin;
+    /** The outside shade is drawn here first; reused, and only remade when the canvas changes size. */
+    private BufferedImage shadeImage;
 
     @Inject
     NomadSceneOverlay(Client client, NomadPlugin plugin)
@@ -108,8 +116,7 @@ class NomadSceneOverlay extends Overlay
         NomadConfig config = plugin.config();
         long now = System.currentTimeMillis();
 
-        // With the 3D edge on, the dimming lies on the ground in the world (EdgeWall3D), where roofs and walls hide it.
-        if (config.dimOutside() > 0 && !config.edge3d()) drawOutside(graphics, view, sim.bound(), at, config.dimOutside());
+        if (config.dimOutside() > 0) drawOutside(graphics, view, sim.bound(), at, config.dimOutside());
         if (config.drawEdge())
         {
             boolean wall = config.edgeStyle() != NomadConfig.EdgeStyle.TILES;
@@ -397,10 +404,111 @@ class NomadSceneOverlay extends Overlay
             }
         }
         if (!any) return;
-        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-        graphics.setColor(new Color(0, 0, 0, Math.min(255, percent * 255 / 100)));
-        graphics.fill(shade);
-        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // The shade is painted into its own image first, then the outlines of everything standing
+        // inside the circle near its edge are erased from it, so buildings, trees and people in front
+        // of the ground outside stay bright. Erasing pixels is cheap, unlike cutting shapes.
+        int w = client.getCanvasWidth();
+        int h = client.getCanvasHeight();
+        if (w <= 0 || h <= 0) return;
+        if (shadeImage == null || shadeImage.getWidth() != w || shadeImage.getHeight() != h)
+        {
+            shadeImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        }
+        Graphics2D g = shadeImage.createGraphics();
+        try
+        {
+            g.setComposite(AlphaComposite.Clear);
+            g.fillRect(0, 0, w, h);
+            g.setComposite(AlphaComposite.SrcOver);
+            g.setColor(new Color(0, 0, 0, Math.min(255, percent * 255 / 100)));
+            g.fill(shade);
+            g.setComposite(AlphaComposite.Clear);
+            eraseInside(g, view, yours, at);
+            if (plugin.config().edge3d()) eraseCurtain(g, view, yours, at);
+        }
+        finally
+        {
+            g.dispose();
+        }
+        graphics.drawImage(shadeImage, 0, 0, null);
+    }
+
+    /**
+     * Erases from the shade the outlines of scenery, walls, decorations, players and NPCs standing
+     * inside your circle within {@link #SHIELD} tiles of its edge. Further in, nothing reaches over
+     * the edge on screen.
+     */
+    private void eraseInside(Graphics2D g, WorldView view, Circle yours, WorldPoint at)
+    {
+        net.runelite.api.Tile[][][] tiles = view.getScene().getTiles();
+        int plane = view.getPlane();
+        for (int x = at.getX() - REACH; x <= at.getX() + REACH; x++)
+        {
+            for (int y = at.getY() - REACH; y <= at.getY() + REACH; y++)
+            {
+                double depth = yours.radius() - Math.hypot(x - yours.x(), y - yours.y());
+                if (depth < 0 || depth > SHIELD) continue;
+                int sx = x - view.getBaseX();
+                int sy = y - view.getBaseY();
+                if (sx < 0 || sy < 0 || sx >= tiles[plane].length || sy >= tiles[plane][sx].length) continue;
+                net.runelite.api.Tile tile = tiles[plane][sx][sy];
+                if (tile == null) continue;
+                for (GameObject o : tile.getGameObjects())
+                {
+                    if (o != null) fill(g, o.getConvexHull());
+                }
+                WallObject wall = tile.getWallObject();
+                if (wall != null)
+                {
+                    fill(g, wall.getConvexHull());
+                    fill(g, wall.getConvexHull2());
+                }
+                DecorativeObject deco = tile.getDecorativeObject();
+                if (deco != null)
+                {
+                    fill(g, deco.getConvexHull());
+                    fill(g, deco.getConvexHull2());
+                }
+            }
+        }
+        for (Actor actor : actors(view))
+        {
+            WorldPoint p = actor.getWorldLocation();
+            if (p != null && yours.contains(p.getX(), p.getY())) fill(g, actor.getConvexHull());
+        }
+    }
+
+    /** Erases the 3D curtain's own outline from the shade, so its far side isn't dimmed with the ground behind it. */
+    private void eraseCurtain(Graphics2D g, WorldView view, Circle c, WorldPoint at)
+    {
+        double r = c.radius();
+        int n = Math.max(48, (int) Math.ceil(Math.PI * 2 * r / SEGMENT));
+        int plane = view.getPlane();
+        Point g0 = null;
+        Point t0 = null;
+        for (int i = 0; i <= n; i++)
+        {
+            double a = i * Math.PI * 2 / n;
+            double wx = c.x() + Math.cos(a) * r;
+            double wy = c.y() + Math.sin(a) * r;
+            boolean near = Math.abs(wx - at.getX()) <= REACH && Math.abs(wy - at.getY()) <= REACH;
+            LocalPoint lp = near ? local(view, wx, wy) : null;
+            Point g1 = lp == null ? null : Perspective.localToCanvas(client, lp, plane, 0);
+            Point t1 = lp == null ? null : Perspective.localToCanvas(client, lp, plane, CURTAIN_HEIGHT);
+            if (g0 != null && t0 != null && g1 != null && t1 != null)
+            {
+                g.fillPolygon(new int[]{g0.getX(), g1.getX(), t1.getX(), t0.getX()},
+                    new int[]{g0.getY(), g1.getY(), t1.getY(), t0.getY()}, 4);
+            }
+            g0 = g1;
+            t0 = t1;
+        }
+    }
+
+    private static void fill(Graphics2D g, Shape shape)
+    {
+        if (shape != null) g.fill(shape);
     }
 
     /**
