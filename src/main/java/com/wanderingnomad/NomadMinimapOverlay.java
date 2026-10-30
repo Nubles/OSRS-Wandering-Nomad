@@ -40,8 +40,11 @@ class NomadMinimapOverlay extends Overlay
         InterfaceID.ToplevelOsrsStretch.MINIMAP,
         InterfaceID.ToplevelPreEoc.MINIMAP,
     };
-    /** How far off the minimap a point may be and still be placed, in local units. */
-    private static final int FAR = 400 * Perspective.LOCAL_TILE_SIZE;
+    /**
+     * How far off the minimap a point may be and still be placed, in local units. RuneLite squares
+     * this in an int, so much past 180 tiles overflows and nothing gets placed at all.
+     */
+    private static final int FAR = 180 * Perspective.LOCAL_TILE_SIZE;
     private static final BasicStroke[] GLOW = {
         new BasicStroke(6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND),
         new BasicStroke(3f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND),
@@ -93,10 +96,9 @@ class NomadMinimapOverlay extends Overlay
         {
             Circle o = sim.circles().get(j);
             if (j == sim.boundIndex() || !sim.linked(j) || yours.gap(o) > 40) continue;
-            Path2D other = ring(view, o);
-            if (other != null) glow(graphics, other, NomadPlugin.colour(o, 255), 0.6);
+            glow(graphics, arcs(view, o), NomadPlugin.colour(o, 255), 0.6);
         }
-        if (ring != null) glow(graphics, ring, NomadPlugin.colour(yours, 255), 1);
+        glow(graphics, ring != null ? ring : arcs(view, yours), NomadPlugin.colour(yours, 255), 1);
         graphics.setClip(before);
 
         if (plugin.config().minimapArrows())
@@ -109,7 +111,7 @@ class NomadMinimapOverlay extends Overlay
         return null;
     }
 
-    /** A circle's whole edge in minimap pixels, or null if it can't be placed. */
+    /** A circle's whole edge in minimap pixels, or null if any of it is too far off to place. */
     private Path2D ring(WorldView view, Circle c)
     {
         int n = Math.max(96, (int) Math.ceil(Math.PI * 2 * c.radius() / 0.75));
@@ -123,6 +125,28 @@ class NomadMinimapOverlay extends Overlay
             else path.lineTo(p.getX(), p.getY());
         }
         path.closePath();
+        return path;
+    }
+
+    /** The stretches of a circle's edge near you, for when it's too big to place whole; never null. */
+    private Path2D arcs(WorldView view, Circle c)
+    {
+        int n = Math.max(96, (int) Math.ceil(Math.PI * 2 * c.radius() / 0.75));
+        Path2D path = new Path2D.Float();
+        boolean open = false;
+        for (int i = 0; i <= n; i++)
+        {
+            double a = i * Math.PI * 2 / n;
+            Point p = toMinimap(view, c.x() + Math.cos(a) * c.radius(), c.y() + Math.sin(a) * c.radius());
+            if (p == null)
+            {
+                open = false;
+                continue;
+            }
+            if (open) path.lineTo(p.getX(), p.getY());
+            else path.moveTo(p.getX(), p.getY());
+            open = true;
+        }
         return path;
     }
 
