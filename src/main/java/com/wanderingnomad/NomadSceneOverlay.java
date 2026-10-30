@@ -379,8 +379,17 @@ class NomadSceneOverlay extends Overlay
      */
     private void drawOutside(Graphics2D graphics, WorldView view, Circle yours, WorldPoint at, int percent)
     {
-        Path2D shade = new Path2D.Float(Path2D.WIND_NON_ZERO);
-        boolean any = false;
+        // Seen from the camera, every patch of ground winds the same way round. One that winds the
+        // other way, or comes out huge, has a corner behind the camera and was projected through it:
+        // drawn, it shaded the inside of the circle, or (when all the patches were one path) cancelled
+        // the shade where it overlapped. So each patch is checked against the player's own tile.
+        LocalPoint feet = LocalPoint.fromWorld(view, at.getX(), at.getY());
+        Polygon own = feet == null ? null : Perspective.getCanvasTilePoly(client, feet);
+        if (own == null) return;
+        int facing = Long.signum(twiceArea(own));
+        int maxW = client.getViewportWidth() * 2 / 5;
+        int maxH = client.getViewportHeight() * 2 / 5;
+        List<Polygon> patches = new ArrayList<>();
         int plane = view.getPlane();
         for (int x = at.getX() - DIM_REACH; x <= at.getX() + DIM_REACH; x++)
         {
@@ -389,23 +398,28 @@ class NomadSceneOverlay extends Overlay
                 // The part of the tile outside the circle, so the shade follows the curve rather than tile squares.
                 double[][] part = EdgeWall3D.outsidePart(yours, x, y);
                 if (part == null) continue;
-                Path2D poly = new Path2D.Float();
+                int[] xs = new int[part.length];
+                int[] ys = new int[part.length];
                 boolean ok = true;
                 for (int k = 0; k < part.length && ok; k++)
                 {
                     LocalPoint lp = local(view, part[k][0], part[k][1]);
                     Point p = lp == null ? null : Perspective.localToCanvas(client, lp, plane, 0);
                     if (p == null) ok = false;
-                    else if (k == 0) poly.moveTo(p.getX(), p.getY());
-                    else poly.lineTo(p.getX(), p.getY());
+                    else
+                    {
+                        xs[k] = p.getX();
+                        ys[k] = p.getY();
+                    }
                 }
                 if (!ok) continue;
-                poly.closePath();
-                shade.append(poly, false);
-                any = true;
+                Polygon patch = new Polygon(xs, ys, part.length);
+                Rectangle b = patch.getBounds();
+                if (b.width > maxW || b.height > maxH || Long.signum(twiceArea(patch)) != facing) continue;
+                patches.add(patch);
             }
         }
-        if (!any) return;
+        if (patches.isEmpty()) return;
 
         // The shade is painted into its own image first, then the outlines of everything standing
         // inside the circle near its edge are erased from it, so buildings, trees and people in front
@@ -422,9 +436,11 @@ class NomadSceneOverlay extends Overlay
         {
             g.setComposite(AlphaComposite.Clear);
             g.fillRect(0, 0, w, h);
-            g.setComposite(AlphaComposite.SrcOver);
+            // Each patch is set, not blended, so where neighbours touch the shade doesn't double up.
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+            g.setComposite(AlphaComposite.Src);
             g.setColor(new Color(0, 0, 0, Math.min(255, percent * 255 / 100)));
-            g.fill(shade);
+            for (Polygon patch : patches) g.fill(patch);
             g.setComposite(AlphaComposite.Clear);
             eraseInside(g, view, yours, at);
             if (plugin.config().edge3d()) eraseCurtain(g, view, yours, at);
@@ -506,6 +522,18 @@ class NomadSceneOverlay extends Overlay
             g0 = g1;
             t0 = t1;
         }
+    }
+
+    /** Twice a polygon's signed area: its sign says which way round its corners go on screen. */
+    private static long twiceArea(Polygon p)
+    {
+        long sum = 0;
+        for (int k = 0; k < p.npoints; k++)
+        {
+            int m = (k + 1) % p.npoints;
+            sum += (long) p.xpoints[k] * p.ypoints[m] - (long) p.xpoints[m] * p.ypoints[k];
+        }
+        return sum;
     }
 
     /**
