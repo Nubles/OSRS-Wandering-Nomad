@@ -434,14 +434,25 @@ public class NomadPlugin extends Plugin
     /** Notes a moment in the timeline and the run's tallies, then shows its banner and plays its sound if they're on. Client thread. */
     private void show(Moments.Banner b)
     {
-        timeline.addFirst(new NomadPanel.Moment(sim == null ? 0 : sim.minutes(), b));
+        long now = System.currentTimeMillis();
+        NomadPanel.Moment last = timeline.peekFirst();
+        // Stepping out and back in again and again along the edge makes one row with a count, not dozens.
+        if (b.icon == Moments.Icon.RING && last != null && last.banner.icon == Moments.Icon.RING && now - last.at < Moments.QUIET_MS)
+        {
+            timeline.removeFirst();
+            timeline.addFirst(new NomadPanel.Moment(last.minute, b, last.at, last.count + 1));
+        }
+        else
+        {
+            timeline.addFirst(new NomadPanel.Moment(sim == null ? 0 : sim.minutes(), b, now, 1));
+        }
         while (timeline.size() > TIMELINE) timeline.removeLast();
         if (b.event != Moments.Event.OTHER)
         {
             stats.count(b.event);
             saveStats();
         }
-        if (!config.momentBanners()) return;
+        if (b.quiet || !config.momentBanners()) return;
         bannerOverlay.show(b);
         if (config.momentSounds() && b.sound >= 0) client.playSoundEffect(b.sound, SOUND_VOLUME);
     }

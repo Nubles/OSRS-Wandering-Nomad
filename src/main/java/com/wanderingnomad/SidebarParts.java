@@ -197,8 +197,8 @@ final class SidebarParts
     static final class MiniMap extends Part
     {
         private static final int H = 176;
-        /** The widest the map zooms out, in tiles, so your own circle stays visible. */
-        private static final double MAX_SPAN = 520;
+        /** Off-map circles that get a pointer on the border, nearest first. */
+        private static final int POINTERS = 3;
 
         MiniMap()
         {
@@ -206,15 +206,19 @@ final class SidebarParts
             setToolTipText("");
         }
 
-        /** Tiles across the map: your circle with room around it, wide enough to reach the nearest circle you can cross into. */
+        /**
+         * Tiles across the map: your circle fills about 70% of it, with room to keep you in view
+         * if you've wandered out. It stays centred on your circle, so it holds still as you walk.
+         */
         private static double span(NomadPanel.View v)
         {
-            return Math.max(Math.max(120, v.radius * 2 + 70), Math.min(MAX_SPAN, v.reach * 2 + 20));
+            double you = Double.isNaN(v.px) ? 0 : Math.hypot(v.px - v.cx, v.py - v.cy) * 2 * 1.15;
+            return Math.max(40, Math.max(v.radius * 2 / 0.7, you));
         }
 
-        private double[] centre(NomadPanel.View v)
+        private static double[] centre(NomadPanel.View v)
         {
-            return Double.isNaN(v.px) ? new double[]{v.cx, v.cy} : new double[]{v.px, v.py};
+            return new double[]{v.cx, v.cy};
         }
 
         @Override
@@ -264,8 +268,47 @@ final class SidebarParts
                 g.setColor(Color.WHITE);
                 g.fill(new Ellipse2D.Float(x - 3, y - 3, 6, 6));
             }
+            pointers(g, v, c, scale);
             text(g, FontManager.getRunescapeSmallFont(), "N", SIDEBAR_WIDTH - 12, 13, MUTED);
             text(g, FontManager.getRunescapeSmallFont(), Math.round(span(v)) + " tiles across", 6, H - 6, MUTED);
+        }
+
+        /**
+         * Circles you can cross into that are off the map get an arrow on its border, toward them,
+         * with their name and how many tiles lie between their edge and yours.
+         */
+        private static void pointers(Graphics2D g, NomadPanel.View v, double[] c, double scale)
+        {
+            Font small = FontManager.getRunescapeSmallFont();
+            FontMetrics sm = g.getFontMetrics(small);
+            java.awt.Rectangle box = new java.awt.Rectangle(0, 0, SIDEBAR_WIDTH, H);
+            // From Main every region circle is linked; only the nearest few get a pointer, so the map stays readable.
+            java.util.List<NomadPanel.MapCircle> off = new java.util.ArrayList<>();
+            for (NomadPanel.MapCircle m : v.circles)
+            {
+                if (!m.yours && m.linked && !ring(m, c, scale).intersects(box)) off.add(m);
+            }
+            off.sort((a, b) -> Double.compare(a.gap, b.gap));
+            for (NomadPanel.MapCircle m : off.subList(0, Math.min(POINTERS, off.size())))
+            {
+                double dx = m.x - c[0];
+                double dy = -(m.y - c[1]);
+                double d = Math.hypot(dx, dy);
+                if (d < 1e-6) continue;
+                double ux = dx / d;
+                double uy = dy / d;
+                // From the middle out to just inside the border.
+                double t = Math.min((SIDEBAR_WIDTH / 2.0 - 12) / Math.max(1e-6, Math.abs(ux)), (H / 2.0 - 12) / Math.max(1e-6, Math.abs(uy)));
+                float x = (float) (SIDEBAR_WIDTH / 2.0 + ux * t);
+                float y = (float) (H / 2.0 + uy * t);
+                arrow(g, x, y, Math.atan2(-uy, ux), 6, m.colour);
+                String label = m.name + " " + Math.round(Math.max(0, m.gap)) + "t";
+                int lw = sm.stringWidth(label);
+                int lx = (int) Math.max(4, Math.min(SIDEBAR_WIDTH - lw - 4, x - ux * 10 - lw / 2.0));
+                int ly = (int) Math.max(12, Math.min(H - 16, y - uy * 12 + 4));
+                text(g, small, label, lx + 1, ly + 1, Color.BLACK);
+                text(g, small, label, lx, ly, m.colour);
+            }
         }
 
         private static Ellipse2D ring(NomadPanel.MapCircle m, double[] c, double scale)
@@ -527,8 +570,8 @@ final class SidebarParts
                 NomadBannerOverlay.drawIcon(g, m.banner, 6, y + 7, 16, 0);
                 String when = NomadPanel.time(m.minute);
                 text(g, small, when, w - sm.stringWidth(when) - 6, y + 13, MUTED);
-                text(g, bold, fit(g.getFontMetrics(bold), m.banner.title, w - 34 - sm.stringWidth(when) - 8), 28, y + 13, m.banner.colour);
-                text(g, small, fit(sm, m.banner.subtitle, w - 34), 28, y + 25, Color.LIGHT_GRAY);
+                text(g, bold, fit(g.getFontMetrics(bold), m.title(), w - 34 - sm.stringWidth(when) - 8), 28, y + 13, m.banner.colour);
+                text(g, small, fit(sm, m.subtitle(), w - 34), 28, y + 25, Color.LIGHT_GRAY);
                 g.setColor(new Color(255, 255, 255, 14));
                 g.drawLine(6, y + ROW - 1, w - 6, y + ROW - 1);
                 y += ROW;

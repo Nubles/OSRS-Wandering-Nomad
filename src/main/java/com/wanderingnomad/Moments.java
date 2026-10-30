@@ -48,6 +48,8 @@ final class Moments
         final int sound;
         /** What happened, for the run's tallies; most moments are {@link Event#OTHER}. */
         final Event event;
+        /** Noted in the timeline and tallies, but with no banner or sound: a repeat soon after the last one. */
+        final boolean quiet;
 
         Banner(String title, String subtitle, Color colour, Icon icon, boolean big, int sound)
         {
@@ -56,6 +58,11 @@ final class Moments
 
         Banner(String title, String subtitle, Color colour, Icon icon, boolean big, int sound, Event event)
         {
+            this(title, subtitle, colour, icon, big, sound, event, false);
+        }
+
+        private Banner(String title, String subtitle, Color colour, Icon icon, boolean big, int sound, Event event, boolean quiet)
+        {
             this.title = title;
             this.subtitle = subtitle;
             this.colour = colour;
@@ -63,6 +70,13 @@ final class Moments
             this.big = big;
             this.sound = sound;
             this.event = event;
+            this.quiet = quiet;
+        }
+
+        /** This moment again, without a banner or sound. */
+        Banner quietly()
+        {
+            return new Banner(title, subtitle, colour, icon, big, sound, event, true);
         }
     }
 
@@ -85,15 +99,35 @@ final class Moments
     private final Set<String> effects = new HashSet<>();
     /** 0 while the edge is more than 5 minutes off, 1 within 5, 2 within 1. */
     private int edgeStage;
+    /** When you first stood on the other side of the edge from {@link #outside}, or 0 if you haven't. */
+    private long crossedAt;
+    /** When stepping out or back in, and each edge warning, last had a banner of its own. */
+    private long ringToldAt = NEVER;
+    private final long[] edgeToldAt = {NEVER, NEVER, NEVER};
+
+    /** Stepping over the edge only counts once you've stayed over for this long: about two game ticks. */
+    static final long SETTLE_MS = 1100;
+    /** A repeat of the same kind of moment within this long is noted quietly, without a banner. */
+    static final long QUIET_MS = 60_000;
+    /** Long enough ago that nothing counts as a repeat of it. */
+    private static final long NEVER = Long.MIN_VALUE / 2;
 
     /** Forgets the last look, so the next one only takes stock instead of announcing everything. */
     void reset()
     {
         primed = false;
+        crossedAt = 0;
+        ringToldAt = NEVER;
+        java.util.Arrays.fill(edgeToldAt, NEVER);
     }
 
     /** What changed since the last call. The first call after a reset only takes stock. */
     List<Banner> observe(NomadSim sim, boolean outsideNow, Radar radar)
+    {
+        return observe(sim, outsideNow, radar, System.currentTimeMillis());
+    }
+
+    List<Banner> observe(NomadSim sim, boolean outsideNow, Radar radar, long now)
     {
         List<Banner> out = new ArrayList<>();
         Circle yours = sim.bound();
@@ -132,13 +166,34 @@ final class Moments
                         NomadPlugin.colour(yours, 255), Icon.MOOD, false, SoundEffectID.UI_BOOP));
                 }
             }
-            if (outsideNow != outside)
+            // Walking along the edge flips you in and out every few steps. A side only counts once you've
+            // stayed on it a moment, and flips soon after the last one are noted without a banner.
+            if (outsideNow == outside)
             {
-                out.add(outsideNow
+                crossedAt = 0;
+            }
+            else if (crossedAt == 0)
+            {
+                crossedAt = now;
+            }
+            else if (now - crossedAt >= SETTLE_MS)
+            {
+                outside = outsideNow;
+                crossedAt = 0;
+                Banner b = outsideNow
                     ? new Banner("Outside your circle", "It drifts 5x faster and shrinks while you're out.",
                         OUT, Icon.RING, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP, Event.LEFT)
                     : new Banner("Back inside", "Safe in the " + yours.name() + " circle.",
-                        IN, Icon.RING, false, SoundEffectID.PRAYER_ACTIVATE_PROTECT_ITEM));
+                        IN, Icon.RING, false, SoundEffectID.PRAYER_ACTIVATE_PROTECT_ITEM);
+                if (now - ringToldAt < QUIET_MS)
+                {
+                    b = b.quietly();
+                }
+                else
+                {
+                    ringToldAt = now;
+                }
+                out.add(b);
             }
             boolean claimed = sim.boons().size() > boons;
             for (Waystone w : sim.waystones())
@@ -173,8 +228,10 @@ final class Moments
                 out.add(new Banner(boon + " has worn off", "The boon's time is up.", GOLD.darker(), Icon.BOON, false,
                     SoundEffectID.PRAYER_DEACTIVE_VWOOP));
             }
-            if (stage > edgeStage)
+            // Stepping back and forth near the edge re-arms these, so each one only gets a banner once a minute.
+            if (stage > edgeStage && now - edgeToldAt[stage] >= QUIET_MS)
             {
+                edgeToldAt[stage] = now;
                 out.add(stage == 2
                     ? new Banner("The edge is on you", "About a minute until it passes you. Head toward the middle.",
                         OUT, Icon.EDGE, false, SoundEffectID.TOWN_CRIER_BELL_DING)
@@ -182,9 +239,12 @@ final class Moments
                         WARM, Icon.EDGE, false, SoundEffectID.TOWN_CRIER_BELL_DING));
             }
         }
+        else
+        {
+            outside = outsideNow;
+        }
 
         primed = true;
-        outside = outsideNow;
         bound = sim.boundIndex();
         open.clear();
         open.addAll(openNow);

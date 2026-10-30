@@ -377,16 +377,34 @@ class NomadPanel extends PluginPanel
         return m < 60 ? m + "m" : (m / 60) + "h " + String.format("%02d", m % 60) + "m";
     }
 
-    /** A moment for the timeline: when it happened, in played minutes, and its banner. */
+    /**
+     * A moment for the timeline: when it happened, in played minutes, and its banner. Steps in and
+     * out along the edge in quick succession share one moment, counted.
+     */
     static final class Moment
     {
         final int minute;
         final Moments.Banner banner;
+        /** The wall-clock time it first happened, for folding quick repeats together. */
+        final long at;
+        final int count;
 
-        Moment(int minute, Moments.Banner banner)
+        Moment(int minute, Moments.Banner banner, long at, int count)
         {
             this.minute = minute;
             this.banner = banner;
+            this.at = at;
+            this.count = count;
+        }
+
+        String title()
+        {
+            return count > 1 ? "In and out ×" + count : banner.title;
+        }
+
+        String subtitle()
+        {
+            return count > 1 ? "Along the edge. Now " + (banner.event == Moments.Event.LEFT ? "outside." : "inside.") : banner.subtitle;
         }
     }
 
@@ -399,8 +417,10 @@ class NomadPanel extends PluginPanel
         final String name;
         final boolean yours;
         final boolean linked;
+        /** Tiles between its edge and yours. */
+        final double gap;
 
-        MapCircle(Circle c, boolean yours, boolean linked)
+        MapCircle(Circle c, boolean yours, boolean linked, double gap)
         {
             this.x = c.x();
             this.y = c.y();
@@ -409,6 +429,7 @@ class NomadPanel extends PluginPanel
             this.name = c.name();
             this.yours = yours;
             this.linked = linked;
+            this.gap = gap;
         }
     }
 
@@ -516,8 +537,6 @@ class NomadPanel extends PluginPanel
         final List<MapCircle> circles = new ArrayList<>();
         final List<MapStone> stones = new ArrayList<>();
         double[][] cone;
-        /** Tiles from the map's middle to the far side of the nearest circle you can cross into, 0 if none. */
-        double reach;
 
         int held;
         final List<BoonSlot> boons = new ArrayList<>();
@@ -571,21 +590,10 @@ class NomadPanel extends PluginPanel
             for (int j = 0; j < sim.circles().size(); j++)
             {
                 Circle o = sim.circles().get(j);
-                if (j != sim.boundIndex() && Math.hypot(o.x() - c.x(), o.y() - c.y()) - o.radius() > c.radius() + 200) continue;
-                v.circles.add(new MapCircle(o, j == sim.boundIndex(), sim.linked(j)));
+                v.circles.add(new MapCircle(o, j == sim.boundIndex(), sim.linked(j), c.gap(o)));
             }
             // Yours last, so it draws on top.
             v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));
-            // How far the map must reach from its middle to show the far side of the nearest circle you can cross into.
-            double mx = at == null ? c.x() : at.x;
-            double my = at == null ? c.y() : at.y;
-            for (int j = 0; j < sim.circles().size(); j++)
-            {
-                if (j == sim.boundIndex() || !sim.linked(j)) continue;
-                Circle o = sim.circles().get(j);
-                double far = Math.hypot(o.x() - mx, o.y() - my) + o.radius();
-                if (v.reach == 0 || far < v.reach) v.reach = far;
-            }
             for (Waystone w : sim.waystones())
             {
                 v.stones.add(new MapStone(w.x(), w.y(), w.circle() == sim.boundIndex() ? Moments.GOLD

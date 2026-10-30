@@ -31,7 +31,8 @@ public class SidebarSnapshot
                 Tile at = new Tile(3222, 3218);
                 List<NomadPanel.Moment> moments = new ArrayList<>();
                 int minute = 0;
-                for (Moments.Banner b : Moments.samples(sim)) moments.add(0, new NomadPanel.Moment(minute += 3, b));
+                for (Moments.Banner b : Moments.samples(sim)) moments.add(0, new NomadPanel.Moment(minute += 3, b, 0, 1));
+                moments.add(0, new NomadPanel.Moment(minute + 2, Moments.samples(sim).get(0), 0, 4));
                 RunStats stats = new RunStats();
                 stats.tilesWalked = 1234;
                 stats.crossings = 2;
