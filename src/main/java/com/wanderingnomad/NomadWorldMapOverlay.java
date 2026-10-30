@@ -52,6 +52,8 @@ class NomadWorldMapOverlay extends Overlay
     private static final BasicStroke REGION = new BasicStroke(2f);
     private static final BasicStroke ARROW = new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
     private static final BasicStroke THIN = new BasicStroke(1f);
+    private static final BasicStroke SHADOW = new BasicStroke(4.5f);
+    private static final BasicStroke YOURS_SHADOW = new BasicStroke(6f);
     /** Circles never shrink below this on screen, so a far zoom still shows them. */
     private static final double MIN_RADIUS_PX = 4;
 
@@ -87,6 +89,13 @@ class NomadWorldMapOverlay extends Overlay
         Shape before = graphics.getClip();
         graphics.clip(bounds);
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // Focus: a dark veil over the map and its icons, so the circles drawn on top stand out.
+        int focus = plugin.config().mapFocus();
+        if (focus > 0)
+        {
+            graphics.setColor(new Color(0, 0, 0, Math.min(255, focus * 255 / 100)));
+            graphics.fill(bounds);
+        }
         List<Circle> circles = sim.circles();
         Forecast forecast = plugin.forecast();
         if (forecast != null && plugin.config().forecast())
@@ -124,7 +133,7 @@ class NomadWorldMapOverlay extends Overlay
             Color colour = NomadPlugin.colour(c, 255);
             double top = ring.getMinY() - 4;
             if (top < bounds.y + 12) top = ring.getMaxY() + 12;
-            outlined(graphics, name, (float) ring.getCenterX(), (float) top, colour, true);
+            pill(graphics, name, (float) ring.getCenterX(), (float) top, colour);
         }
         drawWaystones(graphics, sim, bounds, west, south, zoom);
         drawPointers(graphics, sim, rings, bounds);
@@ -139,8 +148,12 @@ class NomadWorldMapOverlay extends Overlay
     {
         graphics.setColor(NomadPlugin.colour(c, yours ? 60 : c.isMain() ? 40 : linked ? 34 : 24));
         graphics.fill(ring);
+        // A dark band under the rim keeps it readable over busy parts of the map.
+        graphics.setStroke(yours ? YOURS_SHADOW : SHADOW);
+        graphics.setColor(new Color(0, 0, 0, 150));
+        graphics.draw(ring);
         graphics.setStroke(yours ? YOURS : c.isMain() ? MAIN : REGION);
-        graphics.setColor(NomadPlugin.colour(c, yours || c.isMain() ? 245 : linked ? 220 : 170));
+        graphics.setColor(NomadPlugin.colour(c, yours || c.isMain() ? 255 : linked ? 235 : 200));
         graphics.draw(ring);
 
         double pr = ring.getWidth() / 2;
@@ -282,6 +295,22 @@ class NomadWorldMapOverlay extends Overlay
             Color colour = k == 0 ? NomadPlugin.colour(c, 255) : Color.WHITE;
             outlined(graphics, lines.get(k), x + 7, y + 5 + (k + 1) * lineH - fm.getDescent(), colour, false);
         }
+    }
+
+    /** A name on a dark rounded tag edged in the circle's colour, so it can't be mistaken for a map label. */
+    private static void pill(Graphics2D graphics, String text, float cx, float baseline, Color colour)
+    {
+        FontMetrics fm = graphics.getFontMetrics();
+        int w = fm.stringWidth(text) + 10;
+        int h = fm.getAscent() + 5;
+        int x = Math.round(cx - w / 2f);
+        int y = Math.round(baseline - fm.getAscent() - 2);
+        graphics.setColor(new Color(20, 18, 14, 215));
+        graphics.fillRoundRect(x, y, w, h, 8, 8);
+        graphics.setStroke(THIN);
+        graphics.setColor(colour);
+        graphics.drawRoundRect(x, y, w, h, 8, 8);
+        graphics.drawString(text, x + 5, Math.round(baseline));
     }
 
     /** Text with a dark outline, readable on any part of the map. */

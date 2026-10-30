@@ -4,6 +4,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 
 @ConfigGroup(NomadConfig.GROUP)
 public interface NomadConfig extends Config
@@ -77,6 +78,18 @@ public interface NomadConfig extends Config
     default boolean drawWorldMap()
     {
         return true;
+    }
+
+    @Range(max = 80)
+    @ConfigItem(
+        keyName = "mapFocus",
+        name = "World map focus (%)",
+        description = "Darkens the world map behind the circles so they stand out from the map's icons. 0 turns it off.",
+        position = 4
+    )
+    default int mapFocus()
+    {
+        return 45;
     }
 
     @ConfigItem(
