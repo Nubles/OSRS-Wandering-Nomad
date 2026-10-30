@@ -71,10 +71,7 @@ class NomadSceneOverlay extends Overlay
     };
     private static final int[] GLOW_ALPHA = {28, 55, 120};
     /** Tiles from the player that are dimmed when outside your circle: the whole loaded scene. */
-    private static final int DIM_REACH = 52;
-    /** Things inside your circle within this many tiles of its edge are kept out of the dimming. */
-    private static final int DIM_SHIELD = 14;
-    /** Within this many tiles of the edge, your tile shows whether you're inside or out. */
+    private static final int DIM_REACH = 52;    /** Within this many tiles of the edge, your tile shows whether you're inside or out. */
     private static final double FEET_NEAR = 3;
     private static final Color INSIDE = new Color(0x66E08A);
     private static final Color OUTSIDE = new Color(0xFF5A4F);
@@ -111,7 +108,8 @@ class NomadSceneOverlay extends Overlay
         NomadConfig config = plugin.config();
         long now = System.currentTimeMillis();
 
-        if (config.dimOutside() > 0) drawOutside(graphics, view, sim.bound(), at, config.dimOutside());
+        // With the 3D edge on, the dimming lies on the ground in the world (EdgeWall3D), where roofs and walls hide it.
+        if (config.dimOutside() > 0 && !config.edge3d()) drawOutside(graphics, view, sim.bound(), at, config.dimOutside());
         if (config.drawEdge())
         {
             boolean wall = config.edgeStyle() != NomadConfig.EdgeStyle.TILES;
@@ -125,8 +123,8 @@ class NomadSceneOverlay extends Overlay
                 if (!mine && !(sim.linked(j) && yours.touches(c))) continue;
                 if (tiles) drawTiles(graphics, view, c, at, mine);
                 // The 3D edge is drawn by the game itself, so things in front hide it; a line drawn over the
-                // picture can't be hidden by roofs and walls, so with it on only the sparks are drawn here.
-                if (wall) drawWall(graphics, view, c, mine ? null : yours, at, now, config.edge3d());
+                // picture can't be hidden by roofs and walls, so it's only drawn when the 3D edge is off.
+                if (wall && !config.edge3d()) drawWall(graphics, view, c, mine ? null : yours, at, now);
             }
             drawFeet(graphics, view, yours, at);
         }
@@ -156,7 +154,7 @@ class NomadSceneOverlay extends Overlay
      * Draws a circle's wall near the player. With {@code inside} set, only the stretch inside that
      * circle is drawn, taller and brighter: the gateway into it.
      */
-    private void drawWall(Graphics2D graphics, WorldView view, Circle c, Circle inside, WorldPoint at, long now, boolean sparksOnly)
+    private void drawWall(Graphics2D graphics, WorldView view, Circle c, Circle inside, WorldPoint at, long now)
     {
         double r = c.radius() + WALL_OUT;
         int n = Math.max(48, (int) Math.ceil(Math.PI * 2 * r / SEGMENT));
@@ -218,7 +216,7 @@ class NomadSceneOverlay extends Overlay
                 // Bands of light run along the wall, a little faster on a gateway.
                 double band = 0.5 + 0.5 * Math.sin(a * c.radius() * 0.9 - phase * (gate ? 3.2 : 1.8));
                 int alpha = (int) ((gate ? 110 : 60) * (0.6 + 0.4 * band));
-                if (!sparksOnly) curtain(graphics, base, g0, g1, t0, t1, alpha);
+                curtain(graphics, base, g0, g1, t0, t1, alpha);
                 if (!open) foot.moveTo(g0.getX(), g0.getY());
                 foot.lineTo(g1.getX(), g1.getY());
                 open = true;
@@ -231,33 +229,14 @@ class NomadSceneOverlay extends Overlay
             t0 = t1;
         }
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        if (!sparksOnly) glow(graphics, foot, base, gate ? 1.4 : 1);
+        glow(graphics, foot, base, gate ? 1.4 : 1);
 
-        // Sparks go on top, along the same stretch. Over the 3D edge they're what keeps it alive: motes
-        // rising off the curtain, and glints running along its foot like the old bands of light.
+        // Sparks go on top, along the same stretch.
         for (int s = 0; s < sparks.length; s++)
         {
-            if (sparks[s] == null) continue;
-            spark(graphics, c, sparks[s][0], sparks[s][1], (phase * 0.35 + s * 3 * 0.137) % 1.0);
-            if (sparksOnly)
-            {
-                double a = s * 3 * Math.PI * 2 / n;
-                double band = Math.sin(a * c.radius() * 0.9 - phase * (gate ? 3.2 : 1.8));
-                if (band > 0.6) glint(graphics, base, sparks[s][0], (band - 0.6) / 0.4);
-            }
+            if (sparks[s] != null) spark(graphics, c, sparks[s][0], sparks[s][1], (phase * 0.35 + s * 3 * 0.137) % 1.0);
         }
         graphics.setClip(clipBefore);
-    }
-
-    /** A soft bright point on the foot of the wall, for the bands of light that run along it. */
-    private static void glint(Graphics2D graphics, Color base, Point at, double strength)
-    {
-        int x = at.getX();
-        int y = at.getY();
-        graphics.setColor(alpha(base, (int) (70 * strength)));
-        graphics.fillOval(x - 6, y - 3, 12, 6);
-        graphics.setColor(alpha(Color.WHITE, (int) (190 * strength)));
-        graphics.fillOval(x - 2, y - 1, 4, 3);
     }
 
     /**
@@ -393,75 +372,35 @@ class NomadSceneOverlay extends Overlay
     {
         Path2D shade = new Path2D.Float(Path2D.WIND_NON_ZERO);
         boolean any = false;
+        int plane = view.getPlane();
         for (int x = at.getX() - DIM_REACH; x <= at.getX() + DIM_REACH; x++)
         {
             for (int y = at.getY() - DIM_REACH; y <= at.getY() + DIM_REACH; y++)
             {
-                if (yours.contains(x, y)) continue;
-                LocalPoint local = LocalPoint.fromWorld(view, x, y);
-                if (local == null) continue;
-                Polygon poly = Perspective.getCanvasTilePoly(client, local);
-                if (poly == null) continue;
+                // The part of the tile outside the circle, so the shade follows the curve rather than tile squares.
+                double[][] part = EdgeWall3D.outsidePart(yours, x, y);
+                if (part == null) continue;
+                Path2D poly = new Path2D.Float();
+                boolean ok = true;
+                for (int k = 0; k < part.length && ok; k++)
+                {
+                    LocalPoint lp = local(view, part[k][0], part[k][1]);
+                    Point p = lp == null ? null : Perspective.localToCanvas(client, lp, plane, 0);
+                    if (p == null) ok = false;
+                    else if (k == 0) poly.moveTo(p.getX(), p.getY());
+                    else poly.lineTo(p.getX(), p.getY());
+                }
+                if (!ok) continue;
+                poly.closePath();
                 shade.append(poly, false);
                 any = true;
             }
         }
         if (!any) return;
-        // Buildings, trees and people standing inside the circle often overlap the darkened ground
-        // behind them on screen. Cut their outlines out so the shade stays on the ground outside.
-        Area dark = new Area(shade);
-        Path2D standing = new Path2D.Float(Path2D.WIND_NON_ZERO);
-        if (insideOutlines(view, yours, at, standing)) dark.subtract(new Area(standing));
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
         graphics.setColor(new Color(0, 0, 0, Math.min(255, percent * 255 / 100)));
-        graphics.fill(dark);
+        graphics.fill(shade);
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-    }
-
-    /**
-     * Adds the outlines of scenery, walls, decorations, players and NPCs that stand inside your
-     * circle near you to {@code out}. Things far inside can't reach over the edge on screen, so
-     * only those within {@link #DIM_SHIELD} tiles of it count.
-     */
-    private boolean insideOutlines(WorldView view, Circle yours, WorldPoint at, Path2D out)
-    {
-        boolean any = false;
-        net.runelite.api.Tile[][][] tiles = view.getScene().getTiles();
-        int plane = view.getPlane();
-        for (int x = at.getX() - REACH; x <= at.getX() + REACH; x++)
-        {
-            for (int y = at.getY() - REACH; y <= at.getY() + REACH; y++)
-            {
-                if (!yours.contains(x, y) || yours.radius() - Math.hypot(x - yours.x(), y - yours.y()) > DIM_SHIELD) continue;
-                int sx = x - view.getBaseX();
-                int sy = y - view.getBaseY();
-                if (sx < 0 || sy < 0 || sx >= tiles[plane].length || sy >= tiles[plane][sx].length) continue;
-                net.runelite.api.Tile tile = tiles[plane][sx][sy];
-                if (tile == null) continue;
-                for (GameObject o : tile.getGameObjects())
-                {
-                    if (o != null) any |= add(out, o.getConvexHull());
-                }
-                WallObject wall = tile.getWallObject();
-                if (wall != null)
-                {
-                    any |= add(out, wall.getConvexHull());
-                    any |= add(out, wall.getConvexHull2());
-                }
-                DecorativeObject deco = tile.getDecorativeObject();
-                if (deco != null)
-                {
-                    any |= add(out, deco.getConvexHull());
-                    any |= add(out, deco.getConvexHull2());
-                }
-            }
-        }
-        for (Actor actor : actors(view))
-        {
-            WorldPoint p = actor.getWorldLocation();
-            if (p != null && yours.contains(p.getX(), p.getY())) any |= add(out, actor.getConvexHull());
-        }
-        return any;
     }
 
     /**

@@ -24,8 +24,11 @@ import net.runelite.api.coords.WorldPoint;
  * reaches inside yours, its stretch stands taller and paler: the gateway.
  *
  * Each panel is a flat four-cornered model from the game's cache, reshaped to run between two
- * points on the edge and fade upward in three bands. Panels are rebuilt when the circle moves or
- * you walk far enough that new stretches come into reach. Runs on the client thread only.
+ * points on the edge and fade upward in bands. Every panel is built at a few brightnesses, and a
+ * wave of light runs along the curtain by swapping between them, which costs nothing per frame.
+ * The ground outside your circle is darkened the same way, by translucent black sheets lying on
+ * it that follow the curve of the edge. Everything is rebuilt only when the circle moves or you
+ * walk far enough that new ground comes into reach. Runs on the client thread only.
  */
 @Singleton
 class EdgeWall3D
@@ -36,6 +39,12 @@ class EdgeWall3D
     private static final short QUAD_COLOUR = 6689;
     /** Tiles around you that get panels. */
     private static final int REACH = 32;
+    /** Tiles around you whose ground outside the circle is darkened. */
+    private static final int DIM_REACH = 24;
+    /** Ground sheets are grouped into blocks this many tiles square, one in-game object each. */
+    private static final int BLOCK = 4;
+    /** How far the sheets float above the ground, in local units, so the ground doesn't show through. */
+    private static final int LIFT = 6;
     /** Rebuild once you're this many tiles from where the panels were last built. */
     private static final int REBUILD_STEP = 6;
     /** Each panel is about a tile long. */
@@ -44,10 +53,24 @@ class EdgeWall3D
     private static final int[] BAND_TOP = {10, 70, 140, 210};
     private static final int[] BAND_CLEAR = {30, 110, 170, 215};
     private static final double GATE_SCALE = 1.5;
+    /** Brightnesses each panel is built at, for the wave of light that runs along the curtain. */
+    private static final int LEVELS = 4;
 
     private final Client client;
-    private final List<RuneLiteObject> panels = new ArrayList<>();
+    private final List<Panel> panels = new ArrayList<>();
+    private final List<RuneLiteObject> ground = new ArrayList<>();
+    private ModelData quad;
     private String builtFor;
+
+    /** One stretch of curtain, with its models from dimmest to brightest. */
+    private static final class Panel
+    {
+        RuneLiteObject object;
+        Model[] levels;
+        double along;
+        boolean gate;
+        int shown;
+    }
 
     @Inject
     EdgeWall3D(Client client)
@@ -55,12 +78,15 @@ class EdgeWall3D
         this.client = client;
     }
 
-    /** Brings the panels in line with the run, or takes them down when {@code on} is false or there's no run. */
-    void update(NomadSim sim, boolean on)
+    /**
+     * Brings the panels in line with the run, or takes them down when there's no run. {@code walls}
+     * stands the curtain; {@code dim} darkens the ground outside your circle by that percent, 0 not at all.
+     */
+    void update(NomadSim sim, boolean walls, int dim)
     {
         Player player = client.getLocalPlayer();
         WorldView view = client.getTopLevelWorldView();
-        if (!on || sim == null || player == null || view == null || view.getScene() == null || view.getScene().isInstance())
+        if (!walls && dim <= 0 || sim == null || player == null || view == null || view.getScene() == null || view.getScene().isInstance())
         {
             clear();
             return;
@@ -68,24 +94,46 @@ class EdgeWall3D
         WorldPoint at = player.getWorldLocation();
         if (at == null) return;
 
-        String key = key(sim, view, at);
+        String key = key(sim, view, at) + '|' + walls + '|' + dim;
         if (key.equals(builtFor)) return;
         clear();
+        if (quad == null) quad = client.loadModelData(QUAD_MODEL);
+        if (quad == null) return;
         builtFor = key;
 
         Circle yours = sim.bound();
-        build(view, yours, null, at);
-        for (int j = 0; j < sim.circles().size(); j++)
+        if (walls)
         {
-            Circle c = sim.circles().get(j);
-            if (j != sim.boundIndex() && sim.linked(j) && yours.touches(c)) build(view, c, yours, at);
+            build(view, yours, null, at);
+            for (int j = 0; j < sim.circles().size(); j++)
+            {
+                Circle c = sim.circles().get(j);
+                if (j != sim.boundIndex() && sim.linked(j) && yours.touches(c)) build(view, c, yours, at);
+            }
+        }
+        if (dim > 0) darken(view, yours, at, dim);
+    }
+
+    /** Runs the wave of light along the curtain. Called every client tick; only swaps models. */
+    void animate()
+    {
+        double phase = System.currentTimeMillis() / 1000.0;
+        for (Panel p : panels)
+        {
+            double band = 0.5 + 0.5 * Math.sin(p.along - phase * (p.gate ? 3.2 : 1.8));
+            int level = Math.min(LEVELS - 1, (int) (band * LEVELS));
+            if (level == p.shown) continue;
+            p.shown = level;
+            p.object.setModel(p.levels[level]);
         }
     }
 
     void clear()
     {
-        for (RuneLiteObject o : panels) o.setActive(false);
+        for (Panel p : panels) p.object.setActive(false);
+        for (RuneLiteObject o : ground) o.setActive(false);
         panels.clear();
+        ground.clear();
         builtFor = null;
     }
 
@@ -116,7 +164,8 @@ class EdgeWall3D
         double r = c.radius();
         int n = Math.max(24, (int) Math.ceil(Math.PI * 2 * r / SEGMENT));
         int plane = view.getPlane();
-        short hsl = hsl(NomadPlugin.colour(c, 255), gate ? 0.5f : 0.2f);
+        Color colour = NomadPlugin.colour(c, 255);
+        float lift = gate ? 0.5f : 0.2f;
         double scale = gate ? GATE_SCALE : 1;
 
         for (int i = 0; i < n; i++)
@@ -138,65 +187,175 @@ class EdgeWall3D
             int g0 = Perspective.getTileHeight(client, p0, plane);
             int g1 = Perspective.getTileHeight(client, p1, plane);
             int gm = Perspective.getTileHeight(client, mid, plane);
-            Model model = panel(p0.getX() - mid.getX(), p0.getY() - mid.getY(), g0 - gm,
-                p1.getX() - mid.getX(), p1.getY() - mid.getY(), g1 - gm, hsl, scale);
-            if (model == null) return;
-            RuneLiteObject o = client.createRuneLiteObject();
-            o.setModel(model);
-            o.setLocation(mid, plane);
-            o.setActive(true);
-            panels.add(o);
+            Panel p = new Panel();
+            p.levels = new Model[LEVELS];
+            for (int level = 0; level < LEVELS; level++)
+            {
+                p.levels[level] = panel(p0.getX() - mid.getX(), p0.getY() - mid.getY(), g0 - gm,
+                    p1.getX() - mid.getX(), p1.getY() - mid.getY(), g1 - gm, colour, lift, level, scale);
+            }
+            p.along = (a0 + a1) / 2 * r * 0.9;
+            p.gate = gate;
+            p.object = client.createRuneLiteObject();
+            p.object.setModel(p.levels[0]);
+            p.object.setLocation(mid, plane);
+            p.object.setActive(true);
+            panels.add(p);
         }
     }
 
     /**
      * One panel between two corners on the ground (offsets from its centre, in local units, with
      * ground heights relative to the centre's), as a bright strip at the foot, the line you walk
-     * over, then three bands that grow clearer upward, each
-     * facing both ways so it shows from inside and out.
+     * over, then three bands that grow clearer upward, each facing both ways so it shows from
+     * inside and out. Higher {@code level}s are brighter and more solid, for the wave of light.
      */
-    private Model panel(int ax, int ay, int az, int bx, int by, int bz, short hsl, double scale)
+    private Model panel(int ax, int ay, int az, int bx, int by, int bz, Color colour, float lift, int level, double scale)
     {
+        short hsl = hsl(colour, Math.min(1f, lift + level * 0.12f));
         List<ModelData> parts = new ArrayList<>();
         int bottom = 0;
         for (int k = 0; k < BAND_TOP.length; k++)
         {
             int top = (int) (BAND_TOP[k] * scale);
-            for (int side = 0; side < 2; side++)
-            {
-                ModelData quad = client.loadModelData(QUAD_MODEL);
-                if (quad == null) return null;
-                quad = quad.shallowCopy().cloneVertices().cloneColors().cloneTransparencies(true);
-                float[] vx = quad.getVerticesX();
-                float[] vy = quad.getVerticesY();
-                float[] vz = quad.getVerticesZ();
-                // Corners 0-1-2-3 go round the quad; walking them the other way flips which side faces out.
-                int[] order = side == 0 ? new int[]{0, 1, 2, 3} : new int[]{0, 3, 2, 1};
-                // Model y points down, so heights above the ground are negative.
-                float[][] corners = {
-                    {ax, az - bottom, ay},
-                    {bx, bz - bottom, by},
-                    {bx, bz - top, by},
-                    {ax, az - top, ay},
-                };
-                for (int v = 0; v < 4; v++)
-                {
-                    vx[order[v]] = corners[v][0];
-                    vy[order[v]] = corners[v][1];
-                    vz[order[v]] = corners[v][2];
-                }
-                quad.recolor(QUAD_COLOUR, hsl);
-                byte[] clear = quad.getFaceTransparencies();
-                if (clear != null)
-                {
-                    for (int f = 0; f < clear.length; f++) clear[f] = (byte) BAND_CLEAR[k];
-                }
-                parts.add(quad);
-            }
+            int clear = Math.max(0, BAND_CLEAR[k] - level * (k == 0 ? 8 : 18));
+            // Model y points down, so heights above the ground are negative.
+            float[][] corners = {
+                {ax, az - bottom, ay},
+                {bx, bz - bottom, by},
+                {bx, bz - top, by},
+                {ax, az - top, ay},
+            };
+            parts.add(sheet(corners, false, hsl, clear));
+            parts.add(sheet(corners, true, hsl, clear));
             bottom = top;
         }
         // A high ambient light so the curtain glows rather than shading like a wall.
         return client.mergeModels(parts.toArray(new ModelData[0])).light(128, 300, -50, -50, -10);
+    }
+
+    /**
+     * Darkens the ground outside your circle near you with black sheets lying on it. Tiles the edge
+     * runs through are cut along the curve, and the first tile past the edge is lighter, so the
+     * shade fades in from the edge instead of starting on a tile boundary.
+     */
+    private void darken(WorldView view, Circle yours, WorldPoint at, int percent)
+    {
+        int plane = view.getPlane();
+        int solid = Math.max(0, 255 - percent * 255 / 100);
+        int soft = 255 - (255 - solid) / 2;
+        int x0 = Math.floorDiv(at.getX() - DIM_REACH, BLOCK) * BLOCK;
+        int y0 = Math.floorDiv(at.getY() - DIM_REACH, BLOCK) * BLOCK;
+        for (int bx = x0; bx <= at.getX() + DIM_REACH; bx += BLOCK)
+        {
+            for (int by = y0; by <= at.getY() + DIM_REACH; by += BLOCK)
+            {
+                double cx = bx + (BLOCK - 1) / 2.0;
+                double cy = by + (BLOCK - 1) / 2.0;
+                LocalPoint centre = local(view, cx, cy);
+                if (centre == null) continue;
+                int gc = Perspective.getTileHeight(client, centre, plane);
+                List<ModelData> parts = new ArrayList<>();
+                for (int x = bx; x < bx + BLOCK; x++)
+                {
+                    for (int y = by; y < by + BLOCK; y++)
+                    {
+                        double[][] part = outsidePart(yours, x, y);
+                        if (part == null) continue;
+                        double past = Math.hypot(x - yours.x(), y - yours.y()) - yours.radius();
+                        int clear = past < 1 ? soft : solid;
+                        float[][] pts = new float[part.length][];
+                        boolean ok = true;
+                        for (int k = 0; k < part.length && ok; k++)
+                        {
+                            LocalPoint lp = local(view, part[k][0], part[k][1]);
+                            if (lp == null)
+                            {
+                                ok = false;
+                                break;
+                            }
+                            int h = Perspective.getTileHeight(client, lp, plane) - gc - LIFT;
+                            pts[k] = new float[]{lp.getX() - centre.getX(), h, lp.getY() - centre.getY()};
+                        }
+                        if (!ok) continue;
+                        // A convex outline of up to five corners, as a fan of four-cornered sheets.
+                        for (int k = 1; k + 1 < pts.length; k += 2)
+                        {
+                            float[] last = k + 2 < pts.length ? pts[k + 2] : pts[k + 1];
+                            float[][] corners = {pts[0], pts[k], pts[k + 1], last};
+                            parts.add(sheet(corners, false, (short) 0, clear));
+                            parts.add(sheet(corners, true, (short) 0, clear));
+                        }
+                    }
+                }
+                if (parts.isEmpty()) continue;
+                Model model = client.mergeModels(parts.toArray(new ModelData[0])).light(64, 768, -50, -50, -10);
+                RuneLiteObject o = client.createRuneLiteObject();
+                o.setModel(model);
+                o.setLocation(centre, plane);
+                o.setActive(true);
+                ground.add(o);
+            }
+        }
+    }
+
+    /**
+     * The cache quad moved to {@code corners} (x, y down, z in local units), in its colour and
+     * transparency. {@code back} walks the corners the other way round, flipping which side faces out.
+     */
+    private ModelData sheet(float[][] corners, boolean back, short hsl, int clear)
+    {
+        ModelData q = quad.shallowCopy().cloneVertices().cloneColors().cloneTransparencies(true);
+        float[] vx = q.getVerticesX();
+        float[] vy = q.getVerticesY();
+        float[] vz = q.getVerticesZ();
+        int[] order = back ? new int[]{0, 3, 2, 1} : new int[]{0, 1, 2, 3};
+        for (int v = 0; v < 4; v++)
+        {
+            vx[order[v]] = corners[v][0];
+            vy[order[v]] = corners[v][1];
+            vz[order[v]] = corners[v][2];
+        }
+        q.recolor(QUAD_COLOUR, hsl);
+        byte[] faces = q.getFaceTransparencies();
+        if (faces != null)
+        {
+            for (int f = 0; f < faces.length; f++) faces[f] = (byte) clear;
+        }
+        return q;
+    }
+
+    /**
+     * The part of tile ({@code x}, {@code y}) outside the circle, as its corners in world tile units
+     * (the tile spans half a tile either side of its centre), or null when none of it is outside.
+     * Where the edge crosses the tile it's cut along the edge, taken as straight within one tile.
+     */
+    static double[][] outsidePart(Circle c, int x, int y)
+    {
+        double[][] square = {{x - 0.5, y - 0.5}, {x + 0.5, y - 0.5}, {x + 0.5, y + 0.5}, {x - 0.5, y + 0.5}};
+        double[] f = new double[4];
+        boolean anyOut = false;
+        boolean anyIn = false;
+        for (int k = 0; k < 4; k++)
+        {
+            f[k] = Math.hypot(square[k][0] - c.x(), square[k][1] - c.y()) - c.radius();
+            if (f[k] >= 0) anyOut = true;
+            else anyIn = true;
+        }
+        if (!anyOut) return null;
+        if (!anyIn) return square;
+        List<double[]> out = new ArrayList<>();
+        for (int k = 0; k < 4; k++)
+        {
+            int m = (k + 1) % 4;
+            if (f[k] >= 0) out.add(square[k]);
+            if (f[k] >= 0 != f[m] >= 0)
+            {
+                double t = f[k] / (f[k] - f[m]);
+                out.add(new double[]{square[k][0] + (square[m][0] - square[k][0]) * t, square[k][1] + (square[m][1] - square[k][1]) * t});
+            }
+        }
+        return out.size() < 3 ? null : out.toArray(new double[0][]);
     }
 
     /** A colour in the game's 16-bit HSL: 6 bits of hue, 3 of saturation, 7 of lightness, lightened by {@code lift} (0 to 1). */

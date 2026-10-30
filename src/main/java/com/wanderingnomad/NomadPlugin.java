@@ -47,6 +47,7 @@ import net.runelite.api.Skill;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
@@ -230,10 +231,18 @@ public class NomadPlugin extends Plugin
         }
     }
 
+    /** The 3D edge's wave of light: swaps prebuilt models, so it's cheap every client tick. */
+    @Subscribe
+    public void onClientTick(ClientTick tick)
+    {
+        edgeWall.animate();
+    }
+
     @Subscribe
     public void onGameTick(GameTick tick)
     {
-        edgeWall.update(sim, config.drawEdge() && config.edge3d() && config.edgeStyle() != NomadConfig.EdgeStyle.TILES);
+        edgeWall.update(sim, config.drawEdge() && config.edge3d() && config.edgeStyle() != NomadConfig.EdgeStyle.TILES,
+            config.edge3d() ? config.dimOutside() : 0);
         if (sim == null)
         {
             if (loadPending && client.getAccountHash() != -1 && client.getLocalPlayer() != null)
