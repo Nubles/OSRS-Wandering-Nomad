@@ -48,6 +48,7 @@ import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClientTick;
+import net.runelite.api.events.CommandExecuted;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
@@ -103,6 +104,8 @@ public class NomadPlugin extends Plugin
     /** Game ticks in one played minute. */
     static final int TICKS_PER_MINUTE = 100;
     private static final int LOG_LINES = 12;
+    /** Banner sounds play at about half the game's full effect volume (127). */
+    private static final int SOUND_VOLUME = 64;
 
     @Inject
     private Client client;
@@ -136,6 +139,9 @@ public class NomadPlugin extends Plugin
     private NomadGlowOverlay glowOverlay;
     @Inject
     private EdgeWall3D edgeWall;
+    @Inject
+    private NomadBannerOverlay bannerOverlay;
+    private final Moments moments = new Moments();
 
     private NomadPanel panel;
     private LiveShare live;
@@ -186,6 +192,7 @@ public class NomadPlugin extends Plugin
         overlayManager.add(worldMapOverlay);
         overlayManager.add(statusOverlay);
         overlayManager.add(glowOverlay);
+        overlayManager.add(bannerOverlay);
         loadPending = client.getGameState() == GameState.LOGGED_IN;
     }
 
@@ -198,6 +205,8 @@ public class NomadPlugin extends Plugin
         overlayManager.remove(worldMapOverlay);
         overlayManager.remove(statusOverlay);
         overlayManager.remove(glowOverlay);
+        overlayManager.remove(bannerOverlay);
+        bannerOverlay.clear();
         clientThread.invoke(edgeWall::clear);
         clientToolbar.removeNavigation(navButton);
         sim = null;
@@ -259,6 +268,8 @@ public class NomadPlugin extends Plugin
         surface = locate();
         readMilestones();
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
+        // Moments are read after the minute's step below too; here they catch stepping over the edge.
+        announce();
         // The Solo clock: circles only move while you're logged in.
         if (++ticks < TICKS_PER_MINUTE)
         {
@@ -278,6 +289,7 @@ public class NomadPlugin extends Plugin
         }
         look();
         warnOfEdge();
+        announce();
         Forecast f = forecast;
         if (f == null || sim.boundIndex() != boundBefore || sim.minutes() - f.minutes() >= FORECAST_EVERY) forecastSoon();
         if (sim.minutes() % 5 == 0) save();
@@ -405,6 +417,29 @@ public class NomadPlugin extends Plugin
         }
     }
 
+    /** Turns whatever changed since the last look into banners. Client thread. */
+    private void announce()
+    {
+        if (sim == null) return;
+        for (Moments.Banner b : moments.observe(sim, outsideNow() && sim.bridgeLeft() <= 0, radar)) show(b);
+    }
+
+    /** Shows a banner and plays its sound, each if it's turned on. Client thread. */
+    private void show(Moments.Banner b)
+    {
+        if (!config.momentBanners()) return;
+        bannerOverlay.show(b);
+        if (config.momentSounds() && b.sound >= 0) client.playSoundEffect(b.sound, SOUND_VOLUME);
+    }
+
+    /** ::nomadmoments shows one of every kind of banner, to try them out. */
+    @Subscribe
+    public void onCommandExecuted(CommandExecuted ev)
+    {
+        if (!"nomadmoments".equalsIgnoreCase(ev.getCommand()) || sim == null) return;
+        for (Moments.Banner b : Moments.samples(sim)) show(b);
+    }
+
     /** Imagines the next six hours off the client thread, from a copy taken here. */
     private void forecastSoon()
     {
@@ -440,6 +475,8 @@ public class NomadPlugin extends Plugin
         guard = new RuleGuard();
         milestones = new Milestones();
         lastXp.clear();
+        moments.reset();
+        bannerOverlay.clear();
     }
 
     Tile surface()
@@ -566,6 +603,7 @@ public class NomadPlugin extends Plugin
 
     private void summon(String tier, String why)
     {
+        show(Moments.milestone(why, NomadSim.RARE.equals(tier)));
         String line = sim.summon(tier);
         report(java.util.Collections.singletonList(line != null ? why + " summoned a waystone. " + line
             : why + " summoned a waystone. It rises once a landmark drifts into reach."));

@@ -18,6 +18,63 @@ public interface NomadConfig extends Config
     )
     String LIVING_EDGE = "livingEdge";
 
+    @ConfigSection(
+        name = "Moments",
+        description = "Banners, sounds, the minimap ring's pointers and the status box's extra rows",
+        position = 40
+    )
+    String MOMENTS = "moments";
+
+    @ConfigItem(
+        keyName = "momentBanners",
+        name = "Banners",
+        description = "A banner near the top of the game view for the run's moments: leaving or entering your circle, "
+            + "crossings opening and closing, waystones, boons, mood changes, the edge closing in and milestones. "
+            + "Type ::nomadmoments in chat to see every kind.",
+        section = MOMENTS,
+        position = 41
+    )
+    default boolean momentBanners()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "momentSounds",
+        name = "Sounds",
+        description = "Play a game sound effect with each banner.",
+        section = MOMENTS,
+        position = 42
+    )
+    default boolean momentSounds()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "minimapArrows",
+        name = "Minimap pointers",
+        description = "Small arrows on the minimap's rim toward the nearest open crossing and a waystone you can claim.",
+        section = MOMENTS,
+        position = 43
+    )
+    default boolean minimapArrows()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "hudExtras",
+        name = "Status box extras",
+        description = "In the status box: a countdown bar for the edge, your circle's heading and mood, and active boons with their time left.",
+        section = MOMENTS,
+        position = 44
+    )
+    default boolean hudExtras()
+    {
+        return true;
+    }
+
     enum EdgeStyle
     {
         WALL,

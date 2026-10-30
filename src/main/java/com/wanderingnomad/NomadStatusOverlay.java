@@ -11,7 +11,9 @@ import java.awt.Graphics2D;
 import javax.inject.Inject;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.ui.overlay.components.ComponentConstants;
 import net.runelite.client.ui.overlay.components.LineComponent;
+import net.runelite.client.ui.overlay.components.ProgressBarComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 
 /** A small box: your circle, inside or outside, the edge distance and any open crossing. */
@@ -20,6 +22,11 @@ class NomadStatusOverlay extends OverlayPanel
     private static final Color INSIDE = new Color(0x8FE0A2);
     private static final Color OUTSIDE = new Color(0xFF8A80);
     private static final Color STRANDED = new Color(0xFFCF8F);
+    private static final Color CALM = new Color(0x6FD08C);
+    private static final Color AMBER = new Color(0xFFB040);
+    private static final Color URGENT = new Color(0xFF4F45);
+    /** The box's width with the extra rows on: room for the heading row and two boon chips side by side. */
+    private static final int WIDTH = 170;
 
     private final NomadPlugin plugin;
 
@@ -67,10 +74,37 @@ class NomadStatusOverlay extends OverlayPanel
             panelComponent.getChildren().add(LineComponent.builder().left("To edge").right(edge).build());
         }
         Radar radar = plugin.radar();
+        boolean hud = plugin.config().hudExtras();
+        // A fixed width, so the box doesn't change size as names and numbers come and go.
+        panelComponent.setPreferredSize(new Dimension(hud ? WIDTH : ComponentConstants.STANDARD_WIDTH, 0));
         if (radar != null && radar.edgeIn > 0)
         {
+            Color urgency = urgency(radar.edgeIn);
             panelComponent.getChildren().add(LineComponent.builder().left("Edge reaches you")
-                .right("~" + radar.edgeIn + " min").rightColor(radar.edgeIn <= NomadPlugin.EDGE_WARNING ? OUTSIDE : STRANDED).build());
+                .right("~" + radar.edgeIn + " min").rightColor(hud ? urgency : radar.edgeIn <= NomadPlugin.EDGE_WARNING ? OUTSIDE : STRANDED).build());
+            if (hud)
+            {
+                // Empties as the edge closes in, shifting from calm to urgent.
+                ProgressBarComponent bar = new ProgressBarComponent();
+                bar.setMinimum(0);
+                bar.setMaximum(Radar.MINUTES);
+                bar.setValue(radar.edgeIn);
+                bar.setLabelDisplayMode(ProgressBarComponent.LabelDisplayMode.TEXT_ONLY);
+                bar.setCenterLabel("");
+                bar.setForegroundColor(urgency);
+                bar.setBackgroundColor(new Color(0, 0, 0, 120));
+                panelComponent.getChildren().add(bar);
+            }
+        }
+        if (hud)
+        {
+            panelComponent.getChildren().add(new HudParts.Heading(c.heading(), c.moodName(), NomadPlugin.colour(c, 255)));
+            HudParts.Chips chips = new HudParts.Chips();
+            if (c.expandLeft() > 0) chips.add(NomadSim.EXPAND + " " + NomadPanel.time(c.expandLeft()));
+            if (c.tailwindLeft() > 0) chips.add(NomadSim.TAILWIND + " " + NomadPanel.time(c.tailwindLeft()));
+            if (c.anchorLeft() > 0) chips.add(NomadSim.ANCHOR + " " + NomadPanel.time(c.anchorLeft()));
+            if (sim.bridgeLeft() > 0) chips.add(NomadSim.BRIDGE + " " + sim.bridgeLeft() + "m");
+            if (!chips.isEmpty()) panelComponent.getChildren().add(chips);
         }
         panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").build());
         for (int j = 0; j < sim.circles().size(); j++)
@@ -108,5 +142,18 @@ class NomadStatusOverlay extends OverlayPanel
             panelComponent.getChildren().add(LineComponent.builder().left("Volcano").right("Open").rightColor(INSIDE).build());
         }
         return super.render(graphics);
+    }
+
+    /** Calm green with a quarter hour to go, through amber, to red as the edge arrives. */
+    static Color urgency(int minutes)
+    {
+        float t = Math.max(0f, Math.min(1f, (minutes - 1) / (float) (Radar.MINUTES - 1)));
+        Color a = t < 0.5f ? URGENT : AMBER;
+        Color b = t < 0.5f ? AMBER : CALM;
+        float u = t < 0.5f ? t * 2 : (t - 0.5f) * 2;
+        return new Color(
+            Math.round(a.getRed() + (b.getRed() - a.getRed()) * u),
+            Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * u),
+            Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * u));
     }
 }
