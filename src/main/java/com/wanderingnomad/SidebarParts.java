@@ -25,8 +25,11 @@ import net.runelite.client.ui.FontManager;
  */
 final class SidebarParts
 {
-    /** The width everything in the sidebar is drawn to, inside its 10px borders. */
-    static final int WIDTH = NomadPanel.CONTENT_WIDTH;
+    /**
+     * The width everything in the sidebar is drawn to, inside its 10px borders. Not called WIDTH:
+     * inside a component that name means ImageObserver.WIDTH, which is 1.
+     */
+    static final int SIDEBAR_WIDTH = NomadPanel.CONTENT_WIDTH;
     static final Color CARD = ColorScheme.DARKER_GRAY_COLOR;
     static final Color MUTED = new Color(0x9A9A9A);
     static final Color RARE = new Color(0xC58CFF);
@@ -44,7 +47,7 @@ final class SidebarParts
 
         Part(int height)
         {
-            Dimension size = new Dimension(WIDTH, height);
+            Dimension size = new Dimension(SIDEBAR_WIDTH, height);
             setPreferredSize(size);
             setMinimumSize(size);
             setMaximumSize(size);
@@ -147,7 +150,7 @@ final class SidebarParts
         @Override
         void paint(Graphics2D g, NomadPanel.View v)
         {
-            card(g, 0, 0, WIDTH, 92, v.colour);
+            card(g, 0, 0, SIDEBAR_WIDTH, 92, v.colour);
             if (!v.live)
             {
                 text(g, FontManager.getRunescapeBoldFont(), "Nomad UIM", 12, 26, Color.WHITE);
@@ -156,7 +159,7 @@ final class SidebarParts
             }
             // The ring empties as the edge closes in on you; it's full while the edge is more than a quarter hour off.
             int d = 58;
-            int rx = WIDTH - d - 10;
+            int rx = SIDEBAR_WIDTH - d - 10;
             int ry = 17;
             g.setStroke(new BasicStroke(6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             g.setColor(new Color(255, 255, 255, 30));
@@ -194,6 +197,8 @@ final class SidebarParts
     static final class MiniMap extends Part
     {
         private static final int H = 176;
+        /** The widest the map zooms out, in tiles, so your own circle stays visible. */
+        private static final double MAX_SPAN = 520;
 
         MiniMap()
         {
@@ -201,10 +206,10 @@ final class SidebarParts
             setToolTipText("");
         }
 
-        /** Tiles across the map: your circle with room around it, so neighbours show. */
+        /** Tiles across the map: your circle with room around it, wide enough to reach the nearest circle you can cross into. */
         private static double span(NomadPanel.View v)
         {
-            return Math.max(120, v.radius * 2 + 70);
+            return Math.max(Math.max(120, v.radius * 2 + 70), Math.min(MAX_SPAN, v.reach * 2 + 20));
         }
 
         private double[] centre(NomadPanel.View v)
@@ -215,17 +220,17 @@ final class SidebarParts
         @Override
         void paint(Graphics2D g, NomadPanel.View v)
         {
-            card(g, 0, 0, WIDTH, H, null);
+            card(g, 0, 0, SIDEBAR_WIDTH, H, null);
             if (!v.live) return;
             double[] c = centre(v);
             double scale = (H - 8) / span(v);
-            g.clip(new RoundRectangle2D.Float(0, 0, WIDTH, H, 8, 8));
+            g.clip(new RoundRectangle2D.Float(0, 0, SIDEBAR_WIDTH, H, 8, 8));
             if (v.cone != null)
             {
                 Path2D cone = new Path2D.Double();
                 for (int k = 0; k < v.cone.length; k++)
                 {
-                    double x = WIDTH / 2.0 + (v.cone[k][0] - c[0]) * scale;
+                    double x = SIDEBAR_WIDTH / 2.0 + (v.cone[k][0] - c[0]) * scale;
                     double y = H / 2.0 - (v.cone[k][1] - c[1]) * scale;
                     if (k == 0) cone.moveTo(x, y);
                     else cone.lineTo(x, y);
@@ -248,24 +253,24 @@ final class SidebarParts
             }
             for (NomadPanel.MapStone s : v.stones)
             {
-                diamond(g, (float) (WIDTH / 2.0 + (s.x - c[0]) * scale), (float) (H / 2.0 - (s.y - c[1]) * scale), 5, s.colour);
+                diamond(g, (float) (SIDEBAR_WIDTH / 2.0 + (s.x - c[0]) * scale), (float) (H / 2.0 - (s.y - c[1]) * scale), 5, s.colour);
             }
             if (!Double.isNaN(v.px))
             {
-                float x = (float) (WIDTH / 2.0 + (v.px - c[0]) * scale);
+                float x = (float) (SIDEBAR_WIDTH / 2.0 + (v.px - c[0]) * scale);
                 float y = (float) (H / 2.0 - (v.py - c[1]) * scale);
                 g.setColor(Color.BLACK);
                 g.fill(new Ellipse2D.Float(x - 4, y - 4, 8, 8));
                 g.setColor(Color.WHITE);
                 g.fill(new Ellipse2D.Float(x - 3, y - 3, 6, 6));
             }
-            text(g, FontManager.getRunescapeSmallFont(), "N", WIDTH - 12, 13, MUTED);
+            text(g, FontManager.getRunescapeSmallFont(), "N", SIDEBAR_WIDTH - 12, 13, MUTED);
             text(g, FontManager.getRunescapeSmallFont(), Math.round(span(v)) + " tiles across", 6, H - 6, MUTED);
         }
 
         private static Ellipse2D ring(NomadPanel.MapCircle m, double[] c, double scale)
         {
-            double x = WIDTH / 2.0 + (m.x - c[0]) * scale;
+            double x = SIDEBAR_WIDTH / 2.0 + (m.x - c[0]) * scale;
             double y = H / 2.0 - (m.y - c[1]) * scale;
             double r = Math.max(3, m.r * scale);
             return new Ellipse2D.Double(x - r, y - r, r * 2, r * 2);
@@ -315,8 +320,9 @@ final class SidebarParts
                 g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3f, 3f}, 0f));
                 g.setColor(new Color(255, 255, 255, 50));
                 g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, H - 1, 8, 8));
-                text(g, FontManager.getRunescapeSmallFont(), "Empty slot. Earn one:", 10, 18, MUTED);
-                text(g, FontManager.getRunescapeSmallFont(), "100 total level, 25 QP or a first kill", 10, 32, MUTED);
+                FontMetrics sm = g.getFontMetrics(FontManager.getRunescapeSmallFont());
+                text(g, FontManager.getRunescapeSmallFont(), fit(sm, "Empty. Earn one every 100 total level,", w - 16), 8, 18, MUTED);
+                text(g, FontManager.getRunescapeSmallFont(), fit(sm, "25 quest points or first boss kill.", w - 16), 8, 32, MUTED);
                 return;
             }
             Color tone = slot.rare ? RARE : Moments.GOLD;
@@ -356,7 +362,7 @@ final class SidebarParts
         void show(NomadPanel.View view)
         {
             int h = view.active.isEmpty() ? 0 : view.active.size() * ROW + 4;
-            Dimension size = new Dimension(WIDTH, h);
+            Dimension size = new Dimension(SIDEBAR_WIDTH, h);
             if (!size.equals(getPreferredSize()))
             {
                 setPreferredSize(size);
@@ -376,11 +382,11 @@ final class SidebarParts
             {
                 text(g, small, a.name + " active", 2, y + 10, Moments.GOLD);
                 String left = NomadPanel.time(a.left) + " left";
-                text(g, small, left, WIDTH - g.getFontMetrics(small).stringWidth(left) - 2, y + 10, Color.LIGHT_GRAY);
+                text(g, small, left, SIDEBAR_WIDTH - g.getFontMetrics(small).stringWidth(left) - 2, y + 10, Color.LIGHT_GRAY);
                 g.setColor(new Color(255, 255, 255, 30));
-                g.fill(new RoundRectangle2D.Float(2, y + 13, WIDTH - 4, 4, 4, 4));
+                g.fill(new RoundRectangle2D.Float(2, y + 13, SIDEBAR_WIDTH - 4, 4, 4, 4));
                 g.setColor(Moments.GOLD);
-                g.fill(new RoundRectangle2D.Float(2, y + 13, (float) ((WIDTH - 4) * Math.min(1, a.left / (double) a.total)), 4, 4, 4));
+                g.fill(new RoundRectangle2D.Float(2, y + 13, (float) ((SIDEBAR_WIDTH - 4) * Math.min(1, a.left / (double) a.total)), 4, 4, 4));
                 y += ROW;
             }
         }
@@ -400,7 +406,7 @@ final class SidebarParts
         void show(NomadPanel.View view)
         {
             int rows = Math.max(1, view.waystones.size()) + (view.waystoneNote == null ? 0 : 1);
-            Dimension size = new Dimension(WIDTH, rows * ROW);
+            Dimension size = new Dimension(SIDEBAR_WIDTH, rows * ROW);
             if (!size.equals(getPreferredSize()))
             {
                 setPreferredSize(size);
@@ -420,25 +426,25 @@ final class SidebarParts
             int y = 0;
             if (v.waystones.isEmpty())
             {
-                card(g, 0, y, WIDTH, ROW - 4, null);
+                card(g, 0, y, SIDEBAR_WIDTH, ROW - 4, null);
                 text(g, small, v.live ? "None risen. Milestones summon them." : "Log in to see your waystones.", 10, y + 19, MUTED);
                 y += ROW;
             }
             for (NomadPanel.StoneRow s : v.waystones)
             {
-                card(g, 0, y, WIDTH, ROW - 4, s.yours ? Moments.GOLD : s.colour);
+                card(g, 0, y, SIDEBAR_WIDTH, ROW - 4, s.yours ? Moments.GOLD : s.colour);
                 diamond(g, 14, y + 15, 7, s.yours ? Moments.GOLD : s.colour);
                 text(g, bold, s.boon, 28, y + 13, s.rare ? RARE : Moments.GOLD);
                 String right = s.left;
-                text(g, small, right, WIDTH - sm.stringWidth(right) - 8, y + 13, Color.LIGHT_GRAY);
+                text(g, small, right, SIDEBAR_WIDTH - sm.stringWidth(right) - 8, y + 13, Color.LIGHT_GRAY);
                 String where = Double.isNaN(s.angle) ? s.where : s.distance + " tiles · " + s.where;
-                text(g, small, fit(sm, where, WIDTH - 50), 28, y + 25, MUTED);
-                if (!Double.isNaN(s.angle)) arrow(g, WIDTH - 14, y + 21, s.angle, 5, Color.WHITE);
+                text(g, small, fit(sm, where, SIDEBAR_WIDTH - 50), 28, y + 25, MUTED);
+                if (!Double.isNaN(s.angle)) arrow(g, SIDEBAR_WIDTH - 14, y + 21, s.angle, 5, Color.WHITE);
                 y += ROW;
             }
             if (v.waystoneNote != null)
             {
-                text(g, small, fit(sm, v.waystoneNote, WIDTH - 10), 4, y + 14, MUTED);
+                text(g, small, fit(sm, v.waystoneNote, SIDEBAR_WIDTH - 10), 4, y + 14, MUTED);
             }
         }
     }
@@ -456,7 +462,7 @@ final class SidebarParts
         @Override
         void paint(Graphics2D g, NomadPanel.View v)
         {
-            card(g, 0, 0, WIDTH, getHeight(), null);
+            card(g, 0, 0, SIDEBAR_WIDTH, getHeight(), null);
             if (!v.live) return;
             String[][] cells = {
                 {"Played", v.played}, {"Walked", v.walked + " tiles"},
@@ -466,7 +472,7 @@ final class SidebarParts
             };
             Font small = FontManager.getRunescapeSmallFont();
             FontMetrics sm = g.getFontMetrics(small);
-            int half = WIDTH / 2;
+            int half = SIDEBAR_WIDTH / 2;
             for (int k = 0; k < cells.length; k++)
             {
                 int x = k % 2 == 0 ? 8 : half + 4;
@@ -495,7 +501,7 @@ final class SidebarParts
         {
             if (moments.equals(this.moments)) return;
             this.moments = moments;
-            Dimension size = new Dimension(WIDTH - 14, Math.max(1, moments.size()) * ROW);
+            Dimension size = new Dimension(SIDEBAR_WIDTH - 14, Math.max(1, moments.size()) * ROW);
             setPreferredSize(size);
             revalidate();
             repaint();

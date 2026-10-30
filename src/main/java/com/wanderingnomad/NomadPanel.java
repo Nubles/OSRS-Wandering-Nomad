@@ -334,7 +334,10 @@ class NomadPanel extends PluginPanel
 
     private static Component gap(int height)
     {
-        return Box.createRigidArea(new Dimension(CONTENT_WIDTH, height));
+        JComponent gap = (JComponent) Box.createRigidArea(new Dimension(CONTENT_WIDTH, height));
+        // Left-aligned like everything else: BoxLayout shifts and squeezes rows when alignments are mixed.
+        gap.setAlignmentX(LEFT_ALIGNMENT);
+        return gap;
     }
 
     /** What each boon does. */
@@ -513,6 +516,8 @@ class NomadPanel extends PluginPanel
         final List<MapCircle> circles = new ArrayList<>();
         final List<MapStone> stones = new ArrayList<>();
         double[][] cone;
+        /** Tiles from the map's middle to the far side of the nearest circle you can cross into, 0 if none. */
+        double reach;
 
         int held;
         final List<BoonSlot> boons = new ArrayList<>();
@@ -571,6 +576,16 @@ class NomadPanel extends PluginPanel
             }
             // Yours last, so it draws on top.
             v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));
+            // How far the map must reach from its middle to show the far side of the nearest circle you can cross into.
+            double mx = at == null ? c.x() : at.x;
+            double my = at == null ? c.y() : at.y;
+            for (int j = 0; j < sim.circles().size(); j++)
+            {
+                if (j == sim.boundIndex() || !sim.linked(j)) continue;
+                Circle o = sim.circles().get(j);
+                double far = Math.hypot(o.x() - mx, o.y() - my) + o.radius();
+                if (v.reach == 0 || far < v.reach) v.reach = far;
+            }
             for (Waystone w : sim.waystones())
             {
                 v.stones.add(new MapStone(w.x(), w.y(), w.circle() == sim.boundIndex() ? Moments.GOLD
