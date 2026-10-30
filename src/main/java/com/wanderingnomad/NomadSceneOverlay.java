@@ -12,15 +12,23 @@ import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.Paint;
 import java.awt.Polygon;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.geom.Area;
 import java.awt.geom.Path2D;
+import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
+import net.runelite.api.Actor;
 import net.runelite.api.Client;
+import net.runelite.api.DecorativeObject;
+import net.runelite.api.GameObject;
+import net.runelite.api.NPC;
 import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
+import net.runelite.api.WallObject;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -41,8 +49,13 @@ class NomadSceneOverlay extends Overlay
 {
     /** Tiles from the player that get drawn; past this the scene ends anyway. */
     private static final int REACH = 40;
-    /** The wall stands just outside the edge tiles, so every tile inside is within it. */
-    private static final double WALL_OUT = 0.5;
+    /**
+     * The wall stands exactly on the edge. A tile is inside when its centre is, and you stand on
+     * a tile's centre, so you're inside exactly when your feet are on the inner side of the wall.
+     */
+    private static final double WALL_OUT = 0;
+    /** Objects and people this many tiles either side of the edge can stand in front of the wall. */
+    private static final int OCCLUDER_BAND = 10;
     /** Wall height in local units (128 to a tile); a player is about 200 tall. */
     private static final int WALL_HEIGHT = 170;
     private static final int GATE_HEIGHT = 260;
@@ -149,6 +162,10 @@ class NomadSceneOverlay extends Overlay
         double phase = now / 1000.0;
 
         Color base = gate ? brighter(c) : NomadPlugin.colour(c, 255);
+        // Scenery and people standing between the camera and the wall hide it, as a real wall would be hidden.
+        Shape clipBefore = graphics.getClip();
+        Area visible = visibleArea(view, c, r, at);
+        if (visible != null) graphics.clip(visible);
         // The foot of the wall, as one path per unbroken run so it glows without seams or joints.
         Path2D foot = new Path2D.Float();
         boolean open = false;
@@ -217,6 +234,105 @@ class NomadSceneOverlay extends Overlay
         {
             if (sparks[s] != null) spark(graphics, c, sparks[s][0], sparks[s][1], (phase * 0.35 + s * 3 * 0.137) % 1.0);
         }
+        graphics.setClip(clipBefore);
+    }
+
+    /**
+     * The viewport minus the outlines of everything that stands in front of the wall: scenery,
+     * walls, decorations, players and NPCs near the edge whose first meeting with the wall, looking
+     * out from the camera, is behind them. Null when nothing is in the way.
+     */
+    private Area visibleArea(WorldView view, Circle c, double r, WorldPoint at)
+    {
+        double camX = view.getBaseX() + (client.getCameraFpX() - Perspective.LOCAL_HALF_TILE_SIZE) / Perspective.LOCAL_TILE_SIZE;
+        double camY = view.getBaseY() + (client.getCameraFpY() - Perspective.LOCAL_HALF_TILE_SIZE) / Perspective.LOCAL_TILE_SIZE;
+        Path2D hidden = new Path2D.Float(Path2D.WIND_NON_ZERO);
+        boolean any = false;
+
+        net.runelite.api.Tile[][][] tiles = view.getScene().getTiles();
+        int plane = view.getPlane();
+        for (int x = at.getX() - REACH; x <= at.getX() + REACH; x++)
+        {
+            for (int y = at.getY() - REACH; y <= at.getY() + REACH; y++)
+            {
+                if (Math.abs(Math.hypot(x - c.x(), y - c.y()) - r) > OCCLUDER_BAND) continue;
+                int sx = x - view.getBaseX();
+                int sy = y - view.getBaseY();
+                if (sx < 0 || sy < 0 || sx >= tiles[plane].length || sy >= tiles[plane][sx].length) continue;
+                net.runelite.api.Tile tile = tiles[plane][sx][sy];
+                if (tile == null) continue;
+                if (!inFront(camX, camY, x, y, c, r)) continue;
+                for (GameObject o : tile.getGameObjects())
+                {
+                    if (o != null) any |= add(hidden, o.getConvexHull());
+                }
+                WallObject wall = tile.getWallObject();
+                if (wall != null)
+                {
+                    any |= add(hidden, wall.getConvexHull());
+                    any |= add(hidden, wall.getConvexHull2());
+                }
+                DecorativeObject deco = tile.getDecorativeObject();
+                if (deco != null)
+                {
+                    any |= add(hidden, deco.getConvexHull());
+                    any |= add(hidden, deco.getConvexHull2());
+                }
+            }
+        }
+        for (Actor actor : actors(view))
+        {
+            LocalPoint lp = actor.getLocalLocation();
+            if (lp == null) continue;
+            double ax = view.getBaseX() + (lp.getX() - Perspective.LOCAL_HALF_TILE_SIZE) / (double) Perspective.LOCAL_TILE_SIZE;
+            double ay = view.getBaseY() + (lp.getY() - Perspective.LOCAL_HALF_TILE_SIZE) / (double) Perspective.LOCAL_TILE_SIZE;
+            if (Math.abs(Math.hypot(ax - c.x(), ay - c.y()) - r) > OCCLUDER_BAND) continue;
+            if (inFront(camX, camY, ax, ay, c, r)) any |= add(hidden, actor.getConvexHull());
+        }
+        if (!any) return null;
+        Area visible = new Area(new Rectangle(client.getViewportXOffset(), client.getViewportYOffset(),
+            client.getViewportWidth(), client.getViewportHeight()));
+        visible.subtract(new Area(hidden));
+        return visible;
+    }
+
+    private static List<Actor> actors(WorldView view)
+    {
+        List<Actor> out = new ArrayList<>();
+        for (Player p : view.players()) out.add(p);
+        for (NPC n : view.npcs()) out.add(n);
+        return out;
+    }
+
+    private static boolean add(Path2D path, Shape shape)
+    {
+        if (shape == null) return false;
+        path.append(shape, false);
+        return true;
+    }
+
+    /**
+     * Whether something at (x, y) stands in front of the wall: looking from the camera through it
+     * along the ground, the first place that line meets the circle's edge is beyond it.
+     */
+    static boolean inFront(double camX, double camY, double x, double y, Circle c, double r)
+    {
+        double dx = x - camX;
+        double dy = y - camY;
+        double dist = Math.hypot(dx, dy);
+        if (dist < 1e-6) return false;
+        dx /= dist;
+        dy /= dist;
+        double fx = camX - c.x();
+        double fy = camY - c.y();
+        double b = fx * dx + fy * dy;
+        double disc = b * b - (fx * fx + fy * fy - r * r);
+        if (disc < 0) return false;
+        double root = Math.sqrt(disc);
+        double near = -b - root;
+        double far = -b + root;
+        double first = near > 0 ? near : far;
+        return first > dist;
     }
 
     private static void curtain(Graphics2D graphics, Color base, Point g0, Point g1, Point t0, Point t1, int alpha)
