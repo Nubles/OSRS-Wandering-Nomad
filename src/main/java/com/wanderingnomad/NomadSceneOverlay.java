@@ -22,6 +22,7 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.DecorativeObject;
@@ -47,6 +48,7 @@ import net.runelite.client.ui.overlay.OverlayUtil;
  * one to the nearest waystone you can claim. Waystones stand as pillars of light.
  * Only on the surface: underground or in an instance the edge isn't where you are.
  */
+@Slf4j
 class NomadSceneOverlay extends Overlay
 {
     /** Tiles from the player that get drawn; past this the scene ends anyway. */
@@ -94,6 +96,8 @@ class NomadSceneOverlay extends Overlay
     private final NomadPlugin plugin;
     /** The outside shade is drawn here first; reused, and only remade when the canvas changes size. */
     private BufferedImage shadeImage;
+    /** When the shade's debug counts were last logged. */
+    private long debugLogged;
 
     @Inject
     NomadSceneOverlay(Client client, NomadPlugin plugin)
@@ -382,14 +386,13 @@ class NomadSceneOverlay extends Overlay
         // Seen from the camera, every patch of ground winds the same way round. One that winds the
         // other way, or comes out huge, has a corner behind the camera and was projected through it:
         // drawn, it shaded the inside of the circle, or (when all the patches were one path) cancelled
-        // the shade where it overlapped. So each patch is checked against the player's own tile.
-        LocalPoint feet = LocalPoint.fromWorld(view, at.getX(), at.getY());
-        Polygon own = feet == null ? null : Perspective.getCanvasTilePoly(client, feet);
-        if (own == null) return;
-        int facing = Long.signum(twiceArea(own));
+        // the shade where it overlapped. So each patch is checked against the way most of them wind.
         int maxW = client.getViewportWidth() * 2 / 5;
         int maxH = client.getViewportHeight() * 2 / 5;
         List<Polygon> patches = new ArrayList<>();
+        int tiles = 0;
+        int unplaced = 0;
+        int tooBig = 0;
         int plane = view.getPlane();
         for (int x = at.getX() - DIM_REACH; x <= at.getX() + DIM_REACH; x++)
         {
@@ -398,6 +401,7 @@ class NomadSceneOverlay extends Overlay
                 // The part of the tile outside the circle, so the shade follows the curve rather than tile squares.
                 double[][] part = EdgeWall3D.outsidePart(yours, x, y);
                 if (part == null) continue;
+                tiles++;
                 int[] xs = new int[part.length];
                 int[] ys = new int[part.length];
                 boolean ok = true;
@@ -412,11 +416,40 @@ class NomadSceneOverlay extends Overlay
                         ys[k] = p.getY();
                     }
                 }
-                if (!ok) continue;
+                if (!ok)
+                {
+                    unplaced++;
+                    continue;
+                }
                 Polygon patch = new Polygon(xs, ys, part.length);
                 Rectangle b = patch.getBounds();
-                if (b.width > maxW || b.height > maxH || Long.signum(twiceArea(patch)) != facing) continue;
+                if (b.width > maxW || b.height > maxH)
+                {
+                    tooBig++;
+                    continue;
+                }
                 patches.add(patch);
+            }
+        }
+        int ahead = 0;
+        for (Polygon p : patches) ahead += Long.signum(twiceArea(p));
+        int facing = ahead >= 0 ? 1 : -1;
+        List<Polygon> flipped = new ArrayList<>();
+        patches.removeIf(p ->
+        {
+            boolean wrong = Long.signum(twiceArea(p)) == -facing;
+            if (wrong) flipped.add(p);
+            return wrong;
+        });
+        boolean debug = plugin.config().debugShade();
+        if (debug)
+        {
+            long now = System.currentTimeMillis();
+            if (now - debugLogged > 2000)
+            {
+                debugLogged = now;
+                log.info("Nomad shade: {} outside tiles near you, {} drawn, {} off screen or behind the camera, {} too big, {} flipped",
+                    tiles, patches.size(), unplaced, tooBig, flipped.size());
             }
         }
         if (patches.isEmpty()) return;
@@ -450,6 +483,15 @@ class NomadSceneOverlay extends Overlay
             g.dispose();
         }
         graphics.drawImage(shadeImage, 0, 0, null);
+        if (debug)
+        {
+            // Drawn patches outlined red, flipped ones (dropped) yellow.
+            graphics.setStroke(new BasicStroke(1f));
+            graphics.setColor(new Color(255, 40, 40, 200));
+            for (Polygon p : patches) graphics.draw(p);
+            graphics.setColor(new Color(255, 230, 0, 230));
+            for (Polygon p : flipped) graphics.draw(p);
+        }
     }
 
     /**
