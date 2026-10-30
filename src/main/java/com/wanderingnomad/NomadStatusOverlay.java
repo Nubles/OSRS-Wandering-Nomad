@@ -42,7 +42,9 @@ class NomadStatusOverlay extends OverlayPanel
 
         String state;
         Color colour;
-        if (sim.isOutside())
+        // Read live from the tile you're on: the run itself only checks once a played minute, which
+        // left this saying Inside while To edge already said you were out. An open Bridge doesn't count.
+        if (plugin.outsideNow() && sim.bridgeLeft() <= 0)
         {
             state = "Outside";
             colour = OUTSIDE;

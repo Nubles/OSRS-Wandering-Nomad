@@ -13,6 +13,8 @@ import java.awt.Graphics2D;
 import java.awt.Paint;
 import java.awt.Polygon;
 import java.awt.RenderingHints;
+import java.awt.Shape;
+import java.awt.geom.Path2D;
 import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Client;
@@ -46,7 +48,21 @@ class NomadSceneOverlay extends Overlay
     private static final int GATE_HEIGHT = 260;
     /** Wall segments are about half a tile long. */
     private static final double SEGMENT = 0.5;
-    private static final BasicStroke GROUND = new BasicStroke(2f);
+    /** Wall points either side whose ground a point may rise to: two, about a tile. */
+    private static final int SMOOTH = 2;
+    /** The foot of the wall: soft strokes from wide and faint to a thin core. */
+    private static final BasicStroke[] GLOW = {
+        new BasicStroke(7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND),
+        new BasicStroke(3.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND),
+        new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND),
+    };
+    private static final int[] GLOW_ALPHA = {28, 55, 120};
+    /** Tiles from the player that are dimmed when outside your circle: the whole loaded scene. */
+    private static final int DIM_REACH = 52;
+    /** Within this many tiles of the edge, your tile shows whether you're inside or out. */
+    private static final double FEET_NEAR = 3;
+    private static final Color INSIDE = new Color(0x66E08A);
+    private static final Color OUTSIDE = new Color(0xFF5A4F);
     private static final BasicStroke YOURS = new BasicStroke(2f);
     private static final BasicStroke OTHER = new BasicStroke(1f);
     private static final BasicStroke ARROW = new BasicStroke(1.5f);
@@ -80,6 +96,7 @@ class NomadSceneOverlay extends Overlay
         NomadConfig config = plugin.config();
         long now = System.currentTimeMillis();
 
+        if (config.dimOutside() > 0) drawOutside(graphics, view, sim.bound(), at, config.dimOutside());
         if (config.drawEdge())
         {
             boolean wall = config.edgeStyle() != NomadConfig.EdgeStyle.TILES;
@@ -94,6 +111,7 @@ class NomadSceneOverlay extends Overlay
                 if (tiles) drawTiles(graphics, view, c, at, mine);
                 if (wall) drawWall(graphics, view, c, mine ? null : yours, at, now);
             }
+            drawFeet(graphics, view, yours, at);
         }
         drawBeacons(graphics, view, sim, now);
         if (config.compass())
@@ -130,8 +148,20 @@ class NomadSceneOverlay extends Overlay
         int plane = view.getPlane();
         double phase = now / 1000.0;
 
-        Point g0 = null;
-        Point t0 = null;
+        Color base = gate ? brighter(c) : NomadPlugin.colour(c, 255);
+        // The foot of the wall, as one path per unbroken run so it glows without seams or joints.
+        Path2D foot = new Path2D.Float();
+        boolean open = false;
+        Point[][] sparks = new Point[n / 3 + 1][];
+        // Curtain fills are drawn without antialiasing: neighbouring quads share their sides exactly,
+        // where antialiased ones leave faint seams that shimmer as the camera moves.
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+
+        // Where the wall crosses a bridge or a ledge, points half a tile apart alternate between
+        // the deck and the water below, and the foot zigzags. Each point takes the highest ground
+        // within a tile either side along the wall (smaller z is higher), so it steps up and over.
+        LocalPoint[] locals = new LocalPoint[n + 1];
+        int[] ground = new int[n + 1];
         for (int i = 0; i <= n; i++)
         {
             double a = i * Math.PI * 2 / n;
@@ -139,23 +169,57 @@ class NomadSceneOverlay extends Overlay
             double wy = c.y() + Math.sin(a) * r;
             boolean near = Math.abs(wx - at.getX()) <= REACH && Math.abs(wy - at.getY()) <= REACH;
             boolean shown = near && (!gate || inside.contains(wx, wy));
-            LocalPoint local = shown ? local(view, wx, wy) : null;
-            Point g1 = local == null ? null : Perspective.localToCanvas(client, local, plane, 0);
-            Point t1 = local == null ? null : Perspective.localToCanvas(client, local, plane, height);
+            locals[i] = shown ? local(view, wx, wy) : null;
+            if (locals[i] != null) ground[i] = Perspective.getTileHeight(client, locals[i], plane);
+        }
+        int[] z = new int[n + 1];
+        for (int i = 0; i <= n; i++)
+        {
+            if (locals[i] == null) continue;
+            z[i] = ground[i];
+            for (int k = Math.max(0, i - SMOOTH); k <= Math.min(n, i + SMOOTH); k++)
+            {
+                if (locals[k] != null) z[i] = Math.min(z[i], ground[k]);
+            }
+        }
+
+        Point g0 = null;
+        Point t0 = null;
+        for (int i = 0; i <= n; i++)
+        {
+            double a = i * Math.PI * 2 / n;
+            LocalPoint local = locals[i];
+            Point g1 = local == null ? null : Perspective.localToCanvas(client, local.getX(), local.getY(), z[i]);
+            Point t1 = local == null ? null : Perspective.localToCanvas(client, local.getX(), local.getY(), z[i] - height);
+            if (i % 3 == 0 && g1 != null && t1 != null) sparks[i / 3] = new Point[]{g1, t1};
             if (g0 != null && t0 != null && g1 != null && t1 != null)
             {
                 // Bands of light run along the wall, a little faster on a gateway.
                 double band = 0.5 + 0.5 * Math.sin(a * c.radius() * 0.9 - phase * (gate ? 3.2 : 1.8));
-                int alpha = (int) ((gate ? 150 : 95) * (0.55 + 0.45 * band));
-                segment(graphics, c, g0, g1, t0, t1, alpha, gate);
-                if (i % 3 == 0) spark(graphics, c, g0, t0, (phase * 0.35 + i * 0.137) % 1.0);
+                int alpha = (int) ((gate ? 110 : 60) * (0.6 + 0.4 * band));
+                curtain(graphics, base, g0, g1, t0, t1, alpha);
+                if (!open) foot.moveTo(g0.getX(), g0.getY());
+                foot.lineTo(g1.getX(), g1.getY());
+                open = true;
+            }
+            else
+            {
+                open = false;
             }
             g0 = g1;
             t0 = t1;
         }
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        glow(graphics, foot, base, gate ? 1.4 : 1);
+
+        // Sparks go on top, along the same stretch.
+        for (int s = 0; s < sparks.length; s++)
+        {
+            if (sparks[s] != null) spark(graphics, c, sparks[s][0], sparks[s][1], (phase * 0.35 + s * 3 * 0.137) % 1.0);
+        }
     }
 
-    private static void segment(Graphics2D graphics, Circle c, Point g0, Point g1, Point t0, Point t1, int alpha, boolean gate)
+    private static void curtain(Graphics2D graphics, Color base, Point g0, Point g1, Point t0, Point t1, int alpha)
     {
         Polygon quad = new Polygon(
             new int[]{g0.getX(), g1.getX(), t1.getX(), t0.getX()},
@@ -164,14 +228,73 @@ class NomadSceneOverlay extends Overlay
         float gy = (g0.getY() + g1.getY()) / 2f;
         float tx = (t0.getX() + t1.getX()) / 2f;
         float ty = (t0.getY() + t1.getY()) / 2f;
-        Color base = gate ? brighter(c) : NomadPlugin.colour(c, 255);
         Paint before = graphics.getPaint();
         graphics.setPaint(new GradientPaint(gx, gy, alpha(base, alpha), tx, ty, alpha(base, 0)));
         graphics.fill(quad);
         graphics.setPaint(before);
-        graphics.setStroke(GROUND);
-        graphics.setColor(alpha(base, Math.min(255, alpha + 120)));
-        graphics.drawLine(g0.getX(), g0.getY(), g1.getX(), g1.getY());
+    }
+
+    /** A soft line: a wide faint stroke, a narrower one, then a thin core. */
+    private static void glow(Graphics2D graphics, Shape line, Color base, double strength)
+    {
+        for (int k = 0; k < GLOW.length; k++)
+        {
+            graphics.setStroke(GLOW[k]);
+            graphics.setColor(alpha(base, (int) (GLOW_ALPHA[k] * strength)));
+            graphics.draw(line);
+        }
+    }
+
+    /**
+     * Darkens every tile near you that's outside your circle, so the ground itself shows where you
+     * may stand. The tiles go into one path and are filled at once without antialiasing, so they
+     * meet without seams.
+     */
+    private void drawOutside(Graphics2D graphics, WorldView view, Circle yours, WorldPoint at, int percent)
+    {
+        Path2D shade = new Path2D.Float(Path2D.WIND_NON_ZERO);
+        boolean any = false;
+        for (int x = at.getX() - DIM_REACH; x <= at.getX() + DIM_REACH; x++)
+        {
+            for (int y = at.getY() - DIM_REACH; y <= at.getY() + DIM_REACH; y++)
+            {
+                if (yours.contains(x, y)) continue;
+                LocalPoint local = LocalPoint.fromWorld(view, x, y);
+                if (local == null) continue;
+                Polygon poly = Perspective.getCanvasTilePoly(client, local);
+                if (poly == null) continue;
+                shade.append(poly, false);
+                any = true;
+            }
+        }
+        if (!any) return;
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+        graphics.setColor(new Color(0, 0, 0, Math.min(255, percent * 255 / 100)));
+        graphics.fill(shade);
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    }
+
+    /**
+     * Within a few tiles of the edge, your own tile is outlined green while it's inside your circle
+     * and red once it's outside, with a word above your head saying which and how far.
+     */
+    private void drawFeet(Graphics2D graphics, WorldView view, Circle yours, WorldPoint at)
+    {
+        double d = Math.hypot(at.getX() - yours.x(), at.getY() - yours.y());
+        double toEdge = yours.radius() - d;
+        if (toEdge > FEET_NEAR) return;
+        LocalPoint feet = LocalPoint.fromWorld(view, at.getX(), at.getY());
+        if (feet == null) return;
+        boolean inside = yours.contains(at.getX(), at.getY());
+        Color colour = inside ? INSIDE : OUTSIDE;
+        Polygon tile = Perspective.getCanvasTilePoly(client, feet);
+        if (tile != null) OverlayUtil.renderPolygon(graphics, tile, colour, alpha(colour, 50), YOURS);
+        int tiles = inside ? (int) Math.floor(toEdge) : (int) Math.ceil(-toEdge);
+        String text = inside
+            ? (tiles == 0 ? "Inside · on the edge" : "Inside · " + tiles + (tiles == 1 ? " tile" : " tiles") + " to the edge")
+            : "Outside · " + tiles + (tiles == 1 ? " tile" : " tiles") + " out";
+        Point label = Perspective.localToCanvas(client, feet, view.getPlane(), 230);
+        if (label != null) OverlayUtil.renderTextLocation(graphics, label, text, colour);
     }
 
     /** A spark drifting up the wall, fading as it rises. */

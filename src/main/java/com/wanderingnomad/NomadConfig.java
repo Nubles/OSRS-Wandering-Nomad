@@ -4,6 +4,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 
 @ConfigGroup(NomadConfig.GROUP)
 public interface NomadConfig extends Config
@@ -111,6 +112,21 @@ public interface NomadConfig extends Config
     default EdgeStyle edgeStyle()
     {
         return EdgeStyle.WALL;
+    }
+
+    // No @Units: a plain number field takes a typed value cleanly, where a "%" suffix gets in the way.
+    @Range(max = 80)
+    @ConfigItem(
+        keyName = "dimOutside",
+        name = "Dim outside (%)",
+        description = "How much to darken the ground outside your circle, 0 to 80 percent, so you can tell at a glance "
+            + "which tiles you can stand on. Type a number and press Enter, or use the arrows. 0 turns it off.",
+        section = LIVING_EDGE,
+        position = 22
+    )
+    default int dimOutside()
+    {
+        return 50;
     }
 
     @ConfigItem(
