@@ -46,8 +46,15 @@ final class Moments
         final boolean big;
         /** A game sound effect to play with it, or -1 for none. */
         final int sound;
+        /** What happened, for the run's tallies; most moments are {@link Event#OTHER}. */
+        final Event event;
 
         Banner(String title, String subtitle, Color colour, Icon icon, boolean big, int sound)
+        {
+            this(title, subtitle, colour, icon, big, sound, Event.OTHER);
+        }
+
+        Banner(String title, String subtitle, Color colour, Icon icon, boolean big, int sound, Event event)
         {
             this.title = title;
             this.subtitle = subtitle;
@@ -55,7 +62,17 @@ final class Moments
             this.icon = icon;
             this.big = big;
             this.sound = sound;
+            this.event = event;
         }
+    }
+
+    /** The moments the run counts: crossing into another circle, claiming a waystone, stepping outside. */
+    enum Event
+    {
+        OTHER,
+        CROSSED,
+        CLAIMED,
+        LEFT,
     }
 
     private boolean primed;
@@ -91,7 +108,7 @@ final class Moments
             if (sim.boundIndex() != bound)
             {
                 out.add(new Banner("Into " + yours.name(), "You crossed over. This is your circle now.",
-                    NomadPlugin.colour(yours, 255), Icon.CROSSING, true, SoundEffectID.TELEPORT_VWOOP));
+                    NomadPlugin.colour(yours, 255), Icon.CROSSING, true, SoundEffectID.TELEPORT_VWOOP, Event.CROSSED));
             }
             else
             {
@@ -119,7 +136,7 @@ final class Moments
             {
                 out.add(outsideNow
                     ? new Banner("Outside your circle", "It drifts 5x faster and shrinks while you're out.",
-                        OUT, Icon.RING, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP)
+                        OUT, Icon.RING, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP, Event.LEFT)
                     : new Banner("Back inside", "Safe in the " + yours.name() + " circle.",
                         IN, Icon.RING, false, SoundEffectID.PRAYER_ACTIVATE_PROTECT_ITEM));
             }
@@ -138,7 +155,7 @@ final class Moments
                 String boon = gone.substring(0, gone.indexOf('|'));
                 out.add(claimed
                     ? new Banner("Waystone claimed", boon + " is yours. Spend it from the sidebar.", GOLD, Icon.WAYSTONE, true,
-                        SoundEffectID.PRAYER_ACTIVATE_PIETY)
+                        SoundEffectID.PRAYER_ACTIVATE_PIETY, Event.CLAIMED)
                     : new Banner("Waystone faded", "Its circle drifted off the " + boon + " waystone.", GOLD.darker(), Icon.WAYSTONE,
                         false, -1));
             }

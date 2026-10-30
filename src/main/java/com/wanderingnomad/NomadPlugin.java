@@ -104,6 +104,8 @@ public class NomadPlugin extends Plugin
     /** Game ticks in one played minute. */
     static final int TICKS_PER_MINUTE = 100;
     private static final int LOG_LINES = 12;
+    private static final int TIMELINE = 20;
+    static final String STATS_KEY = "stats";
     /** Banner sounds play at about half the game's full effect volume (127). */
     private static final int SOUND_VOLUME = 64;
 
@@ -142,6 +144,9 @@ public class NomadPlugin extends Plugin
     @Inject
     private NomadBannerOverlay bannerOverlay;
     private final Moments moments = new Moments();
+    /** The run's latest moments, newest first, for the sidebar. */
+    private final Deque<NomadPanel.Moment> timeline = new ArrayDeque<>();
+    private RunStats stats = new RunStats();
 
     private NomadPanel panel;
     private LiveShare live;
@@ -265,7 +270,9 @@ public class NomadPlugin extends Plugin
             diariesRead = true;
             readDiaries();
         }
+        Tile before = surface;
         surface = locate();
+        if (before != null && surface != null) stats.walked(surface.x - before.x, surface.y - before.y);
         readMilestones();
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
         // Moments are read after the minute's step below too; here they catch stepping over the edge.
@@ -424,9 +431,16 @@ public class NomadPlugin extends Plugin
         for (Moments.Banner b : moments.observe(sim, outsideNow() && sim.bridgeLeft() <= 0, radar)) show(b);
     }
 
-    /** Shows a banner and plays its sound, each if it's turned on. Client thread. */
+    /** Notes a moment in the timeline and the run's tallies, then shows its banner and plays its sound if they're on. Client thread. */
     private void show(Moments.Banner b)
     {
+        timeline.addFirst(new NomadPanel.Moment(sim == null ? 0 : sim.minutes(), b));
+        while (timeline.size() > TIMELINE) timeline.removeLast();
+        if (b.event != Moments.Event.OTHER)
+        {
+            stats.count(b.event);
+            saveStats();
+        }
         if (!config.momentBanners()) return;
         bannerOverlay.show(b);
         if (config.momentSounds() && b.sound >= 0) client.playSoundEffect(b.sound, SOUND_VOLUME);
@@ -477,6 +491,8 @@ public class NomadPlugin extends Plugin
         lastXp.clear();
         moments.reset();
         bannerOverlay.clear();
+        timeline.clear();
+        stats = new RunStats();
     }
 
     Tile surface()
@@ -546,6 +562,7 @@ public class NomadPlugin extends Plugin
             surface = null;
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
+            configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
             List<String> lines = new ArrayList<>();
             lines.add("A new run started with seed " + seed + ". You're in the Main circle, centred on Lumbridge.");
             report(lines);
@@ -558,6 +575,7 @@ public class NomadPlugin extends Plugin
         }
         loadGuard();
         loadMilestones();
+        loadStats();
         ticks = 0;
         diariesRead = false;
         forecastSoon();
@@ -627,6 +645,26 @@ public class NomadPlugin extends Plugin
         if (guard.notes == null) guard.notes = new ArrayList<>();
     }
 
+    private void loadStats()
+    {
+        String saved = configManager.getRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
+        RunStats loaded = null;
+        try
+        {
+            loaded = saved == null ? null : gson.fromJson(saved, RunStats.class);
+        }
+        catch (JsonParseException e)
+        {
+            log.warn("Nomad UIM: couldn't read the run's tallies, so they start from zero", e);
+        }
+        stats = loaded == null ? new RunStats() : loaded;
+    }
+
+    private void saveStats()
+    {
+        if (sim != null) configManager.setRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY, gson.toJson(stats));
+    }
+
     private void saveGuard()
     {
         configManager.setRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY, gson.toJson(guard));
@@ -635,6 +673,7 @@ public class NomadPlugin extends Plugin
     private void save()
     {
         if (sim == null) return;
+        saveStats();
         configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(new SavedRun(sim, surface)));
     }
 
@@ -796,7 +835,7 @@ public class NomadPlugin extends Plugin
     {
         if (panel == null) return;
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
-            config.ruleGuard() ? guard : null);
+            config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 

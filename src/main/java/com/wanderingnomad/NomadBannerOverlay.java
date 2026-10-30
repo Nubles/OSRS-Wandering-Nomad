@@ -157,9 +157,10 @@ class NomadBannerOverlay extends Overlay
         g.drawString(text, x, y);
     }
 
-    /** A small drawn emblem for each kind of moment, with a gentle pulse. */
-    private static void drawIcon(Graphics2D g, Moments.Banner b, int x, int y, int s, long age)
+    /** A small drawn emblem for each kind of moment, with a gentle pulse. The sidebar's timeline uses it too. */
+    static void drawIcon(Graphics2D g, Moments.Banner b, int x, int y, int s, long age)
     {
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         double pulse = 0.5 + 0.5 * Math.sin(age / 220.0);
         float cx = x + s / 2f;
         float cy = y + s / 2f;
