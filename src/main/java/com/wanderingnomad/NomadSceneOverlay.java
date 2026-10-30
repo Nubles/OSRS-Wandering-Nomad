@@ -76,6 +76,8 @@ class NomadSceneOverlay extends Overlay
     private static final int DIM_REACH = 52;
     /** Things inside your circle within this many tiles of its edge stay bright over the shade. */
     private static final int SHIELD = 12;
+    /** The largest share of the game view one erased outline may cover before it's ignored. */
+    private static final double MAX_ERASE = 0.2;
     /** The 3D curtain's height in local units (EdgeWall3D's top band). */
     private static final int CURTAIN_HEIGHT = 210;    /** Within this many tiles of the edge, your tile shows whether you're inside or out. */
     private static final double FEET_NEAR = 3;
@@ -498,17 +500,26 @@ class NomadSceneOverlay extends Overlay
             Point t1 = lp == null ? null : Perspective.localToCanvas(client, lp, plane, CURTAIN_HEIGHT);
             if (g0 != null && t0 != null && g1 != null && t1 != null)
             {
-                g.fillPolygon(new int[]{g0.getX(), g1.getX(), t1.getX(), t0.getX()},
-                    new int[]{g0.getY(), g1.getY(), t1.getY(), t0.getY()}, 4);
+                fill(g, new Polygon(new int[]{g0.getX(), g1.getX(), t1.getX(), t0.getX()},
+                    new int[]{g0.getY(), g1.getY(), t1.getY(), t0.getY()}, 4));
             }
             g0 = g1;
             t0 = t1;
         }
     }
 
-    private static void fill(Graphics2D g, Shape shape)
+    /**
+     * Erases a shape from the shade, unless it's implausibly big. A large building's convex hull, or
+     * a stretch of edge right by the camera, can cover most of the screen, and erasing that wiped
+     * the shade from everything as the camera turned.
+     */
+    private void fill(Graphics2D g, Shape shape)
     {
-        if (shape != null) g.fill(shape);
+        if (shape == null) return;
+        Rectangle b = shape.getBounds();
+        double screen = (double) client.getViewportWidth() * client.getViewportHeight();
+        if ((double) b.width * b.height > screen * MAX_ERASE) return;
+        g.fill(shape);
     }
 
     /**
