@@ -9,6 +9,7 @@ import com.wanderingnomad.sim.Tile;
 import com.wanderingnomad.sim.Waystone;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.GridLayout;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +19,7 @@ import java.util.function.IntConsumer;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -46,6 +48,10 @@ class NomadPanel extends PluginPanel
     private final JPanel boons = new JPanel(new GridLayout(0, 1, 0, 4));
     private final JLabel waystones = new JLabel();
     private final JTextArea logArea = new JTextArea();
+    /** Text width inside the sidebar's 10px borders, a little under the room there is. */
+    private static final int TEXT_WIDTH = PANEL_WIDTH - 40;
+    private String shownBoons;
+    private String shownCrossings;
 
     NomadPanel(IntConsumer onCross, BiConsumer<Integer, Integer> onBoon, Runnable onNewRun, Runnable onViewOnWebsite,
         Runnable onCopyRunCode, Runnable onCopyLiveLink)
@@ -115,6 +121,12 @@ class NomadPanel extends PluginPanel
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.add(newRun, BorderLayout.CENTER);
         add(bottom);
+        // BoxLayout lines children up by their alignment, which differs between labels (left) and
+        // panels (centre); with both, rows slide sideways whenever a label's text changes width.
+        for (Component child : getComponents())
+        {
+            if (child instanceof JComponent) ((JComponent) child).setAlignmentX(LEFT_ALIGNMENT);
+        }
         display(View.of(null, null, Collections.<String>emptyList(), null, null));
     }
 
@@ -122,35 +134,58 @@ class NomadPanel extends PluginPanel
     {
         title.setText(v.title);
         title.setForeground(v.colour);
-        detail.setText(v.detail);
-        diary.setText(v.diary);
-        guard.setText(v.guard);
+        detail.setText(wrap(v.detail));
+        diary.setText(wrap(v.diary));
+        guard.setText(wrap(v.guard));
         boonsTitle.setText(("Boons " + v.boonCount + "/" + NomadSim.BOONS_HELD).toUpperCase());
-        waystones.setText(v.waystones);
-        boons.removeAll();
-        if (v.boons.isEmpty()) boons.add(new JLabel("<html>None yet. Milestones summon waystones; stand on one to claim its boon.</html>"));
-        for (Boon b : v.boons)
+        waystones.setText(wrap(v.waystones));
+        // The buttons are only rebuilt when they change, so they don't blink or lose the mouse on every update.
+        StringBuilder boonKey = new StringBuilder();
+        for (Boon b : v.boons) boonKey.append(b.index).append(b.side).append(b.label).append('\n');
+        if (!boonKey.toString().equals(shownBoons))
         {
-            JButton button = new JButton(b.label);
-            button.setToolTipText(b.tip);
-            button.addActionListener(e -> onBoon.accept(b.index, b.side));
-            boons.add(button);
+            shownBoons = boonKey.toString();
+            boons.removeAll();
+            if (v.boons.isEmpty()) boons.add(new JLabel(wrap("<html>None yet. Milestones summon waystones; stand on one to claim its boon.</html>")));
+            for (Boon b : v.boons)
+            {
+                JButton button = new JButton(b.label);
+                button.setToolTipText(b.tip);
+                button.addActionListener(e -> onBoon.accept(b.index, b.side));
+                boons.add(button);
+            }
         }
-        crossings.removeAll();
-        if (v.options.isEmpty())
+        StringBuilder crossKey = new StringBuilder(v.noCrossing).append('\n');
+        for (Option o : v.options) crossKey.append(o.index).append(o.enabled).append(o.label).append('\n');
+        if (!crossKey.toString().equals(shownCrossings))
         {
-            crossings.add(new JLabel(v.noCrossing));
+            shownCrossings = crossKey.toString();
+            crossings.removeAll();
+            if (v.options.isEmpty())
+            {
+                crossings.add(new JLabel(v.noCrossing));
+            }
+            for (Option o : v.options)
+            {
+                JButton b = new JButton(o.label);
+                b.setEnabled(o.enabled);
+                b.addActionListener(e -> onCross.accept(o.index));
+                crossings.add(b);
+            }
         }
-        for (Option o : v.options)
-        {
-            JButton b = new JButton(o.label);
-            b.setEnabled(o.enabled);
-            b.addActionListener(e -> onCross.accept(o.index));
-            crossings.add(b);
-        }
-        logArea.setText(String.join("\n", v.log));
+        String log = String.join("\n", v.log);
+        if (!log.equals(logArea.getText())) logArea.setText(log);
         revalidate();
         repaint();
+    }
+
+    /**
+     * Fixes an HTML label's width so it wraps inside the sidebar. Without it the label is as wide
+     * as its longest line, wider than the panel, and its width changes with every update.
+     */
+    private static String wrap(String html)
+    {
+        return html.startsWith("<html>") ? "<html><body style='width:" + TEXT_WIDTH + "px'>" + html.substring(6) : html;
     }
 
     static String time(int minutes)

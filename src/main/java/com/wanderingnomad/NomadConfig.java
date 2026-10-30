@@ -4,6 +4,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 
 @ConfigGroup(NomadConfig.GROUP)
 public interface NomadConfig extends Config
@@ -16,6 +17,19 @@ public interface NomadConfig extends Config
         position = 20
     )
     String LIVING_EDGE = "livingEdge";
+
+    @ConfigItem(
+        keyName = "debugShade",
+        name = "Debug: outline the shade",
+        description = "For testing: outlines each shaded patch outside your circle in red, and ones dropped as "
+            + "flipped by the camera in yellow, and logs how many are drawn and dropped.",
+        section = LIVING_EDGE,
+        position = 29
+    )
+    default boolean debugShade()
+    {
+        return false;
+    }
 
     enum EdgeStyle
     {
@@ -111,6 +125,34 @@ public interface NomadConfig extends Config
     default EdgeStyle edgeStyle()
     {
         return EdgeStyle.WALL;
+    }
+
+    // No @Units: a plain number field takes a typed value cleanly, where a "%" suffix gets in the way.
+    @Range(max = 80)
+    @ConfigItem(
+        keyName = "dimOutside",
+        name = "Dim outside (%)",
+        description = "How much to darken the ground outside your circle, 0 to 80 percent, so you can tell at a glance "
+            + "which tiles you can stand on. Type a number and press Enter, or use the arrows. 0 turns it off.",
+        section = LIVING_EDGE,
+        position = 22
+    )
+    default int dimOutside()
+    {
+        return 50;
+    }
+
+    @ConfigItem(
+        keyName = "edge3d",
+        name = "3D edge",
+        description = "Stands a curtain of light on the edge as part of the game world, so walls, roofs, trees and "
+            + "people hide it. Off: the edge is drawn over the picture instead, glowing but never hidden.",
+        section = LIVING_EDGE,
+        position = 20
+    )
+    default boolean edge3d()
+    {
+        return true;
     }
 
     @ConfigItem(

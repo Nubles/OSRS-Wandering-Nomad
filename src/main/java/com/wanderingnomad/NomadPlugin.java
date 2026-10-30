@@ -47,6 +47,7 @@ import net.runelite.api.Skill;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
@@ -133,6 +134,8 @@ public class NomadPlugin extends Plugin
     private NomadStatusOverlay statusOverlay;
     @Inject
     private NomadGlowOverlay glowOverlay;
+    @Inject
+    private EdgeWall3D edgeWall;
 
     private NomadPanel panel;
     private LiveShare live;
@@ -195,6 +198,7 @@ public class NomadPlugin extends Plugin
         overlayManager.remove(worldMapOverlay);
         overlayManager.remove(statusOverlay);
         overlayManager.remove(glowOverlay);
+        clientThread.invoke(edgeWall::clear);
         clientToolbar.removeNavigation(navButton);
         sim = null;
         surface = null;
@@ -206,6 +210,8 @@ public class NomadPlugin extends Plugin
     public void onGameStateChanged(GameStateChanged ev)
     {
         GameState state = ev.getGameState();
+        // A new scene drops what was placed in the old one; the next tick builds the edge again.
+        if (state != GameState.LOGGED_IN) edgeWall.clear();
         if (state == GameState.LOGGED_IN && sim == null)
         {
             // The account's profile may not be known yet; the first tick that knows it loads the run.
@@ -225,9 +231,17 @@ public class NomadPlugin extends Plugin
         }
     }
 
+    /** The 3D edge's wave of light: swaps prebuilt models, so it's cheap every client tick. */
+    @Subscribe
+    public void onClientTick(ClientTick tick)
+    {
+        edgeWall.animate();
+    }
+
     @Subscribe
     public void onGameTick(GameTick tick)
     {
+        edgeWall.update(sim, config.drawEdge() && config.edge3d() && config.edgeStyle() != NomadConfig.EdgeStyle.TILES);
         if (sim == null)
         {
             if (loadPending && client.getAccountHash() != -1 && client.getLocalPlayer() != null)
