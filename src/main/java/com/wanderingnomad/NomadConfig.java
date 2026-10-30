@@ -80,6 +80,18 @@ public interface NomadConfig extends Config
         return true;
     }
 
+    @Range(max = 80)
+    @ConfigItem(
+        keyName = "mapFocus",
+        name = "World map focus (%)",
+        description = "Darkens the world map behind the circles so they stand out from the map's icons. 0 turns it off.",
+        position = 4
+    )
+    default int mapFocus()
+    {
+        return 45;
+    }
+
     @ConfigItem(
         keyName = "statusBox",
         name = "Status box",
