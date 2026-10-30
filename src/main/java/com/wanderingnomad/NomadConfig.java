@@ -130,6 +130,19 @@ public interface NomadConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "edge3d",
+        name = "3D edge",
+        description = "Stands a curtain of light on the edge as part of the game world, so walls, roofs, trees and "
+            + "people hide it. The drawn line stays on top, fainter.",
+        section = LIVING_EDGE,
+        position = 20
+    )
+    default boolean edge3d()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "edgeGlow",
         name = "Edge glow",
         description = "The screen's border glows warmer as the edge closes in on you, and red while you're outside.",

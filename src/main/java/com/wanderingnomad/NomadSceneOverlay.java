@@ -122,7 +122,7 @@ class NomadSceneOverlay extends Overlay
                 boolean mine = j == sim.boundIndex();
                 if (!mine && !(sim.linked(j) && yours.touches(c))) continue;
                 if (tiles) drawTiles(graphics, view, c, at, mine);
-                if (wall) drawWall(graphics, view, c, mine ? null : yours, at, now);
+                if (wall) drawWall(graphics, view, c, mine ? null : yours, at, now, config.edge3d());
             }
             drawFeet(graphics, view, yours, at);
         }
@@ -152,7 +152,7 @@ class NomadSceneOverlay extends Overlay
      * Draws a circle's wall near the player. With {@code inside} set, only the stretch inside that
      * circle is drawn, taller and brighter: the gateway into it.
      */
-    private void drawWall(Graphics2D graphics, WorldView view, Circle c, Circle inside, WorldPoint at, long now)
+    private void drawWall(Graphics2D graphics, WorldView view, Circle c, Circle inside, WorldPoint at, long now, boolean faint)
     {
         double r = c.radius() + WALL_OUT;
         int n = Math.max(48, (int) Math.ceil(Math.PI * 2 * r / SEGMENT));
@@ -214,7 +214,8 @@ class NomadSceneOverlay extends Overlay
                 // Bands of light run along the wall, a little faster on a gateway.
                 double band = 0.5 + 0.5 * Math.sin(a * c.radius() * 0.9 - phase * (gate ? 3.2 : 1.8));
                 int alpha = (int) ((gate ? 110 : 60) * (0.6 + 0.4 * band));
-                curtain(graphics, base, g0, g1, t0, t1, alpha);
+                // With the 3D edge standing in the world, only a faint line is drawn over it.
+                if (!faint) curtain(graphics, base, g0, g1, t0, t1, alpha);
                 if (!open) foot.moveTo(g0.getX(), g0.getY());
                 foot.lineTo(g1.getX(), g1.getY());
                 open = true;
@@ -227,7 +228,12 @@ class NomadSceneOverlay extends Overlay
             t0 = t1;
         }
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        glow(graphics, foot, base, gate ? 1.4 : 1);
+        glow(graphics, foot, base, (gate ? 1.4 : 1) * (faint ? 0.55 : 1));
+        if (faint)
+        {
+            graphics.setClip(clipBefore);
+            return;
+        }
 
         // Sparks go on top, along the same stretch.
         for (int s = 0; s < sparks.length; s++)
