@@ -75,6 +75,19 @@ public interface NomadConfig extends Config
         return true;
     }
 
+    @ConfigItem(
+        keyName = "debugShade",
+        name = "Debug: outline the shade",
+        description = "For testing: outlines each shaded patch outside your circle in red, and ones dropped as "
+            + "flipped by the camera in yellow, and logs how many are drawn and dropped.",
+        section = MOMENTS,
+        position = 49
+    )
+    default boolean debugShade()
+    {
+        return false;
+    }
+
     enum EdgeStyle
     {
         WALL,
