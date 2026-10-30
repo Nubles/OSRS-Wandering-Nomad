@@ -42,9 +42,12 @@ class EdgeWall3D
     /** Tiles around you whose ground outside the circle is darkened. */
     private static final int DIM_REACH = 24;
     /** Ground sheets are grouped into blocks this many tiles square, one in-game object each. */
-    private static final int BLOCK = 4;
-    /** How far the sheets float above the ground, in local units, so the ground doesn't show through. */
-    private static final int LIFT = 6;
+    private static final int BLOCK = 2;
+    /**
+     * How far the sheets float above the ground, in local units. Ground isn't flat across a tile, and
+     * HD's ground sits a little differently, so close to it the terrain pokes through in patches.
+     */
+    private static final int LIFT = 16;
     /** Rebuild once you're this many tiles from where the panels were last built. */
     private static final int REBUILD_STEP = 6;
     /** Each panel is about a tile long. */
@@ -289,7 +292,7 @@ class EdgeWall3D
                     }
                 }
                 if (parts.isEmpty()) continue;
-                Model model = client.mergeModels(parts.toArray(new ModelData[0])).light(64, 768, -50, -50, -10);
+                Model model = client.mergeModels(parts.toArray(new ModelData[0])).light(128, 768, -50, -50, -10);
                 RuneLiteObject o = client.createRuneLiteObject();
                 o.setModel(model);
                 o.setLocation(centre, plane);
