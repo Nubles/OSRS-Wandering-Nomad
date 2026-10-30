@@ -133,7 +133,7 @@ public interface NomadConfig extends Config
         keyName = "edge3d",
         name = "3D edge",
         description = "Stands a curtain of light on the edge as part of the game world, so walls, roofs, trees and "
-            + "people hide it. The drawn line stays on top, fainter.",
+            + "people hide it. Off: the edge is drawn over the picture instead, glowing but never hidden.",
         section = LIVING_EDGE,
         position = 20
     )

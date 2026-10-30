@@ -122,7 +122,9 @@ class NomadSceneOverlay extends Overlay
                 boolean mine = j == sim.boundIndex();
                 if (!mine && !(sim.linked(j) && yours.touches(c))) continue;
                 if (tiles) drawTiles(graphics, view, c, at, mine);
-                if (wall) drawWall(graphics, view, c, mine ? null : yours, at, now, config.edge3d());
+                // The 3D edge is drawn by the game itself, so things in front hide it; a line drawn over the
+                // picture can't be hidden by roofs and walls, so it's only drawn when the 3D edge is off.
+                if (wall && !config.edge3d()) drawWall(graphics, view, c, mine ? null : yours, at, now, false);
             }
             drawFeet(graphics, view, yours, at);
         }

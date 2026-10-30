@@ -41,8 +41,8 @@ class EdgeWall3D
     /** Each panel is about a tile long. */
     private static final double SEGMENT = 1.0;
     /** Band heights in local units (128 to a tile; a player is about 200 tall) and their transparency (0 solid, 255 clear). */
-    private static final int[] BAND_TOP = {70, 140, 210};
-    private static final int[] BAND_CLEAR = {120, 175, 215};
+    private static final int[] BAND_TOP = {10, 70, 140, 210};
+    private static final int[] BAND_CLEAR = {30, 110, 170, 215};
     private static final double GATE_SCALE = 1.5;
 
     private final Client client;
@@ -116,7 +116,7 @@ class EdgeWall3D
         double r = c.radius();
         int n = Math.max(24, (int) Math.ceil(Math.PI * 2 * r / SEGMENT));
         int plane = view.getPlane();
-        short hsl = hsl(NomadPlugin.colour(c, 255), gate ? 0.45f : 0);
+        short hsl = hsl(NomadPlugin.colour(c, 255), gate ? 0.5f : 0.2f);
         double scale = gate ? GATE_SCALE : 1;
 
         for (int i = 0; i < n; i++)
@@ -151,7 +151,8 @@ class EdgeWall3D
 
     /**
      * One panel between two corners on the ground (offsets from its centre, in local units, with
-     * ground heights relative to the centre's), as three bands that grow clearer upward, each
+     * ground heights relative to the centre's), as a bright strip at the foot, the line you walk
+     * over, then three bands that grow clearer upward, each
      * facing both ways so it shows from inside and out.
      */
     private Model panel(int ax, int ay, int az, int bx, int by, int bz, short hsl, double scale)
@@ -195,7 +196,7 @@ class EdgeWall3D
             bottom = top;
         }
         // A high ambient light so the curtain glows rather than shading like a wall.
-        return client.mergeModels(parts.toArray(new ModelData[0])).light(110, 400, -50, -50, -10);
+        return client.mergeModels(parts.toArray(new ModelData[0])).light(128, 300, -50, -50, -10);
     }
 
     /** A colour in the game's 16-bit HSL: 6 bits of hue, 3 of saturation, 7 of lightness, lightened by {@code lift} (0 to 1). */
