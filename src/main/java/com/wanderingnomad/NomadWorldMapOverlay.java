@@ -3,14 +3,18 @@ package com.wanderingnomad;
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Forecast;
 import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Waystone;
 import java.awt.Color;
 import java.awt.BasicStroke;
 import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.Shape;
+import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
@@ -19,18 +23,24 @@ import java.util.Arrays;
 import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.Player;
 import net.runelite.api.Point;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.worldmap.WorldMap;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * Every circle on the world map: yours solid and filled, Main dashed, the region circles thin,
- * each with a tick showing its heading. Tiles are placed with the same maths RuneLite uses for
- * map pins: the map widget's bounds, the zoom in pixels per tile and the tile at its centre.
+ * Every circle on the world map, filled in its own colour and named, with an arrow showing where
+ * it's heading. Yours is boldest, Main is dashed when you're elsewhere, and where a circle you can
+ * cross into overlaps yours the overlap glows. Hover a circle for its details; circles you care
+ * about that are off the edge of the map get a pointer at the border. Tiles are placed with the
+ * same maths RuneLite uses for map pins: the map widget's bounds, the zoom in pixels per tile and
+ * the tile at its centre.
  */
 class NomadWorldMapOverlay extends Overlay
 {
@@ -39,8 +49,11 @@ class NomadWorldMapOverlay extends Overlay
         new float[]{10f, 5f}, 0f);
     private static final BasicStroke CONE = new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
         new float[]{3f, 4f}, 0f);
-    private static final BasicStroke REGION = new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
-        new float[]{5f, 4f}, 0f);
+    private static final BasicStroke REGION = new BasicStroke(2f);
+    private static final BasicStroke ARROW = new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+    private static final BasicStroke THIN = new BasicStroke(1f);
+    /** Circles never shrink below this on screen, so a far zoom still shows them. */
+    private static final double MIN_RADIUS_PX = 4;
 
     private final Client client;
     private final NomadPlugin plugin;
@@ -80,28 +93,208 @@ class NomadWorldMapOverlay extends Overlay
         {
             drawForecast(graphics, forecast, circles, sim.boundIndex(), bounds, west, south, zoom);
         }
-        for (int j = circles.size() - 1; j >= 0; j--)
+        int yours = sim.boundIndex();
+        Ellipse2D[] rings = new Ellipse2D[circles.size()];
+        for (int j = 0; j < circles.size(); j++)
         {
             Circle c = circles.get(j);
-            boolean yours = j == sim.boundIndex();
             double px = bounds.x + (c.x() - west) * zoom;
             double py = bounds.y + bounds.height - (c.y() - south) * zoom;
-            double pr = c.radius() * zoom;
-            Ellipse2D ring = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
-            if (yours)
-            {
-                graphics.setColor(NomadPlugin.colour(c, 50));
-                graphics.fill(ring);
-            }
-            graphics.setStroke(yours ? YOURS : c.isMain() ? MAIN : REGION);
-            graphics.setColor(NomadPlugin.colour(c, yours || c.isMain() ? 230 : 160));
-            graphics.draw(ring);
-            double tick = pr + Math.max(8, 18 * zoom / 4);
-            graphics.draw(new Line2D.Double(px, py, px + Math.cos(c.heading()) * tick, py - Math.sin(c.heading()) * tick));
+            double pr = Math.max(MIN_RADIUS_PX, c.radius() * zoom);
+            rings[j] = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
+        }
+        long now = System.currentTimeMillis();
+
+        // Others first, yours on top.
+        for (int j = circles.size() - 1; j >= 0; j--)
+        {
+            if (j != yours) drawCircle(graphics, circles.get(j), rings[j], false, sim.linked(j));
+        }
+        drawCircle(graphics, circles.get(yours), rings[yours], true, false);
+        drawOverlaps(graphics, sim, rings, now);
+
+        Font font = graphics.getFont();
+        graphics.setFont(FontManager.getRunescapeSmallFont());
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            Ellipse2D ring = rings[j];
+            if (!ring.intersects(bounds)) continue;
+            String name = j == yours ? c.name() + " (you)" : c.name();
+            Color colour = NomadPlugin.colour(c, 255);
+            double top = ring.getMinY() - 4;
+            if (top < bounds.y + 12) top = ring.getMaxY() + 12;
+            outlined(graphics, name, (float) ring.getCenterX(), (float) top, colour, true);
         }
         drawWaystones(graphics, sim, bounds, west, south, zoom);
+        drawPointers(graphics, sim, rings, bounds);
+        drawHover(graphics, sim, rings, bounds);
+        graphics.setFont(font);
         graphics.setClip(before);
         return null;
+    }
+
+    /** One circle: a fill in its colour, its rim, and an arrow from the rim along its heading. */
+    private static void drawCircle(Graphics2D graphics, Circle c, Ellipse2D ring, boolean yours, boolean linked)
+    {
+        graphics.setColor(NomadPlugin.colour(c, yours ? 60 : c.isMain() ? 40 : linked ? 34 : 24));
+        graphics.fill(ring);
+        graphics.setStroke(yours ? YOURS : c.isMain() ? MAIN : REGION);
+        graphics.setColor(NomadPlugin.colour(c, yours || c.isMain() ? 245 : linked ? 220 : 170));
+        graphics.draw(ring);
+
+        double pr = ring.getWidth() / 2;
+        double cx = ring.getCenterX();
+        double cy = ring.getCenterY();
+        double ux = Math.cos(c.heading());
+        double uy = -Math.sin(c.heading());
+        double len = Math.max(10, Math.min(28, pr * 0.6));
+        double sx = cx + ux * pr;
+        double sy = cy + uy * pr;
+        double ex = sx + ux * len;
+        double ey = sy + uy * len;
+        graphics.setStroke(ARROW);
+        graphics.draw(new Line2D.Double(sx, sy, ex, ey));
+        Path2D.Double head = new Path2D.Double();
+        head.moveTo(ex + ux * 6, ey + uy * 6);
+        head.lineTo(ex - uy * 5, ey + ux * 5);
+        head.lineTo(ex + uy * 5, ey - ux * 5);
+        head.closePath();
+        graphics.fill(head);
+    }
+
+    /** Where a circle you can cross into overlaps yours, the overlap glows and pulses: that's the crossing. */
+    private static void drawOverlaps(Graphics2D graphics, NomadSim sim, Ellipse2D[] rings, long now)
+    {
+        int yours = sim.boundIndex();
+        double pulse = 0.5 + 0.5 * Math.sin(now / 350.0);
+        for (int j = 0; j < rings.length; j++)
+        {
+            if (!sim.linked(j) || !sim.bound().touches(sim.circles().get(j))) continue;
+            Area lens = new Area(rings[yours]);
+            lens.intersect(new Area(rings[j]));
+            if (lens.isEmpty()) continue;
+            Color colour = NomadPlugin.colour(sim.circles().get(j), 255);
+            graphics.setColor(NomadSceneOverlay.alpha(colour, (int) (90 + 90 * pulse)));
+            graphics.fill(lens);
+            graphics.setStroke(THIN);
+            graphics.setColor(NomadSceneOverlay.alpha(Color.WHITE, (int) (140 + 100 * pulse)));
+            graphics.draw(lens);
+        }
+    }
+
+    /**
+     * Your circle and Main, when they're off the part of the map you're looking at, get a pointer
+     * at the map's border saying which way they are.
+     */
+    private static void drawPointers(Graphics2D graphics, NomadSim sim, Ellipse2D[] rings, Rectangle bounds)
+    {
+        int[] watch = sim.boundIndex() == NomadSim.MAIN ? new int[]{NomadSim.MAIN} : new int[]{sim.boundIndex(), NomadSim.MAIN};
+        double mx = bounds.getCenterX();
+        double my = bounds.getCenterY();
+        for (int j : watch)
+        {
+            Ellipse2D ring = rings[j];
+            if (ring.intersects(bounds)) continue;
+            double dx = ring.getCenterX() - mx;
+            double dy = ring.getCenterY() - my;
+            double d = Math.hypot(dx, dy);
+            if (d < 1) continue;
+            double ux = dx / d;
+            double uy = dy / d;
+            // Walk out from the middle to just inside the border.
+            double t = Math.min((bounds.width / 2.0 - 26) / Math.max(1e-6, Math.abs(ux)),
+                (bounds.height / 2.0 - 26) / Math.max(1e-6, Math.abs(uy)));
+            double tx = mx + ux * t;
+            double ty = my + uy * t;
+            Circle c = sim.circles().get(j);
+            Color colour = NomadPlugin.colour(c, 255);
+            Path2D.Double arrow = new Path2D.Double();
+            arrow.moveTo(tx + ux * 14, ty + uy * 14);
+            arrow.lineTo(tx - uy * 9 - ux * 4, ty + ux * 9 - uy * 4);
+            arrow.lineTo(tx + uy * 9 - ux * 4, ty - ux * 9 - uy * 4);
+            arrow.closePath();
+            graphics.setColor(colour);
+            graphics.fill(arrow);
+            graphics.setStroke(THIN);
+            graphics.setColor(Color.BLACK);
+            graphics.draw(arrow);
+            String name = j == sim.boundIndex() ? c.name() + " (you)" : c.name();
+            outlined(graphics, name, (float) (tx - ux * 22), (float) (ty - uy * 22 + 4), colour, true);
+        }
+    }
+
+    /** Hovering a circle shows what it's doing: size, mood, how far it is from you and whether you can cross. */
+    private void drawHover(Graphics2D graphics, NomadSim sim, Ellipse2D[] rings, Rectangle bounds)
+    {
+        Point mouse = client.getMouseCanvasPosition();
+        if (mouse == null || !bounds.contains(mouse.getX(), mouse.getY())) return;
+        int pick = -1;
+        for (int j = 0; j < rings.length; j++)
+        {
+            if (!rings[j].contains(mouse.getX(), mouse.getY())) continue;
+            if (pick < 0 || rings[j].getWidth() < rings[pick].getWidth()) pick = j;
+        }
+        if (pick < 0) return;
+        Circle c = sim.circles().get(pick);
+        List<String> lines = new ArrayList<>();
+        lines.add(c.name() + (pick == sim.boundIndex() ? " · your circle" : c.isMain() ? " · Main" : ""));
+        lines.add("Radius " + Math.round(c.radius()) + " tiles");
+        lines.add("Mood: " + c.moodName().toLowerCase() + (c.sailing() ? ", at sea to " + c.voyageTo() : ""));
+        String effects = NomadPanel.effects(c);
+        if (!effects.isEmpty()) lines.add(effects.substring("<br>".length()));
+        Player player = client.getLocalPlayer();
+        WorldPoint at = player == null ? null : player.getWorldLocation();
+        if (at != null)
+        {
+            double d = Math.hypot(c.x() - at.getX(), c.y() - at.getY()) - c.radius();
+            lines.add(d <= 0 ? "You're inside it" : Math.round(d) + " tiles from its edge");
+        }
+        if (sim.linked(pick))
+        {
+            Radar radar = plugin.radar();
+            int in = radar == null || pick >= radar.crossingIn.length ? -1 : radar.crossingIn[pick];
+            double gap = sim.bound().gap(c);
+            lines.add(gap <= 0 ? "Touching yours: you can cross in the overlap"
+                : in > 0 ? "Touches yours in about " + in + " min"
+                : Math.round(gap) + " tiles from yours");
+        }
+        else if (pick != sim.boundIndex())
+        {
+            lines.add("Reach it through Main");
+        }
+
+        FontMetrics fm = graphics.getFontMetrics();
+        int w = 0;
+        for (String l : lines) w = Math.max(w, fm.stringWidth(l));
+        int lineH = fm.getHeight();
+        int boxW = w + 14;
+        int boxH = lines.size() * lineH + 10;
+        int x = Math.min(mouse.getX() + 14, bounds.x + bounds.width - boxW - 4);
+        int y = Math.min(mouse.getY() + 14, bounds.y + bounds.height - boxH - 4);
+        graphics.setColor(new Color(30, 27, 22, 225));
+        graphics.fillRect(x, y, boxW, boxH);
+        graphics.setStroke(THIN);
+        graphics.setColor(NomadPlugin.colour(c, 255));
+        graphics.drawRect(x, y, boxW, boxH);
+        for (int k = 0; k < lines.size(); k++)
+        {
+            Color colour = k == 0 ? NomadPlugin.colour(c, 255) : Color.WHITE;
+            outlined(graphics, lines.get(k), x + 7, y + 5 + (k + 1) * lineH - fm.getDescent(), colour, false);
+        }
+    }
+
+    /** Text with a dark outline, readable on any part of the map. */
+    private static void outlined(Graphics2D graphics, String text, float x, float y, Color colour, boolean centred)
+    {
+        if (centred) x -= graphics.getFontMetrics().stringWidth(text) / 2f;
+        graphics.setColor(Color.BLACK);
+        graphics.drawString(text, x + 1, y + 1);
+        graphics.drawString(text, x - 1, y + 1);
+        graphics.drawString(text, x + 1, y - 1);
+        graphics.drawString(text, x - 1, y - 1);
+        graphics.setColor(colour);
+        graphics.drawString(text, x, y);
     }
 
     /**
