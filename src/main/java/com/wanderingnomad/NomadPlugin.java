@@ -33,6 +33,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.function.Consumer;
 import javax.inject.Inject;
+import javax.inject.Named;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +53,7 @@ import net.runelite.api.events.CommandExecuted;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.VarPlayerID;
@@ -142,6 +144,9 @@ public class NomadPlugin extends Plugin
     @Inject
     private EdgeWall3D edgeWall;
     @Inject
+    @Named("developerMode")
+    private boolean developerMode;
+    @Inject
     private NomadBannerOverlay bannerOverlay;
     private final Moments moments = new Moments();
     /** The run's latest moments, newest first, for the sidebar. */
@@ -185,6 +190,19 @@ public class NomadPlugin extends Plugin
         live = new LiveShare(okHttpClient);
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
             this::copyRunCode, this::copyLiveLink);
+        if (developerMode)
+        {
+            // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
+            panel.addTestButtons(
+                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min"},
+                new Runnable[]{
+                    () -> clientThread.invokeLater(() -> test("nomadmoments")),
+                    () -> clientThread.invokeLater(() -> test("nomadfork")),
+                    () -> clientThread.invokeLater(() -> test("nomadfork", "now")),
+                    () -> clientThread.invokeLater(() -> test("nomadstep", "1")),
+                    () -> clientThread.invokeLater(() -> test("nomadstep", "30")),
+                });
+        }
         navButton = NavigationButton.builder()
             .tooltip("Nomad UIM")
             .icon(icon())
@@ -480,20 +498,36 @@ public class NomadPlugin extends Plugin
         if (config.momentSounds() && b.sound >= 0) client.playSoundEffect(b.sound, SOUND_VOLUME);
     }
 
-    /** ::nomadmoments shows one of every kind of banner, to try them out. */
+    /** The test shortcuts, typed as ::nomadmoments, ::nomadfork [now] or ::nomadstep N. */
     @Subscribe
     public void onCommandExecuted(CommandExecuted ev)
     {
-        String command = ev.getCommand() == null ? "" : ev.getCommand().trim().toLowerCase();
+        test(ev.getCommand(), ev.getArguments());
+    }
+
+    /**
+     * Logs RuneLite's raw signal for a typed :: command, so the log shows whether the game's chat
+     * script raised it even when no command reached the plugin.
+     */
+    @Subscribe
+    public void onScriptCallbackEvent(ScriptCallbackEvent ev)
+    {
+        if (developerMode && "runeliteCommand".equals(ev.getEventName())) log.info("Nomad UIM: the chatbox raised a :: command");
+    }
+
+    /** Runs a test shortcut, from a typed :: command or a sidebar button. Client thread. */
+    private void test(String typed, String... rawArgs)
+    {
+        String command = typed == null ? "" : typed.trim().toLowerCase();
         if (!command.startsWith("nomad")) return;
-        log.info("Nomad UIM: command ::{} {}", command, String.join(" ", ev.getArguments()));
+        log.info("Nomad UIM: command ::{} {}", command, String.join(" ", rawArgs));
         if (sim == null)
         {
             reply("Nomad UIM has no run loaded yet. Log in first.");
             return;
         }
         List<String> words = new ArrayList<>();
-        for (String a : ev.getArguments())
+        for (String a : rawArgs)
         {
             if (a != null && !a.trim().isEmpty()) words.add(a.trim());
         }

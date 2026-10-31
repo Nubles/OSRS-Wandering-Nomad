@@ -155,6 +155,25 @@ class NomadPanel extends PluginPanel
         display(View.of(null, null, Collections.<String>emptyList(), null, null, null, null, Collections.<Moment>emptyList(), false));
     }
 
+    /**
+     * Adds a row of testing buttons at the bottom, for a developer client: the same shortcuts as
+     * the ::nomad commands. They really change the run.
+     */
+    void addTestButtons(String[] labels, Runnable[] actions)
+    {
+        JComponent title = heading("Testing (changes your run)");
+        title.setAlignmentX(LEFT_ALIGNMENT);
+        add(gap(10));
+        add(title);
+        add(gap(4));
+        JPanel grid = new JPanel(new GridLayout(0, 2, 4, 4));
+        grid.setOpaque(false);
+        for (int i = 0; i < labels.length; i++) grid.add(small(labels[i], labels[i], actions[i]));
+        fix(grid, ((labels.length + 1) / 2) * 26);
+        add(grid);
+        revalidate();
+    }
+
     void display(View v)
     {
         for (SidebarParts.Part p : drawn) p.show(v);
