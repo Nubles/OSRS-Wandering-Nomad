@@ -53,3 +53,15 @@ tasks.register('sidebarSnapshot', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.wanderingnomad.SidebarSnapshot'
 }
+tasks.register('sidebarSnapshotFork', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.wanderingnomad.SidebarSnapshot'
+    args 'build/sidebar-warn.png', 'warn'
+    doLast {
+        javaexec {
+            classpath = sourceSets.test.runtimeClasspath
+            mainClass = 'com.wanderingnomad.SidebarSnapshot'
+            args 'build/sidebar-forked.png', 'forked'
+        }
+    }
+}

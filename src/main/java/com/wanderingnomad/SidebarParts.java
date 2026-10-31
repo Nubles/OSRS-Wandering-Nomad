@@ -185,7 +185,9 @@ final class SidebarParts
             arrow(g, tx + 5, 53, v.heading, 6, v.colour);
             text(g, FontManager.getRunescapeSmallFont(), fit(sm, v.mood, tw - 14), tx + 14, 57, Color.WHITE);
             text(g, FontManager.getRunescapeSmallFont(), fit(sm, Math.round(v.radius) + " tiles · played " + v.played, tw), tx, 73, MUTED);
-            text(g, FontManager.getRunescapeSmallFont(), fit(sm, v.where, tw), tx, 86, MUTED);
+            // A coming or running fork takes the bottom line; otherwise it says where the circle is.
+            if (v.forkLine != null) text(g, FontManager.getRunescapeSmallFont(), fit(sm, v.forkLine, SIDEBAR_WIDTH - 20), tx, 86, NomadStatusOverlay.FORK);
+            else text(g, FontManager.getRunescapeSmallFont(), fit(sm, v.where, tw), tx, 86, MUTED);
         }
     }
 
@@ -268,9 +270,28 @@ final class SidebarParts
                 g.setColor(Color.WHITE);
                 g.fill(new Ellipse2D.Float(x - 3, y - 3, 6, 6));
             }
+            if (v.forkWarning > 0) forkArrows(g, v, c, scale);
             pointers(g, v, c, scale);
-            text(g, FontManager.getRunescapeSmallFont(), "N", SIDEBAR_WIDTH - 12, 13, MUTED);
-            text(g, FontManager.getRunescapeSmallFont(), Math.round(span(v)) + " tiles across", 6, H - 6, MUTED);
+            Font small = FontManager.getRunescapeSmallFont();
+            text(g, small, "N", SIDEBAR_WIDTH - 12, 13, MUTED);
+            text(g, small, Math.round(span(v)) + " tiles across", 6, H - 6, MUTED);
+        }
+
+        /** The ways Main's halves will go when it forks: two arrows from its centre. */
+        private static void forkArrows(Graphics2D g, NomadPanel.View v, double[] c, double scale)
+        {
+            float cx = (float) (SIDEBAR_WIDTH / 2.0 + (v.mainX - c[0]) * scale);
+            float cy = (float) (H / 2.0 - (v.mainY - c[1]) * scale);
+            float len = (float) Math.max(18, v.mainR * scale * 0.8);
+            for (double heading : new double[]{v.forkAxis, v.forkAxis + Math.PI})
+            {
+                float ex = (float) (cx + Math.cos(heading) * len);
+                float ey = (float) (cy - Math.sin(heading) * len);
+                g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g.setColor(NomadStatusOverlay.FORK);
+                g.drawLine((int) cx, (int) cy, (int) ex, (int) ey);
+                arrow(g, ex, ey, heading, 6, NomadStatusOverlay.FORK);
+            }
         }
 
         /**
@@ -499,7 +520,7 @@ final class SidebarParts
 
         Stats()
         {
-            super(ROW * 4 + 10);
+            super(ROW * 5 + 10);
         }
 
         @Override
@@ -512,6 +533,7 @@ final class SidebarParts
                 {"Crossings", String.valueOf(v.crossingsMade)}, {"Claimed", String.valueOf(v.claimed)},
                 {"Outside", v.timesOutside + (v.timesOutside == 1 ? " time" : " times")}, {"Seed", String.valueOf(v.seed)},
                 {"Guard", v.guardShort}, {"Diaries", v.diaryShort},
+                {"Quiet for", NomadPanel.time(v.quiet)}, {"", ""},
             };
             Font small = FontManager.getRunescapeSmallFont();
             FontMetrics sm = g.getFontMetrics(small);

@@ -237,6 +237,15 @@ class NomadBannerOverlay extends Overlay
                 g.fillRect((int) cx - 1, (int) (cy + r * 0.5f), 3, 3);
                 break;
             }
+            case FORK:
+            {
+                // One circle splitting into two, drifting apart.
+                float h = r * 0.75f;
+                g.draw(new Ellipse2D.Float(cx - r * 1.35f, cy - h * 0.5f - h, h * 2, h * 2));
+                g.draw(new Ellipse2D.Float(cx + r * 1.35f - h * 2, cy + h * 0.5f - h, h * 2, h * 2));
+                g.fill(new Ellipse2D.Float(cx - 2, cy - 2, 4, 4));
+                break;
+            }
             default:
                 break;
         }

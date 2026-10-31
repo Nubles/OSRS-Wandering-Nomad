@@ -1,0 +1,2 @@
+# The shared test vectors must match byte for byte on every platform, so they keep LF line endings.
+web/src/engine/vectors.json text eol=lf

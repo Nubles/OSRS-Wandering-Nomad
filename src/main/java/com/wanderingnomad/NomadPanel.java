@@ -537,6 +537,16 @@ class NomadPanel extends PluginPanel
         final List<MapCircle> circles = new ArrayList<>();
         final List<MapStone> stones = new ArrayList<>();
         double[][] cone;
+        /** Main's centre and radius, for the fork's arrows. */
+        double mainX;
+        double mainY;
+        double mainR;
+        /** Minutes until Main forks (0 if none is coming), the heading its half takes, and the fork's state in words. */
+        int forkWarning;
+        double forkAxis;
+        String forkLine;
+        /** Played minutes since the last fork, voyage or crossing. */
+        int quiet;
 
         int held;
         final List<BoonSlot> boons = new ArrayList<>();
@@ -591,6 +601,27 @@ class NomadPanel extends PluginPanel
             {
                 Circle o = sim.circles().get(j);
                 v.circles.add(new MapCircle(o, j == sim.boundIndex(), sim.linked(j), c.gap(o)));
+            }
+            // A forked Main's other half, drawn like Main.
+            if (sim.twin() != null)
+            {
+                v.circles.add(new MapCircle(sim.twin(), sim.boundIndex() == NomadSim.MAIN, sim.linked(NomadSim.MAIN), c.gap(sim.twin())));
+            }
+            Circle main = sim.main();
+            v.mainX = main.x();
+            v.mainY = main.y();
+            v.mainR = main.radius();
+            v.forkWarning = sim.forkWarning();
+            v.forkAxis = sim.forkAxis();
+            v.quiet = sim.quietMinutes();
+            if (sim.forkWarning() > 0)
+            {
+                v.forkLine = "Fork in " + sim.forkWarning() + " min: " + NomadSim.compass(sim.forkAxis()) + " / "
+                    + NomadSim.compass(sim.forkAxis() + Math.PI);
+            }
+            else if (sim.twin() != null)
+            {
+                v.forkLine = "Forked: stand in the half you want";
             }
             // Yours last, so it draws on top.
             v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));

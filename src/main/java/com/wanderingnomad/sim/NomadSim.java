@@ -250,6 +250,22 @@ public final class NomadSim
         return forkAxis;
     }
 
+    /**
+     * For trying forks out in game (the plugin's ::nomadfork): the next fork comes at the next played
+     * minute, with its warning as usual. With {@code skipWarning}, a warning already under way ends
+     * at the next minute instead. Never called by the rules, so it can't touch the shared vectors.
+     */
+    public void forkSoonForTesting(boolean skipWarning)
+    {
+        if (twin != null) return;
+        if (forkWarn > 0)
+        {
+            if (skipWarning) forkWarn = 1;
+            return;
+        }
+        nextFork = Math.max(1, minutes);
+    }
+
     /** Played minutes since the last fork, voyage or crossing. */
     public int quietMinutes()
     {

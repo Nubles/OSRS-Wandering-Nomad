@@ -35,14 +35,15 @@ public final class Radar
         {
             if (sim.linked(j) && sim.bound().touches(sim.circles().get(j))) crossing[j] = 0;
         }
-        boolean inside = player == null || sim.bound().contains(player.x, player.y);
+        // Either half of a forked Main counts as inside.
+        boolean inside = player == null || sim.inYours(player.x, player.y);
         int edge = inside ? -1 : 0;
         NomadSim copy = sim.copy();
         for (int m = 1; m <= MINUTES; m++)
         {
             copy.step(player);
             Circle yours = copy.circles.get(bound);
-            if (edge < 0 && player != null && !yours.contains(player.x, player.y)) edge = m;
+            if (edge < 0 && player != null && !copy.inYours(player.x, player.y)) edge = m;
             for (int j = 0; j < n; j++)
             {
                 if (crossing[j] < 0 && sim.linked(j) && yours.touches(copy.circles.get(j))) crossing[j] = m;

@@ -284,6 +284,12 @@ public class NomadPlugin extends Plugin
             return;
         }
         ticks = 0;
+        minute();
+    }
+
+    /** Plays one minute of the run and everything that follows from it. Client thread. */
+    private void minute()
+    {
         sim.setSailingUnlocked(config.sailingUnlocked());
         int boundBefore = sim.boundIndex();
         List<String> lines = sim.step(surface);
@@ -395,7 +401,24 @@ public class NomadPlugin extends Plugin
     /** Standing outside your circle right now, by the surface tile you count as on. */
     boolean outsideNow()
     {
-        return sim != null && surface != null && !sim.bound().contains(surface.x, surface.y);
+        return sim != null && surface != null && !sim.inYours(surface.x, surface.y);
+    }
+
+    /** Your circle, and while Main is forked and yours, its other half too. Never cache it: a fork swaps Main. */
+    static List<Circle> halves(NomadSim sim)
+    {
+        List<Circle> out = new ArrayList<>(2);
+        out.add(sim.bound());
+        if (sim.boundIndex() == NomadSim.MAIN && sim.twin() != null) out.add(sim.twin());
+        return out;
+    }
+
+    /** Tiles from (x, y) to the nearest edge of your circle: positive inside either half, negative outside both. */
+    static double toEdge(NomadSim sim, double x, double y)
+    {
+        double best = Double.NEGATIVE_INFINITY;
+        for (Circle c : halves(sim)) best = Math.max(best, c.radius() - Math.hypot(x - c.x(), y - c.y()));
+        return best;
     }
 
     /** Plays the next 15 minutes on a copy of the run: a millisecond or less. */
@@ -461,8 +484,40 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onCommandExecuted(CommandExecuted ev)
     {
-        if (!"nomadmoments".equalsIgnoreCase(ev.getCommand()) || sim == null) return;
-        for (Moments.Banner b : Moments.samples(sim)) show(b);
+        if (sim == null) return;
+        String command = ev.getCommand().toLowerCase();
+        String[] args = ev.getArguments();
+        switch (command)
+        {
+            case "nomadmoments":
+                for (Moments.Banner b : Moments.samples(sim)) show(b);
+                break;
+            case "nomadfork":
+                // Testing: the next fork comes at the next played minute; "now" cuts a warning short.
+                boolean now = args.length > 0 && "now".equalsIgnoreCase(args[0]);
+                sim.forkSoonForTesting(now);
+                chat(sim.twin() != null ? "Main is already forked." : now && sim.forkWarning() > 0
+                    ? "The fork's warning ends at the next minute." : "A fork comes at the next played minute.");
+                break;
+            case "nomadstep":
+                // Testing: plays this many minutes of the run straight away (up to 120). This really advances the run.
+                int minutes = 1;
+                try
+                {
+                    if (args.length > 0) minutes = Integer.parseInt(args[0]);
+                }
+                catch (NumberFormatException e)
+                {
+                    chat("Usage: ::nomadstep <minutes>");
+                    return;
+                }
+                minutes = Math.max(1, Math.min(120, minutes));
+                for (int i = 0; i < minutes; i++) minute();
+                chat("Played " + minutes + (minutes == 1 ? " minute." : " minutes."));
+                break;
+            default:
+                break;
+        }
     }
 
     /** Imagines the next six hours off the client thread, from a copy taken here. */

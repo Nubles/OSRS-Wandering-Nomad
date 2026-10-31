@@ -13,6 +13,8 @@ import java.awt.Shape;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
+import java.util.ArrayList;
+import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Perspective;
@@ -84,11 +86,14 @@ class NomadMinimapOverlay extends Overlay
         graphics.clip(minimap);
 
         Circle yours = sim.bound();
-        Path2D ring = ring(view, yours);
-        if (ring != null)
+        // Your circle, and while Main is forked and yours, both its halves: the ground outside all of them is dimmed.
+        List<Circle> halves = NomadPlugin.halves(sim);
+        List<Path2D> rings = new ArrayList<>();
+        for (Circle half : halves) rings.add(ring(view, half));
+        if (!rings.contains(null))
         {
             Area outside = new Area(minimap);
-            outside.subtract(new Area(ring));
+            for (Path2D r : rings) outside.subtract(new Area(r));
             graphics.setColor(SHADE);
             graphics.fill(outside);
         }
@@ -98,7 +103,15 @@ class NomadMinimapOverlay extends Overlay
             if (j == sim.boundIndex() || !sim.linked(j) || yours.gap(o) > 40) continue;
             glow(graphics, arcs(view, o), NomadPlugin.colour(o, 255), 0.6);
         }
-        glow(graphics, ring != null ? ring : arcs(view, yours), NomadPlugin.colour(yours, 255), 1);
+        if (sim.twin() != null && sim.boundIndex() != NomadSim.MAIN && sim.linked(NomadSim.MAIN))
+        {
+            glow(graphics, arcs(view, sim.twin()), NomadPlugin.colour(sim.twin(), 255), 0.6);
+        }
+        for (int k = 0; k < halves.size(); k++)
+        {
+            Path2D r = rings.get(k);
+            glow(graphics, r != null ? r : arcs(view, halves.get(k)), NomadPlugin.colour(halves.get(k), 255), k == 0 ? 1 : 0.8);
+        }
         graphics.setClip(before);
 
         if (plugin.config().minimapArrows())

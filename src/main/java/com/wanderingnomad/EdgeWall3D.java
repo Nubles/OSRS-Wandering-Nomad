@@ -91,12 +91,34 @@ class EdgeWall3D
         builtFor = key;
 
         Circle yours = sim.bound();
-        build(view, yours, null, at);
+        Circle main = sim.main();
+        Circle twin = sim.twin();
+        for (Circle c : edges(sim))
+        {
+            Circle other = twin == null ? null : c == main ? twin : c == twin ? main : null;
+            build(view, c, c == yours || isYourTwin(sim, c) ? null : yours, other, at);
+        }
+    }
+
+    /** The circles whose edges stand near you: yours, both halves of a forked Main, and any you can cross into that touch yours. */
+    private static List<Circle> edges(NomadSim sim)
+    {
+        List<Circle> out = new ArrayList<>();
+        Circle yours = sim.bound();
+        out.add(yours);
         for (int j = 0; j < sim.circles().size(); j++)
         {
             Circle c = sim.circles().get(j);
-            if (j != sim.boundIndex() && sim.linked(j) && yours.touches(c)) build(view, c, yours, at);
+            if (j != sim.boundIndex() && sim.linked(j) && yours.touches(c)) out.add(c);
         }
+        Circle twin = sim.twin();
+        if (twin != null && (sim.boundIndex() == NomadSim.MAIN || sim.linked(NomadSim.MAIN) && yours.touches(twin))) out.add(twin);
+        return out;
+    }
+
+    private static boolean isYourTwin(NomadSim sim, Circle c)
+    {
+        return c == sim.twin() && sim.boundIndex() == NomadSim.MAIN;
     }
 
     /** Runs the wave of light along the curtain. Called every client tick; only swaps models. */
@@ -126,12 +148,10 @@ class EdgeWall3D
         StringBuilder b = new StringBuilder();
         b.append(view.getBaseX()).append(',').append(view.getBaseY()).append(',').append(view.getPlane())
             .append('|').append(Math.floorDiv(at.getX(), REBUILD_STEP)).append(',').append(Math.floorDiv(at.getY(), REBUILD_STEP));
-        Circle yours = sim.bound();
-        for (int j = 0; j < sim.circles().size(); j++)
+        int k = 0;
+        for (Circle c : edges(sim))
         {
-            Circle c = sim.circles().get(j);
-            if (j != sim.boundIndex() && !(sim.linked(j) && yours.touches(c))) continue;
-            b.append('|').append(j).append(':').append(Math.round(c.x() * 4)).append(',').append(Math.round(c.y() * 4))
+            b.append('|').append(k++).append(':').append(Math.round(c.x() * 4)).append(',').append(Math.round(c.y() * 4))
                 .append(',').append(Math.round(c.radius() * 4));
         }
         return b.toString();
@@ -141,7 +161,7 @@ class EdgeWall3D
      * Stands panels along a circle's edge near you. With {@code inside} set, only the stretch inside
      * that circle: the gateway into it from yours.
      */
-    private void build(WorldView view, Circle c, Circle inside, WorldPoint at)
+    private void build(WorldView view, Circle c, Circle inside, Circle hidden, WorldPoint at)
     {
         boolean gate = inside != null;
         double r = c.radius();
@@ -163,6 +183,8 @@ class EdgeWall3D
             double my = (y0 + y1) / 2;
             if (Math.abs(mx - at.getX()) > REACH || Math.abs(my - at.getY()) > REACH) continue;
             if (gate && !inside.contains(mx, my)) continue;
+            // Where the halves of a forked Main overlap, each one's edge inside the other is hidden, so they read as one shape.
+            if (hidden != null && hidden.contains(mx, my)) continue;
             LocalPoint p0 = local(view, x0, y0);
             LocalPoint p1 = local(view, x1, y1);
             LocalPoint mid = local(view, mx, my);
@@ -250,27 +272,45 @@ class EdgeWall3D
      */
     static double[][] outsidePart(Circle c, int x, int y)
     {
-        double[][] square = {{x - 0.5, y - 0.5}, {x + 0.5, y - 0.5}, {x + 0.5, y + 0.5}, {x - 0.5, y + 0.5}};
-        double[] f = new double[4];
+        return outside(new double[][]{{x - 0.5, y - 0.5}, {x + 0.5, y - 0.5}, {x + 0.5, y + 0.5}, {x - 0.5, y + 0.5}}, c);
+    }
+
+    /** The part of tile ({@code x}, {@code y}) outside every one of the circles, such as both halves of a forked Main. */
+    static double[][] outsidePart(List<Circle> circles, int x, int y)
+    {
+        double[][] part = {{x - 0.5, y - 0.5}, {x + 0.5, y - 0.5}, {x + 0.5, y + 0.5}, {x - 0.5, y + 0.5}};
+        for (Circle c : circles)
+        {
+            part = outside(part, c);
+            if (part == null) return null;
+        }
+        return part;
+    }
+
+    /** The part of a polygon outside a circle, cutting each edge where it crosses, or null if none is. */
+    private static double[][] outside(double[][] poly, Circle c)
+    {
+        int n = poly.length;
+        double[] f = new double[n];
         boolean anyOut = false;
         boolean anyIn = false;
-        for (int k = 0; k < 4; k++)
+        for (int k = 0; k < n; k++)
         {
-            f[k] = Math.hypot(square[k][0] - c.x(), square[k][1] - c.y()) - c.radius();
+            f[k] = Math.hypot(poly[k][0] - c.x(), poly[k][1] - c.y()) - c.radius();
             if (f[k] >= 0) anyOut = true;
             else anyIn = true;
         }
         if (!anyOut) return null;
-        if (!anyIn) return square;
+        if (!anyIn) return poly;
         List<double[]> out = new ArrayList<>();
-        for (int k = 0; k < 4; k++)
+        for (int k = 0; k < n; k++)
         {
-            int m = (k + 1) % 4;
-            if (f[k] >= 0) out.add(square[k]);
+            int m = (k + 1) % n;
+            if (f[k] >= 0) out.add(poly[k]);
             if (f[k] >= 0 != f[m] >= 0)
             {
                 double t = f[k] / (f[k] - f[m]);
-                out.add(new double[]{square[k][0] + (square[m][0] - square[k][0]) * t, square[k][1] + (square[m][1] - square[k][1]) * t});
+                out.add(new double[]{poly[k][0] + (poly[m][0] - poly[k][0]) * t, poly[k][1] + (poly[m][1] - poly[k][1]) * t});
             }
         }
         return out.size() < 3 ? null : out.toArray(new double[0][]);
