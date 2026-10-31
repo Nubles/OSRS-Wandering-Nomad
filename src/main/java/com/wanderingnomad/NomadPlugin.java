@@ -938,10 +938,10 @@ public class NomadPlugin extends Plugin
         }
     }
 
-    /** An answer to a ::nomad command, shown in the chatbox straight away. Client thread. */
+    /** An answer to a test shortcut, styled like every other [Nomad] line so it reads on any chatbox. */
     private void reply(String line)
     {
-        client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "<col=ff9040>[Nomad]</col> " + line, null);
+        chat(line);
     }
 
     private void chat(String line)
