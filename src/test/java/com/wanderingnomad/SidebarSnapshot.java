@@ -28,6 +28,13 @@ public class SidebarSnapshot
                 NomadSim sim = NomadSim.start(483574);
                 for (int m = 0; m < 30; m++) sim.step(new Tile(3222, 3218));
                 sim.summon(NomadSim.COMMON);
+                // "warn" or "forked" draws the sidebar while a fork is coming or under way.
+                String fork = args.length > 1 ? args[1] : "";
+                if (!fork.isEmpty())
+                {
+                    sim.forkSoonForTesting(false);
+                    for (int m = 0; m < (fork.equals("forked") ? 18 : 4); m++) sim.step(new Tile(3222, 3218));
+                }
                 Tile at = new Tile(3222, 3218);
                 List<NomadPanel.Moment> moments = new ArrayList<>();
                 int minute = 0;

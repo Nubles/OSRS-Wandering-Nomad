@@ -33,6 +33,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.function.Consumer;
 import javax.inject.Inject;
+import javax.inject.Named;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +53,7 @@ import net.runelite.api.events.CommandExecuted;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.VarPlayerID;
@@ -142,6 +144,9 @@ public class NomadPlugin extends Plugin
     @Inject
     private EdgeWall3D edgeWall;
     @Inject
+    @Named("developerMode")
+    private boolean developerMode;
+    @Inject
     private NomadBannerOverlay bannerOverlay;
     private final Moments moments = new Moments();
     /** The run's latest moments, newest first, for the sidebar. */
@@ -185,6 +190,19 @@ public class NomadPlugin extends Plugin
         live = new LiveShare(okHttpClient);
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
             this::copyRunCode, this::copyLiveLink);
+        if (developerMode)
+        {
+            // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
+            panel.addTestButtons(
+                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min"},
+                new Runnable[]{
+                    () -> clientThread.invokeLater(() -> test("nomadmoments")),
+                    () -> clientThread.invokeLater(() -> test("nomadfork")),
+                    () -> clientThread.invokeLater(() -> test("nomadfork", "now")),
+                    () -> clientThread.invokeLater(() -> test("nomadstep", "1")),
+                    () -> clientThread.invokeLater(() -> test("nomadstep", "30")),
+                });
+        }
         navButton = NavigationButton.builder()
             .tooltip("Nomad UIM")
             .icon(icon())
@@ -284,6 +302,12 @@ public class NomadPlugin extends Plugin
             return;
         }
         ticks = 0;
+        minute();
+    }
+
+    /** Plays one minute of the run and everything that follows from it. Client thread. */
+    private void minute()
+    {
         sim.setSailingUnlocked(config.sailingUnlocked());
         int boundBefore = sim.boundIndex();
         List<String> lines = sim.step(surface);
@@ -395,7 +419,24 @@ public class NomadPlugin extends Plugin
     /** Standing outside your circle right now, by the surface tile you count as on. */
     boolean outsideNow()
     {
-        return sim != null && surface != null && !sim.bound().contains(surface.x, surface.y);
+        return sim != null && surface != null && !sim.inYours(surface.x, surface.y);
+    }
+
+    /** Your circle, and while Main is forked and yours, its other half too. Never cache it: a fork swaps Main. */
+    static List<Circle> halves(NomadSim sim)
+    {
+        List<Circle> out = new ArrayList<>(2);
+        out.add(sim.bound());
+        if (sim.boundIndex() == NomadSim.MAIN && sim.twin() != null) out.add(sim.twin());
+        return out;
+    }
+
+    /** Tiles from (x, y) to the nearest edge of your circle: positive inside either half, negative outside both. */
+    static double toEdge(NomadSim sim, double x, double y)
+    {
+        double best = Double.NEGATIVE_INFINITY;
+        for (Circle c : halves(sim)) best = Math.max(best, c.radius() - Math.hypot(x - c.x(), y - c.y()));
+        return best;
     }
 
     /** Plays the next 15 minutes on a copy of the run: a millisecond or less. */
@@ -457,12 +498,79 @@ public class NomadPlugin extends Plugin
         if (config.momentSounds() && b.sound >= 0) client.playSoundEffect(b.sound, SOUND_VOLUME);
     }
 
-    /** ::nomadmoments shows one of every kind of banner, to try them out. */
+    /** The test shortcuts, typed as ::nomadmoments, ::nomadfork [now] or ::nomadstep N. */
     @Subscribe
     public void onCommandExecuted(CommandExecuted ev)
     {
-        if (!"nomadmoments".equalsIgnoreCase(ev.getCommand()) || sim == null) return;
-        for (Moments.Banner b : Moments.samples(sim)) show(b);
+        test(ev.getCommand(), ev.getArguments());
+    }
+
+    /**
+     * Logs RuneLite's raw signal for a typed :: command, so the log shows whether the game's chat
+     * script raised it even when no command reached the plugin.
+     */
+    @Subscribe
+    public void onScriptCallbackEvent(ScriptCallbackEvent ev)
+    {
+        if (developerMode && "runeliteCommand".equals(ev.getEventName())) log.info("Nomad UIM: the chatbox raised a :: command");
+    }
+
+    /** Runs a test shortcut, from a typed :: command or a sidebar button. Client thread. */
+    private void test(String typed, String... rawArgs)
+    {
+        String command = typed == null ? "" : typed.trim().toLowerCase();
+        if (!command.startsWith("nomad")) return;
+        log.info("Nomad UIM: command ::{} {}", command, String.join(" ", rawArgs));
+        if (sim == null)
+        {
+            reply("Nomad UIM has no run loaded yet. Log in first.");
+            return;
+        }
+        List<String> words = new ArrayList<>();
+        for (String a : rawArgs)
+        {
+            if (a != null && !a.trim().isEmpty()) words.add(a.trim());
+        }
+        // Forgiving about a missing space, such as ::nomadstep30 or ::nomadforknow.
+        Matcher glued = Pattern.compile("(nomad[a-z]+?)(now|\\d+)$").matcher(command);
+        if (glued.matches() && !"nomadmoments".equals(command))
+        {
+            command = glued.group(1);
+            words.add(0, glued.group(2));
+        }
+        String[] args = words.toArray(new String[0]);
+        switch (command)
+        {
+            case "nomadmoments":
+                for (Moments.Banner b : Moments.samples(sim)) show(b);
+                break;
+            case "nomadfork":
+                // Testing: the next fork comes at the next played minute; "now" cuts a warning short.
+                boolean now = args.length > 0 && "now".equalsIgnoreCase(args[0]);
+                sim.forkSoonForTesting(now);
+                reply(sim.twin() != null ? "Main is already forked." : now && sim.forkWarning() > 0
+                    ? "The fork's warning ends at the next minute." : "A fork comes at the next played minute.");
+                break;
+            case "nomadstep":
+                // Testing: plays this many minutes of the run straight away (up to 120). This really advances the run.
+                int minutes = 1;
+                try
+                {
+                    if (args.length > 0) minutes = Integer.parseInt(args[0]);
+                }
+                catch (NumberFormatException e)
+                {
+                    reply("Usage: ::nomadstep <minutes>");
+                    return;
+                }
+                minutes = Math.max(1, Math.min(120, minutes));
+                for (int i = 0; i < minutes; i++) minute();
+                reply("Played " + minutes + (minutes == 1 ? " minute." : " minutes."));
+                break;
+            default:
+                reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>.");
+                break;
+        }
     }
 
     /** Imagines the next six hours off the client thread, from a copy taken here. */
@@ -828,6 +936,12 @@ public class NomadPlugin extends Plugin
             while (runLog.size() > LOG_LINES) runLog.removeLast();
             if (config.chatLog()) chat(line);
         }
+    }
+
+    /** An answer to a test shortcut, styled like every other [Nomad] line so it reads on any chatbox. */
+    private void reply(String line)
+    {
+        chat(line);
     }
 
     private void chat(String line)

@@ -47,7 +47,7 @@ class NomadGlowOverlay extends Overlay
         Tile at = plugin.surface();
         if (sim == null || at == null || !plugin.config().edgeGlow()) return null;
         Circle c = sim.bound();
-        double toEdge = c.radius() - Math.sqrt((at.x - c.x()) * (at.x - c.x()) + (at.y - c.y()) * (at.y - c.y()));
+        double toEdge = NomadPlugin.toEdge(sim, at.x, at.y);
         double strength;
         Color colour;
         if (toEdge < 0)

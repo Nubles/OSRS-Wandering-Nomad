@@ -122,24 +122,30 @@ class NomadSceneOverlay extends Overlay
         NomadConfig config = plugin.config();
         long now = System.currentTimeMillis();
 
-        if (config.dimOutside() > 0) drawOutside(graphics, view, sim.bound(), at, config.dimOutside());
+        if (config.dimOutside() > 0) drawOutside(graphics, view, sim, at, config.dimOutside());
         if (config.drawEdge())
         {
             boolean wall = config.edgeStyle() != NomadConfig.EdgeStyle.TILES;
             boolean tiles = config.edgeStyle() != NomadConfig.EdgeStyle.WALL;
-            List<Circle> circles = sim.circles();
+            List<Circle> circles = new ArrayList<>(sim.circles());
             Circle yours = sim.bound();
+            // While Main is forked, its other half is drawn like Main: yours if Main is, a gateway if it touches yours.
+            if (sim.twin() != null) circles.add(sim.twin());
             for (int j = 0; j < circles.size(); j++)
             {
                 Circle c = circles.get(j);
-                boolean mine = j == sim.boundIndex();
-                if (!mine && !(sim.linked(j) && yours.touches(c))) continue;
+                boolean twin = j == sim.circles().size();
+                int index = twin ? NomadSim.MAIN : j;
+                boolean mine = index == sim.boundIndex();
+                if (!mine && !(sim.linked(index) && yours.touches(c))) continue;
                 if (tiles) drawTiles(graphics, view, c, at, mine);
                 // The 3D edge is drawn by the game itself, so things in front hide it; a line drawn over the
                 // picture can't be hidden by roofs and walls, so it's only drawn when the 3D edge is off.
-                if (wall && !config.edge3d()) drawWall(graphics, view, c, mine ? null : yours, at, now);
+                // Where the halves of a forked Main overlap, each one's edge inside the other is hidden.
+                Circle hidden = sim.twin() == null ? null : twin ? sim.main() : index == NomadSim.MAIN ? sim.twin() : null;
+                if (wall && !config.edge3d()) drawWall(graphics, view, c, mine ? null : yours, hidden, at, now);
             }
-            drawFeet(graphics, view, yours, at);
+            drawFeet(graphics, view, sim, at);
         }
         drawBeacons(graphics, view, sim, now);
         if (config.compass())
@@ -167,7 +173,7 @@ class NomadSceneOverlay extends Overlay
      * Draws a circle's wall near the player. With {@code inside} set, only the stretch inside that
      * circle is drawn, taller and brighter: the gateway into it.
      */
-    private void drawWall(Graphics2D graphics, WorldView view, Circle c, Circle inside, WorldPoint at, long now)
+    private void drawWall(Graphics2D graphics, WorldView view, Circle c, Circle inside, Circle hidden, WorldPoint at, long now)
     {
         double r = c.radius() + WALL_OUT;
         int n = Math.max(48, (int) Math.ceil(Math.PI * 2 * r / SEGMENT));
@@ -200,7 +206,7 @@ class NomadSceneOverlay extends Overlay
             double wx = c.x() + Math.cos(a) * r;
             double wy = c.y() + Math.sin(a) * r;
             boolean near = Math.abs(wx - at.getX()) <= REACH && Math.abs(wy - at.getY()) <= REACH;
-            boolean shown = near && (!gate || inside.contains(wx, wy));
+            boolean shown = near && (!gate || inside.contains(wx, wy)) && (hidden == null || !hidden.contains(wx, wy));
             locals[i] = shown ? local(view, wx, wy) : null;
             if (locals[i] != null) ground[i] = Perspective.getTileHeight(client, locals[i], plane);
         }
@@ -381,7 +387,7 @@ class NomadSceneOverlay extends Overlay
      * may stand. The tiles go into one path and are filled at once without antialiasing, so they
      * meet without seams.
      */
-    private void drawOutside(Graphics2D graphics, WorldView view, Circle yours, WorldPoint at, int percent)
+    private void drawOutside(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at, int percent)
     {
         // Seen from the camera, every patch of ground winds the same way round. One that winds the
         // other way, or comes out huge, has a corner behind the camera and was projected through it:
@@ -399,7 +405,7 @@ class NomadSceneOverlay extends Overlay
             for (int y = at.getY() - DIM_REACH; y <= at.getY() + DIM_REACH; y++)
             {
                 // The part of the tile outside the circle, so the shade follows the curve rather than tile squares.
-                double[][] part = EdgeWall3D.outsidePart(yours, x, y);
+                double[][] part = EdgeWall3D.outsidePart(NomadPlugin.halves(sim), x, y);
                 if (part == null) continue;
                 tiles++;
                 int[] xs = new int[part.length];
@@ -475,8 +481,8 @@ class NomadSceneOverlay extends Overlay
             g.setColor(new Color(0, 0, 0, Math.min(255, percent * 255 / 100)));
             for (Polygon patch : patches) g.fill(patch);
             g.setComposite(AlphaComposite.Clear);
-            eraseInside(g, view, yours, at);
-            if (plugin.config().edge3d()) eraseCurtain(g, view, yours, at);
+            eraseInside(g, view, sim, at);
+            if (plugin.config().edge3d()) for (Circle half : NomadPlugin.halves(sim)) eraseCurtain(g, view, half, at);
         }
         finally
         {
@@ -499,7 +505,7 @@ class NomadSceneOverlay extends Overlay
      * inside your circle within {@link #SHIELD} tiles of its edge. Further in, nothing reaches over
      * the edge on screen.
      */
-    private void eraseInside(Graphics2D g, WorldView view, Circle yours, WorldPoint at)
+    private void eraseInside(Graphics2D g, WorldView view, NomadSim sim, WorldPoint at)
     {
         net.runelite.api.Tile[][][] tiles = view.getScene().getTiles();
         int plane = view.getPlane();
@@ -507,7 +513,7 @@ class NomadSceneOverlay extends Overlay
         {
             for (int y = at.getY() - REACH; y <= at.getY() + REACH; y++)
             {
-                double depth = yours.radius() - Math.hypot(x - yours.x(), y - yours.y());
+                double depth = NomadPlugin.toEdge(sim, x, y);
                 if (depth < 0 || depth > SHIELD) continue;
                 int sx = x - view.getBaseX();
                 int sy = y - view.getBaseY();
@@ -535,7 +541,7 @@ class NomadSceneOverlay extends Overlay
         for (Actor actor : actors(view))
         {
             WorldPoint p = actor.getWorldLocation();
-            if (p != null && yours.contains(p.getX(), p.getY())) fill(g, actor.getConvexHull());
+            if (p != null && sim.inYours(p.getX(), p.getY())) fill(g, actor.getConvexHull());
         }
     }
 
@@ -596,14 +602,14 @@ class NomadSceneOverlay extends Overlay
      * Within a few tiles of the edge, your own tile is outlined green while it's inside your circle
      * and red once it's outside, with a word above your head saying which and how far.
      */
-    private void drawFeet(Graphics2D graphics, WorldView view, Circle yours, WorldPoint at)
+    private void drawFeet(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at)
     {
-        double d = Math.hypot(at.getX() - yours.x(), at.getY() - yours.y());
-        double toEdge = yours.radius() - d;
+        // Either half of a forked Main counts as inside.
+        double toEdge = NomadPlugin.toEdge(sim, at.getX(), at.getY());
         if (toEdge > FEET_NEAR) return;
         LocalPoint feet = LocalPoint.fromWorld(view, at.getX(), at.getY());
         if (feet == null) return;
-        boolean inside = yours.contains(at.getX(), at.getY());
+        boolean inside = sim.inYours(at.getX(), at.getY());
         Color colour = inside ? INSIDE : OUTSIDE;
         Polygon tile = Perspective.getCanvasTilePoly(client, feet);
         if (tile != null) OverlayUtil.renderPolygon(graphics, tile, colour, alpha(colour, 50), YOURS);

@@ -22,6 +22,7 @@ class NomadStatusOverlay extends OverlayPanel
     private static final Color INSIDE = new Color(0x8FE0A2);
     private static final Color OUTSIDE = new Color(0xFF8A80);
     private static final Color STRANDED = new Color(0xFFCF8F);
+    static final Color FORK = new Color(0xFFC46B);
     private static final Color CALM = new Color(0x6FD08C);
     private static final Color AMBER = new Color(0xFFB040);
     private static final Color URGENT = new Color(0xFF4F45);
@@ -69,9 +70,20 @@ class NomadStatusOverlay extends OverlayPanel
         panelComponent.getChildren().add(LineComponent.builder().left("Status").right(state).rightColor(colour).build());
         if (at != null)
         {
-            double d = Math.hypot(at.x - c.x(), at.y - c.y());
-            String edge = d <= c.radius() ? (int) Math.floor(c.radius() - d) + " tiles" : (int) Math.ceil(d - c.radius()) + " out";
+            // Either half of a forked Main counts, so the nearest edge is the one you're inside.
+            double toEdge = NomadPlugin.toEdge(sim, at.x, at.y);
+            String edge = toEdge >= 0 ? (int) Math.floor(toEdge) + " tiles" : (int) Math.ceil(-toEdge) + " out";
             panelComponent.getChildren().add(LineComponent.builder().left("To edge").right(edge).build());
+        }
+        if (sim.forkWarning() > 0)
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Fork in " + sim.forkWarning() + " min")
+                .right(NomadSim.compass(sim.forkAxis()) + " / " + NomadSim.compass(sim.forkAxis() + Math.PI))
+                .rightColor(FORK).build());
+        }
+        else if (sim.twin() != null)
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Forked").right("pick a half").rightColor(FORK).build());
         }
         Radar radar = plugin.radar();
         boolean hud = plugin.config().hudExtras();

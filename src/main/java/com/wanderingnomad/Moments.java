@@ -34,6 +34,7 @@ final class Moments
         MOOD,
         EDGE,
         STAR,
+        FORK,
     }
 
     /** One banner: what it says, in which colour, and whether it's a big moment with a gold trim. */
@@ -99,6 +100,9 @@ final class Moments
     private final Set<String> effects = new HashSet<>();
     /** 0 while the edge is more than 5 minutes off, 1 within 5, 2 within 1. */
     private int edgeStage;
+    /** Whether a fork was coming, and whether Main was forked, at the last look. */
+    private boolean forkComing;
+    private boolean forked;
     /** When you first stood on the other side of the edge from {@link #outside}, or 0 if you haven't. */
     private long crossedAt;
     /** When stepping out or back in, and each edge warning, last had a banner of its own. */
@@ -228,6 +232,7 @@ final class Moments
                 out.add(new Banner(boon + " has worn off", "The boon's time is up.", GOLD.darker(), Icon.BOON, false,
                     SoundEffectID.PRAYER_DEACTIVE_VWOOP));
             }
+            fork(sim, out);
             // Stepping back and forth near the edge re-arms these, so each one only gets a banner once a minute.
             if (stage > edgeStage && now - edgeToldAt[stage] >= QUIET_MS)
             {
@@ -255,7 +260,32 @@ final class Moments
         effects.clear();
         effects.addAll(effectsNow);
         edgeStage = stage;
+        forkComing = sim.forkWarning() > 0;
+        forked = sim.twin() != null;
         return out;
+    }
+
+    /** The fork's three moments: the warning, the split, and the parting, which says which half lived. */
+    private void fork(NomadSim sim, List<Banner> out)
+    {
+        Color main = NomadPlugin.colour(sim.main(), 255);
+        if (sim.forkWarning() > 0 && !forkComing)
+        {
+            out.add(new Banner("Main is about to fork", "In " + sim.forkWarning() + " min it splits " + NomadSim.compass(sim.forkAxis())
+                + " and " + NomadSim.compass(sim.forkAxis() + Math.PI) + ". The half you stand in lives on.",
+                main, Icon.FORK, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
+        }
+        if (sim.twin() != null && !forked)
+        {
+            out.add(new Banner("Main forked!", "One half heads " + NomadSim.compass(sim.main().heading()) + ", the other "
+                + NomadSim.compass(sim.twin().heading()) + ". Stand in the one you want.", main, Icon.FORK, true,
+                SoundEffectID.TELEPORT_VWOOP));
+        }
+        if (sim.twin() == null && forked)
+        {
+            out.add(new Banner("The halves parted", "The " + NomadSim.compass(sim.main().heading()) + " half lives on as Main.",
+                main, Icon.FORK, true, SoundEffectID.PRAYER_ACTIVATE_PIETY));
+        }
     }
 
     /** A milestone, told the moment it's reached; the waystone it summons gets a banner of its own when it rises. */
@@ -298,6 +328,13 @@ final class Moments
             SoundEffectID.TOWN_CRIER_BELL_DING));
         out.add(new Banner("Into Kandarin", "You crossed over. This is your circle now.", other, Icon.CROSSING, true,
             SoundEffectID.TELEPORT_VWOOP));
+        Color main = NomadPlugin.colour(sim.main(), 255);
+        out.add(new Banner("Main is about to fork", "In 10 min it splits north and south. The half you stand in lives on.",
+            main, Icon.FORK, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
+        out.add(new Banner("Main forked!", "One half heads north, the other south. Stand in the one you want.", main, Icon.FORK, true,
+            SoundEffectID.TELEPORT_VWOOP));
+        out.add(new Banner("The halves parted", "The north half lives on as Main.", main, Icon.FORK, true,
+            SoundEffectID.PRAYER_ACTIVATE_PIETY));
         return out;
     }
 

@@ -119,8 +119,18 @@ class NomadWorldMapOverlay extends Overlay
         {
             if (j != yours) drawCircle(graphics, circles.get(j), rings[j], false, sim.linked(j));
         }
+        // While Main is forked its other half is drawn like it, with a little less weight.
+        Circle twin = sim.twin();
+        if (twin != null)
+        {
+            double px = bounds.x + (twin.x() - west) * zoom;
+            double py = bounds.y + bounds.height - (twin.y() - south) * zoom;
+            double pr = Math.max(MIN_RADIUS_PX, twin.radius() * zoom);
+            drawCircle(graphics, twin, new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2), yours == NomadSim.MAIN, sim.linked(NomadSim.MAIN));
+        }
         drawCircle(graphics, circles.get(yours), rings[yours], true, false);
         drawOverlaps(graphics, sim, rings, now);
+        if (sim.forkWarning() > 0) drawForkArrows(graphics, sim, rings[NomadSim.MAIN]);
 
         Font font = graphics.getFont();
         graphics.setFont(FontManager.getRunescapeSmallFont());
@@ -174,6 +184,38 @@ class NomadWorldMapOverlay extends Overlay
         head.lineTo(ex + uy * 5, ey - ux * 5);
         head.closePath();
         graphics.fill(head);
+    }
+
+    /**
+     * While a fork is coming: two arrows from Main's centre showing the ways its halves will go,
+     * each labelled with its compass direction and the minutes left.
+     */
+    private static void drawForkArrows(Graphics2D graphics, NomadSim sim, Ellipse2D main)
+    {
+        double cx = main.getCenterX();
+        double cy = main.getCenterY();
+        double len = Math.max(24, main.getWidth() / 2 + 18);
+        for (double heading : new double[]{sim.forkAxis(), sim.forkAxis() + Math.PI})
+        {
+            double ux = Math.cos(heading);
+            double uy = -Math.sin(heading);
+            double ex = cx + ux * len;
+            double ey = cy + uy * len;
+            graphics.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            graphics.setColor(new Color(0, 0, 0, 150));
+            graphics.draw(new Line2D.Double(cx, cy, ex, ey));
+            graphics.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            graphics.setColor(NomadStatusOverlay.FORK);
+            graphics.draw(new Line2D.Double(cx, cy, ex, ey));
+            Path2D head = new Path2D.Double();
+            head.moveTo(ex + ux * 9, ey + uy * 9);
+            head.lineTo(ex - uy * 6, ey + ux * 6);
+            head.lineTo(ex + uy * 6, ey - ux * 6);
+            head.closePath();
+            graphics.fill(head);
+            outlined(graphics, NomadSim.compass(heading), (float) (ex + ux * 20), (float) (ey + uy * 20 + 4), NomadStatusOverlay.FORK, true);
+        }
+        outlined(graphics, "Fork in " + sim.forkWarning() + " min", (float) cx, (float) (cy - 6), NomadStatusOverlay.FORK, true);
     }
 
     /** Where a circle you can cross into overlaps yours, the overlap glows and pulses: that's the crossing. */
