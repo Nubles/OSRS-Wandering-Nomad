@@ -484,9 +484,27 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onCommandExecuted(CommandExecuted ev)
     {
-        if (sim == null) return;
-        String command = ev.getCommand().toLowerCase();
-        String[] args = ev.getArguments();
+        String command = ev.getCommand() == null ? "" : ev.getCommand().trim().toLowerCase();
+        if (!command.startsWith("nomad")) return;
+        log.info("Nomad UIM: command ::{} {}", command, String.join(" ", ev.getArguments()));
+        if (sim == null)
+        {
+            reply("Nomad UIM has no run loaded yet. Log in first.");
+            return;
+        }
+        List<String> words = new ArrayList<>();
+        for (String a : ev.getArguments())
+        {
+            if (a != null && !a.trim().isEmpty()) words.add(a.trim());
+        }
+        // Forgiving about a missing space, such as ::nomadstep30 or ::nomadforknow.
+        Matcher glued = Pattern.compile("(nomad[a-z]+?)(now|\\d+)$").matcher(command);
+        if (glued.matches() && !"nomadmoments".equals(command))
+        {
+            command = glued.group(1);
+            words.add(0, glued.group(2));
+        }
+        String[] args = words.toArray(new String[0]);
         switch (command)
         {
             case "nomadmoments":
@@ -496,7 +514,7 @@ public class NomadPlugin extends Plugin
                 // Testing: the next fork comes at the next played minute; "now" cuts a warning short.
                 boolean now = args.length > 0 && "now".equalsIgnoreCase(args[0]);
                 sim.forkSoonForTesting(now);
-                chat(sim.twin() != null ? "Main is already forked." : now && sim.forkWarning() > 0
+                reply(sim.twin() != null ? "Main is already forked." : now && sim.forkWarning() > 0
                     ? "The fork's warning ends at the next minute." : "A fork comes at the next played minute.");
                 break;
             case "nomadstep":
@@ -508,14 +526,15 @@ public class NomadPlugin extends Plugin
                 }
                 catch (NumberFormatException e)
                 {
-                    chat("Usage: ::nomadstep <minutes>");
+                    reply("Usage: ::nomadstep <minutes>");
                     return;
                 }
                 minutes = Math.max(1, Math.min(120, minutes));
                 for (int i = 0; i < minutes; i++) minute();
-                chat("Played " + minutes + (minutes == 1 ? " minute." : " minutes."));
+                reply("Played " + minutes + (minutes == 1 ? " minute." : " minutes."));
                 break;
             default:
+                reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>.");
                 break;
         }
     }
@@ -883,6 +902,12 @@ public class NomadPlugin extends Plugin
             while (runLog.size() > LOG_LINES) runLog.removeLast();
             if (config.chatLog()) chat(line);
         }
+    }
+
+    /** An answer to a ::nomad command, shown in the chatbox straight away. Client thread. */
+    private void reply(String line)
+    {
+        client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", "<col=ff9040>[Nomad]</col> " + line, null);
     }
 
     private void chat(String line)
