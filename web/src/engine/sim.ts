@@ -86,9 +86,9 @@ const RUDDER_WAY = 150;
 const BRIDGE_MINUTES = 10;
 export const BRIDGE_REACH = 60;
 const LASTING = 30;
-/** Forks come every 6 to 10 played hours, or after 4 quiet ones, with a 10-minute warning. */
-const FORK_EVERY_MIN = 360;
-const FORK_EVERY_MAX = 600;
+/** A fork comes a random 30 minutes to 4 played hours after the last one parted, with a 10-minute warning. */
+const FORK_EVERY_MIN = 30;
+const FORK_EVERY_MAX = 240;
 export const QUIET = 240;
 export const FORK_WARN = 10;
 /** The halves part at this many tiles a minute each, and settle it after this many minutes regardless. */
@@ -831,7 +831,13 @@ export class NomadSim {
     let keepTwin: boolean;
     if (inA && inB) keepTwin = dist(player!.x - twin.x, player!.y - twin.y) < dist(player!.x - m.x, player!.y - m.y);
     else if (chose) keepTwin = inB;
-    else keepTwin = new Rng(s.seed ^ Math.imul(s.forks + 1, 0x27d4eb2f | 0)).next() < 0.5;
+    else {
+      // The seed never keeps the half deeper in a peninsula, so forks can't keep throwing
+      // Main back into one; otherwise it tosses a coin.
+      const depth = Math.max(0, this.geo.pocketDepth(m.x, m.y));
+      const twinDepth = Math.max(0, this.geo.pocketDepth(twin.x, twin.y));
+      keepTwin = depth !== twinDepth ? twinDepth < depth : new Rng(s.seed ^ Math.imul(s.forks + 1, 0x27d4eb2f | 0)).next() < 0.5;
+    }
     const kept = keepTwin ? twin : m;
     kept.moodLeft = 0;
     kept.wx = kept.wy = 0;

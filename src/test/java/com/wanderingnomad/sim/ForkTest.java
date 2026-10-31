@@ -26,12 +26,11 @@ public class ForkTest
     }
 
     @Test
-    public void fourQuietHoursBringTheForkForwardAndItWarnsTenMinutesAhead()
+    public void aForkComesWithinFourHoursAndWarnsTenMinutesAhead()
     {
         NomadSim sim = NomadSim.start(7);
         int warned = playUntil(sim, "about to fork", 600);
-        // The first fork is scheduled 6 to 10 hours in, but nothing big happened, so it came at 4.
-        assertEquals(NomadSim.QUIET, warned);
+        assertTrue("warned at " + warned, warned >= NomadSim.FORK_EVERY_MIN && warned <= NomadSim.FORK_EVERY_MAX);
         assertEquals(NomadSim.FORK_WARN, sim.forkWarning());
         assertNull(sim.twin());
         int forked = playUntil(sim, "forked!", 60);
