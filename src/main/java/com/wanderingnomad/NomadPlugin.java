@@ -149,6 +149,8 @@ public class NomadPlugin extends Plugin
     @Inject
     private NomadBannerOverlay bannerOverlay;
     private final Moments moments = new Moments();
+    /** The half of a forked Main that faded at the last parting, dissolving on the maps; null if none yet. */
+    private volatile Fade fade;
     /** The run's latest moments, newest first, for the sidebar. */
     private final Deque<NomadPanel.Moment> timeline = new ArrayDeque<>();
     private RunStats stats = new RunStats();
@@ -194,13 +196,14 @@ public class NomadPlugin extends Plugin
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
             panel.addTestButtons(
-                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min"},
+                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade"},
                 new Runnable[]{
                     () -> clientThread.invokeLater(() -> test("nomadmoments")),
                     () -> clientThread.invokeLater(() -> test("nomadfork")),
                     () -> clientThread.invokeLater(() -> test("nomadfork", "now")),
                     () -> clientThread.invokeLater(() -> test("nomadstep", "1")),
                     () -> clientThread.invokeLater(() -> test("nomadstep", "30")),
+                    () -> clientThread.invokeLater(this::replayFade),
                 });
         }
         navButton = NavigationButton.builder()
@@ -406,6 +409,27 @@ public class NomadPlugin extends Plugin
         return sim;
     }
 
+    /** The last parting's faded half while it's still dissolving; null once it's gone. Any thread. */
+    Fade fade(long now)
+    {
+        Fade f = fade;
+        return f == null || f.progress(now) > 1 ? null : f;
+    }
+
+    /** Testing: plays the last parting's dissolve again. Client thread. */
+    private void replayFade()
+    {
+        Fade f = fade;
+        if (f == null)
+        {
+            reply("No fork has parted since the client started, so there's nothing to replay.");
+            return;
+        }
+        fade = f.again(System.currentTimeMillis());
+        reply("Replaying the faded half's dissolve.");
+        publish();
+    }
+
     Radar radar()
     {
         return radar;
@@ -470,6 +494,8 @@ public class NomadPlugin extends Plugin
     {
         if (sim == null) return;
         for (Moments.Banner b : moments.observe(sim, outsideNow() && sim.bridgeLeft() <= 0, radar)) show(b);
+        Circle gone = moments.takeFaded();
+        if (gone != null) fade = new Fade(gone, System.currentTimeMillis());
     }
 
     /** Notes a moment in the timeline and the run's tallies, then shows its banner and plays its sound if they're on. Client thread. */
@@ -961,6 +987,7 @@ public class NomadPlugin extends Plugin
         if (panel == null) return;
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
+        view.fade = fade(System.currentTimeMillis());
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 

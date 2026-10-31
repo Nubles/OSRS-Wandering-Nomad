@@ -103,6 +103,10 @@ final class Moments
     /** Whether a fork was coming, and whether Main was forked, at the last look. */
     private boolean forkComing;
     private boolean forked;
+    /** Main and its other half at the last look while forked, to tell which one faded when they part. */
+    private Circle lastMain;
+    private Circle lastTwin;
+    private Circle faded;
     /** When you first stood on the other side of the edge from {@link #outside}, or 0 if you haven't. */
     private long crossedAt;
     /** When stepping out or back in, and each edge warning, last had a banner of its own. */
@@ -120,6 +124,9 @@ final class Moments
     void reset()
     {
         primed = false;
+        lastMain = null;
+        lastTwin = null;
+        faded = null;
         crossedAt = 0;
         ringToldAt = NEVER;
         java.util.Arrays.fill(edgeToldAt, NEVER);
@@ -262,6 +269,8 @@ final class Moments
         edgeStage = stage;
         forkComing = sim.forkWarning() > 0;
         forked = sim.twin() != null;
+        lastMain = sim.main();
+        lastTwin = sim.twin();
         return out;
     }
 
@@ -283,9 +292,22 @@ final class Moments
         }
         if (sim.twin() == null && forked)
         {
-            out.add(new Banner("The halves parted", "The " + NomadSim.compass(sim.main().heading()) + " half lives on as Main.",
+            // The survivor is now Main; whichever half it isn't is the one that faded.
+            Circle kept = sim.main();
+            Circle gone = kept == lastMain ? lastTwin : kept == lastTwin ? lastMain : null;
+            faded = gone;
+            out.add(new Banner("The halves parted", "The " + NomadSim.compass(kept.heading()) + " half lives on"
+                + (gone == null ? " as Main." : "; the " + NomadSim.compass(gone.heading()) + " half faded."),
                 main, Icon.FORK, true, SoundEffectID.PRAYER_ACTIVATE_PIETY));
         }
+    }
+
+    /** The half that faded when a fork last parted, once; null if none has since the last call. */
+    Circle takeFaded()
+    {
+        Circle c = faded;
+        faded = null;
+        return c;
     }
 
     /** A milestone, told the moment it's reached; the waystone it summons gets a banner of its own when it rises. */
@@ -333,7 +355,7 @@ final class Moments
             main, Icon.FORK, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
         out.add(new Banner("Main forked!", "One half heads north, the other south. Stand in the one you want.", main, Icon.FORK, true,
             SoundEffectID.TELEPORT_VWOOP));
-        out.add(new Banner("The halves parted", "The north half lives on as Main.", main, Icon.FORK, true,
+        out.add(new Banner("The halves parted", "The north half lives on; the south half faded.", main, Icon.FORK, true,
             SoundEffectID.PRAYER_ACTIVATE_PIETY));
         return out;
     }

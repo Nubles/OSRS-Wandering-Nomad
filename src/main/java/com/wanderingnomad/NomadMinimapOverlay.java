@@ -107,6 +107,19 @@ class NomadMinimapOverlay extends Overlay
         {
             glow(graphics, arcs(view, sim.twin()), NomadPlugin.colour(sim.twin(), 255), 0.6);
         }
+        // The half that faded at a fork's parting, dissolving.
+        long now = System.currentTimeMillis();
+        Fade fade = plugin.fade(now);
+        if (fade != null)
+        {
+            Point centre2 = toMinimap(view, fade.x, fade.y);
+            Point rim = toMinimap(view, fade.x + fade.r, fade.y);
+            if (centre2 != null && rim != null)
+            {
+                double radius = Math.hypot(rim.getX() - centre2.getX(), rim.getY() - centre2.getY());
+                NomadWorldMapOverlay.drawFade(graphics, fade, centre2.getX(), centre2.getY(), radius, now);
+            }
+        }
         for (int k = 0; k < halves.size(); k++)
         {
             Path2D r = rings.get(k);
