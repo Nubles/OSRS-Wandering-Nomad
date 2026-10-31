@@ -201,6 +201,8 @@ final class SidebarParts
         private static final int H = 176;
         /** Off-map circles that get a pointer on the border, nearest first. */
         private static final int POINTERS = 3;
+        /** The least space between a pointer's label and the map's border. */
+        private static final int LABEL_PAD = 4;
 
         MiniMap()
         {
@@ -318,6 +320,7 @@ final class SidebarParts
                 if (!m.yours && m.linked && !ring(m, c, scale).intersects(box)) off.add(m);
             }
             off.sort((a, b) -> Double.compare(a.gap, b.gap));
+            java.util.List<java.awt.Rectangle> placed = new java.util.ArrayList<>();
             for (NomadPanel.MapCircle m : off.subList(0, Math.min(POINTERS, off.size())))
             {
                 double dx = m.x - c[0];
@@ -332,12 +335,57 @@ final class SidebarParts
                 float y = (float) (H / 2.0 + uy * t);
                 arrow(g, x, y, Math.atan2(-uy, ux), 6, m.colour);
                 String label = m.name + " " + Math.round(Math.max(0, m.gap)) + "t";
-                int lw = sm.stringWidth(label);
-                int lx = (int) Math.max(4, Math.min(SIDEBAR_WIDTH - lw - 4, x - ux * 10 - lw / 2.0));
-                int ly = (int) Math.max(12, Math.min(H - 16, y - uy * 12 + 4));
-                text(g, small, label, lx + 1, ly + 1, Color.BLACK);
-                text(g, small, label, lx, ly, m.colour);
+                java.awt.Rectangle r = labelBox(sm, label, x, y, ux, uy, placed);
+                placed.add(r);
+                int baseline = r.y + sm.getAscent();
+                text(g, small, label, r.x + 1, baseline + 1, Color.BLACK);
+                text(g, small, label, r.x, baseline, m.colour);
             }
+        }
+
+        /**
+         * Where a pointer's label goes: on the inner side of its arrow, so it reads into the map
+         * rather than off it, kept {@link #LABEL_PAD} inside the box, and nudged clear of labels
+         * already placed.
+         */
+        private static java.awt.Rectangle labelBox(FontMetrics fm, String label, float x, float y, double ux, double uy,
+            java.util.List<java.awt.Rectangle> placed)
+        {
+            int w = fm.stringWidth(label);
+            int h = fm.getAscent() + fm.getDescent();
+            double lx;
+            double ly;
+            if (Math.abs(ux) >= Math.abs(uy))
+            {
+                // Arrow on the left or right border: the label sits beside it, toward the middle.
+                lx = ux < 0 ? x + 10 : x - 10 - w;
+                ly = y - h / 2.0;
+            }
+            else
+            {
+                // Arrow on the top or bottom border: the label sits under or over it.
+                lx = x - w / 2.0;
+                ly = uy < 0 ? y + 9 : y - 9 - h;
+            }
+            int left = (int) Math.round(Math.max(LABEL_PAD, Math.min(SIDEBAR_WIDTH - w - LABEL_PAD, lx)));
+            int top = (int) Math.round(Math.max(LABEL_PAD, Math.min(H - h - LABEL_PAD, ly)));
+            java.awt.Rectangle r = new java.awt.Rectangle(left, top, w, h);
+            // Step toward the middle until it no longer overlaps another label.
+            int step = top + h / 2 < H / 2 ? h + 2 : -(h + 2);
+            for (int tries = 0; tries < POINTERS && overlaps(r, placed); tries++)
+            {
+                r.y = Math.max(LABEL_PAD, Math.min(H - h - LABEL_PAD, r.y + step));
+            }
+            return r;
+        }
+
+        private static boolean overlaps(java.awt.Rectangle r, java.util.List<java.awt.Rectangle> placed)
+        {
+            for (java.awt.Rectangle p : placed)
+            {
+                if (p.intersects(r)) return true;
+            }
+            return false;
         }
 
         private static Ellipse2D ring(NomadPanel.MapCircle m, double[] c, double scale)
