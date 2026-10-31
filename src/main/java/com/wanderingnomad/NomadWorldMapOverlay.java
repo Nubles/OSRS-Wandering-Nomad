@@ -128,6 +128,13 @@ class NomadWorldMapOverlay extends Overlay
             double pr = Math.max(MIN_RADIUS_PX, twin.radius() * zoom);
             drawCircle(graphics, twin, new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2), yours == NomadSim.MAIN, sim.linked(NomadSim.MAIN));
         }
+        Fade fade = plugin.fade(now);
+        if (fade != null)
+        {
+            double px = bounds.x + (fade.x - west) * zoom;
+            double py = bounds.y + bounds.height - (fade.y - south) * zoom;
+            drawFade(graphics, fade, px, py, Math.max(MIN_RADIUS_PX, fade.r * zoom), now);
+        }
         drawCircle(graphics, circles.get(yours), rings[yours], true, false);
         drawOverlaps(graphics, sim, rings, now);
         if (sim.forkWarning() > 0) drawForkArrows(graphics, sim, rings[NomadSim.MAIN]);
@@ -184,6 +191,35 @@ class NomadWorldMapOverlay extends Overlay
         head.lineTo(ex + uy * 5, ey - ux * 5);
         head.closePath();
         graphics.fill(head);
+    }
+
+    /**
+     * The half that didn't survive a parting, dissolving: its ring swells and thins as it fades,
+     * and breaks into motes that drift outward and wink out. Also drawn by the minimap and sidebar.
+     */
+    static void drawFade(Graphics2D graphics, Fade fade, double cx, double cy, double radius, long now)
+    {
+        double t = Math.max(0, Math.min(1, fade.progress(now)));
+        double s = Fade.strength(t);
+        if (s <= 0.01) return;
+        double r = radius * Fade.grow(t);
+        Ellipse2D ring = new Ellipse2D.Double(cx - r, cy - r, r * 2, r * 2);
+        graphics.setColor(NomadSceneOverlay.alpha(fade.colour, (int) (50 * s)));
+        graphics.fill(ring);
+        graphics.setStroke(new BasicStroke((float) Math.max(0.6, 2.5 * s), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+            10f, new float[]{(float) (4 + 10 * t), (float) (3 + 9 * t)}, (float) (t * 40)));
+        graphics.setColor(NomadSceneOverlay.alpha(fade.colour, (int) (230 * s)));
+        graphics.draw(ring);
+        // Motes leave the rim and drift outward as it goes.
+        int motes = 16;
+        for (int k = 0; k < motes; k++)
+        {
+            double a = k * Math.PI * 2 / motes + t * 0.6;
+            double d = r * (1 + 0.35 * t) + (k % 3) * 3;
+            double size = 2 + 2.5 * (1 - t);
+            graphics.setColor(NomadSceneOverlay.alpha(k % 2 == 0 ? Color.WHITE : fade.colour, (int) (200 * s)));
+            graphics.fill(new Ellipse2D.Double(cx + Math.cos(a) * d - size / 2, cy - Math.sin(a) * d - size / 2, size, size));
+        }
     }
 
     /**

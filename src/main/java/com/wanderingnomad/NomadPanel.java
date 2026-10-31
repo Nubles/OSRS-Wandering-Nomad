@@ -566,6 +566,8 @@ class NomadPanel extends PluginPanel
         String forkLine;
         /** Played minutes since the last fork, voyage or crossing. */
         int quiet;
+        /** The last parting's faded half while it's dissolving, or null. */
+        Fade fade;
 
         int held;
         final List<BoonSlot> boons = new ArrayList<>();

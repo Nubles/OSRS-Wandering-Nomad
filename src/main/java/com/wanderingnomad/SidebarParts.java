@@ -271,6 +271,14 @@ final class SidebarParts
                 g.fill(new Ellipse2D.Float(x - 3, y - 3, 6, 6));
             }
             if (v.forkWarning > 0) forkArrows(g, v, c, scale);
+            if (v.fade != null)
+            {
+                long now = System.currentTimeMillis();
+                NomadWorldMapOverlay.drawFade(g, v.fade, SIDEBAR_WIDTH / 2.0 + (v.fade.x - c[0]) * scale, H / 2.0 - (v.fade.y - c[1]) * scale,
+                    Math.max(3, v.fade.r * scale), now);
+                // Keep painting smoothly until it has gone, rather than once a game tick.
+                if (v.fade.progress(now) < 1) repaint(40);
+            }
             pointers(g, v, c, scale);
             Font small = FontManager.getRunescapeSmallFont();
             text(g, small, "N", SIDEBAR_WIDTH - 12, 13, MUTED);

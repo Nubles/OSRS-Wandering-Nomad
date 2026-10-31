@@ -68,6 +68,39 @@ public class MomentsTest
     }
 
     @Test
+    public void thePartingNamesBothHalvesAndHandsOverTheFadedOne()
+    {
+        NomadSim sim = NomadSim.start(483574);
+        com.wanderingnomad.sim.Tile at = new com.wanderingnomad.sim.Tile(3222, 3218);
+        for (int m = 0; m < 30; m++) sim.step(at);
+        Moments moments = new Moments();
+        moments.observe(sim, false, null, 0);
+        sim.forkSoonForTesting(false);
+        com.wanderingnomad.sim.Circle main = null;
+        com.wanderingnomad.sim.Circle twin = null;
+        Moments.Banner parted = null;
+        for (int m = 0; m < 200 && parted == null; m++)
+        {
+            sim.step(at);
+            if (sim.twin() != null)
+            {
+                main = sim.main();
+                twin = sim.twin();
+            }
+            for (Moments.Banner b : moments.observe(sim, false, null, m * 60_000L))
+            {
+                if (b.title.equals("The halves parted")) parted = b;
+            }
+        }
+        assertTrue("the fork parted within 200 minutes", parted != null);
+        com.wanderingnomad.sim.Circle faded = moments.takeFaded();
+        assertTrue(faded == main || faded == twin);
+        assertTrue(faded != sim.main());
+        assertTrue(parted.subtitle, parted.subtitle.contains("half faded"));
+        assertTrue(moments.takeFaded() == null);
+    }
+
+    @Test
     public void everySampleHasWords()
     {
         for (Moments.Banner b : Moments.samples(NomadSim.start(1)))
