@@ -2,6 +2,7 @@ package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Forecast;
+import com.wanderingnomad.sim.Landmarks;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Waystone;
@@ -153,6 +154,7 @@ class NomadWorldMapOverlay extends Overlay
             pill(graphics, name, (float) ring.getCenterX(), (float) top, colour);
         }
         drawWaystones(graphics, sim, bounds, west, south, zoom);
+        if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
         drawPointers(graphics, sim, rings, bounds);
         drawHover(graphics, sim, rings, bounds);
         graphics.setFont(font);
@@ -312,6 +314,46 @@ class NomadWorldMapOverlay extends Overlay
             graphics.draw(arrow);
             String name = j == sim.boundIndex() ? c.name() + " (you)" : c.name();
             outlined(graphics, name, (float) (tx - ux * 22), (float) (ty - uy * 22 + 4), colour, true);
+        }
+    }
+
+    /**
+     * Testing: every tile a waystone can rise on, as a small diamond (green open, red blocked,
+     * blue not checked yet), with its name beside the one under the mouse.
+     */
+    private void drawSpots(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        Point mouse = client.getMouseCanvasPosition();
+        Landmarks.Landmark hovered = null;
+        double hx = 0;
+        double hy = 0;
+        for (Landmarks.Landmark l : Landmarks.ALL)
+        {
+            double px = bounds.x + (l.x - west) * zoom;
+            double py = bounds.y + bounds.height - (l.y - south) * zoom;
+            if (!bounds.contains(px, py)) continue;
+            Path2D.Double d = new Path2D.Double();
+            d.moveTo(px, py - 5);
+            d.lineTo(px + 4, py);
+            d.lineTo(px, py + 5);
+            d.lineTo(px - 4, py);
+            d.closePath();
+            graphics.setColor(plugin.spots().colour(l));
+            graphics.fill(d);
+            graphics.setStroke(THIN);
+            graphics.setColor(Color.BLACK);
+            graphics.draw(d);
+            if (mouse != null && Math.hypot(mouse.getX() - px, mouse.getY() - py) < 8)
+            {
+                hovered = l;
+                hx = px;
+                hy = py;
+            }
+        }
+        if (hovered != null)
+        {
+            String text = hovered.name + " (" + hovered.x + ", " + hovered.y + ")" + (plugin.spots().isBlocked(hovered) ? " blocked" : "");
+            outlined(graphics, text, (float) hx + 8, (float) hy + 4, plugin.spots().colour(hovered), false);
         }
     }
 

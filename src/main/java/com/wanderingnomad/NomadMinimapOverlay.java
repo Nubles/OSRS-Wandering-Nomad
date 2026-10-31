@@ -1,6 +1,7 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Landmarks;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Waystone;
 import java.awt.BasicStroke;
@@ -124,6 +125,19 @@ class NomadMinimapOverlay extends Overlay
         {
             Path2D r = rings.get(k);
             glow(graphics, r != null ? r : arcs(view, halves.get(k)), NomadPlugin.colour(halves.get(k), 255), k == 0 ? 1 : 0.8);
+        }
+        // Testing: where waystones can rise, as small squares in their check colour.
+        if (plugin.spots().on())
+        {
+            for (Landmarks.Landmark l : Landmarks.ALL)
+            {
+                Point p = toMinimap(view, l.x, l.y);
+                if (p == null || !minimap.contains(p.getX(), p.getY())) continue;
+                graphics.setColor(Color.BLACK);
+                graphics.fillRect(p.getX() - 3, p.getY() - 3, 7, 7);
+                graphics.setColor(plugin.spots().colour(l));
+                graphics.fillRect(p.getX() - 2, p.getY() - 2, 5, 5);
+            }
         }
         graphics.setClip(before);
 
