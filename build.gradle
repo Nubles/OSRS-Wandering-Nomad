@@ -47,3 +47,9 @@ tasks.register('runClient', JavaExec) {
     jvmArgs '-ea'
     args '--developer-mode'
 }
+
+// Draws the sidebar with a sample run into build/sidebar.png, to check its layout without the game.
+tasks.register('sidebarSnapshot', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.wanderingnomad.SidebarSnapshot'
+}

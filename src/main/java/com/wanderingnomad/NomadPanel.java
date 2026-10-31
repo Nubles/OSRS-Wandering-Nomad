@@ -1,6 +1,7 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Forecast;
 import com.wanderingnomad.sim.Geography;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
@@ -10,46 +11,61 @@ import com.wanderingnomad.sim.Waystone;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
 import java.awt.GridLayout;
+import java.awt.Insets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.IntConsumer;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.ScrollPaneConstants;
 import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 
 /**
- * The sidebar: your circle, the crossings you can take, the region's diary progress, the run log,
- * links to the website and a button to start over. It only ever shows a {@link View} taken on the client thread.
+ * The sidebar, top to bottom: a header card with your circle and the edge countdown, a live mini
+ * map, your boons, the risen waystones, the crossings, the run's tallies, a timeline of its moments,
+ * and buttons for the website, the run code and a new run. Every piece has a fixed width, buttons
+ * are only rebuilt when they change, and it only ever shows a {@link View} taken on the client thread.
  */
 class NomadPanel extends PluginPanel
 {
+    /** The width inside the sidebar's 10px borders. */
+    static final int CONTENT_WIDTH = PANEL_WIDTH - 20;
+    /** Boon minutes when fresh, for the time-left bars. */
+    private static final int EXPAND_MINUTES = 120;
+    private static final int TAILWIND_MINUTES = 60;
+    private static final int ANCHOR_MINUTES = 60;
+    private static final int BRIDGE_MINUTES = 10;
+
     private final IntConsumer onCross;
     private final BiConsumer<Integer, Integer> onBoon;
-    private final Runnable onNewRun;
-    private final Runnable onViewOnWebsite;
-    private final Runnable onCopyRunCode;
-    private final Runnable onCopyLiveLink;
-    private final JLabel title = new JLabel();
-    private final JLabel detail = new JLabel();
-    private final JPanel crossings = new JPanel(new GridLayout(0, 1, 0, 4));
-    private final JLabel diary = new JLabel();
-    private final JLabel guard = new JLabel();
+    private final SidebarParts.Header header = new SidebarParts.Header();
+    private final SidebarParts.MiniMap map = new SidebarParts.MiniMap();
     private final JLabel boonsTitle = heading("Boons");
-    private final JPanel boons = new JPanel(new GridLayout(0, 1, 0, 4));
-    private final JLabel waystones = new JLabel();
+    private final JPanel boons = column();
+    private final SidebarParts.Active active = new SidebarParts.Active();
+    private final SidebarParts.Waystones waystones = new SidebarParts.Waystones();
+    private final JPanel crossings = column();
+    private final SidebarParts.Stats stats = new SidebarParts.Stats();
+    private final SidebarParts.Timeline timeline = new SidebarParts.Timeline();
     private final JTextArea logArea = new JTextArea();
-    /** Text width inside the sidebar's 10px borders, a little under the room there is. */
-    private static final int TEXT_WIDTH = PANEL_WIDTH - 40;
+    private final List<SidebarParts.Part> drawn = new ArrayList<>();
     private String shownBoons;
     private String shownCrossings;
 
@@ -57,59 +73,62 @@ class NomadPanel extends PluginPanel
         Runnable onCopyRunCode, Runnable onCopyLiveLink)
     {
         this.onBoon = onBoon;
-        this.onCopyLiveLink = onCopyLiveLink;
         this.onCross = onCross;
-        this.onNewRun = onNewRun;
-        this.onViewOnWebsite = onViewOnWebsite;
-        this.onCopyRunCode = onCopyRunCode;
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        add(title);
-        add(detail);
-        add(gap());
-        add(heading("Crossings"));
-        crossings.setBackground(ColorScheme.DARK_GRAY_COLOR);
-        add(crossings);
-        add(gap());
+        add(header);
+        add(gap(8));
+        add(map);
+        add(gap(10));
         add(boonsTitle);
-        boons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        add(gap(4));
         add(boons);
-        add(gap());
+        add(gap(4));
+        add(active);
+        add(gap(8));
         add(heading("Waystones"));
+        add(gap(4));
         add(waystones);
-        add(gap());
-        add(diary);
-        add(gap());
-        add(heading("Rule guard"));
-        add(guard);
-        add(gap());
+        add(gap(8));
+        add(heading("Crossings"));
+        add(gap(4));
+        add(crossings);
+        add(gap(10));
+        add(heading("Run"));
+        add(gap(4));
+        add(stats);
+        add(gap(10));
+        add(heading("Moments"));
+        add(gap(4));
+        JScrollPane scroll = new JScrollPane(timeline, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getVerticalScrollBar().setUnitIncrement(15);
+        fix(scroll, 186);
+        add(scroll);
+        add(gap(10));
         add(heading("Run log"));
+        add(gap(4));
         logArea.setEditable(false);
         logArea.setLineWrap(true);
         logArea.setWrapStyleWord(true);
         logArea.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         logArea.setForeground(Color.LIGHT_GRAY);
-        logArea.setRows(14);
-        add(logArea);
-        add(gap());
-        add(heading("Website"));
-        JPanel web = new JPanel(new GridLayout(0, 1, 0, 4));
-        web.setBackground(ColorScheme.DARK_GRAY_COLOR);
-        JButton view = new JButton("View on website");
-        view.setToolTipText("Opens your circles on the Nomad UIM website, exactly where they are now");
-        view.addActionListener(e -> this.onViewOnWebsite.run());
-        JButton copy = new JButton("Copy run code");
-        copy.setToolTipText("Copies a code you can paste on the website or share");
-        copy.addActionListener(e -> this.onCopyRunCode.run());
-        JButton live = new JButton("Copy live link");
-        live.setToolTipText("A link that follows your run as you play (turn on Share live in the plugin's settings)");
-        live.addActionListener(e -> this.onCopyLiveLink.run());
-        web.add(view);
-        web.add(copy);
-        web.add(live);
-        add(web);
-        add(gap());
+        logArea.setFont(FontManager.getRunescapeSmallFont());
+        logArea.setMargin(new Insets(4, 6, 4, 6));
+        JScrollPane logScroll = new JScrollPane(logArea, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        logScroll.setBorder(BorderFactory.createEmptyBorder());
+        fix(logScroll, 110);
+        add(logScroll);
+        add(gap(10));
+
+        JPanel buttons = new JPanel(new GridLayout(0, 1, 0, 4));
+        buttons.setOpaque(false);
+        buttons.add(button("Copy run code", "Copies a code you can paste on the website or share", onCopyRunCode));
+        buttons.add(button("View on website", "Opens your circles on the Nomad UIM website, exactly where they are now", onViewOnWebsite));
+        buttons.add(button("Copy live link", "A link that follows your run as you play (turn on Share live in the plugin's settings)", onCopyLiveLink));
         JButton newRun = new JButton("Start a new run");
         newRun.addActionListener(e ->
         {
@@ -118,74 +137,186 @@ class NomadPanel extends PluginPanel
                 "Nomad UIM", JOptionPane.OK_CANCEL_OPTION);
             if (ok == JOptionPane.OK_OPTION) onNewRun.run();
         });
-        JPanel bottom = new JPanel(new BorderLayout());
-        bottom.add(newRun, BorderLayout.CENTER);
-        add(bottom);
+        buttons.add(newRun);
+        fix(buttons, 4 * 26 + 12);
+        add(buttons);
+
+        drawn.add(header);
+        drawn.add(map);
+        drawn.add(active);
+        drawn.add(waystones);
+        drawn.add(stats);
         // BoxLayout lines children up by their alignment, which differs between labels (left) and
-        // panels (centre); with both, rows slide sideways whenever a label's text changes width.
+        // panels (centre); with both, rows slide sideways whenever something changes width.
         for (Component child : getComponents())
         {
             if (child instanceof JComponent) ((JComponent) child).setAlignmentX(LEFT_ALIGNMENT);
         }
-        display(View.of(null, null, Collections.<String>emptyList(), null, null));
+        display(View.of(null, null, Collections.<String>emptyList(), null, null, null, null, Collections.<Moment>emptyList(), false));
     }
 
     void display(View v)
     {
-        title.setText(v.title);
-        title.setForeground(v.colour);
-        detail.setText(wrap(v.detail));
-        diary.setText(wrap(v.diary));
-        guard.setText(wrap(v.guard));
-        boonsTitle.setText(("Boons " + v.boonCount + "/" + NomadSim.BOONS_HELD).toUpperCase());
-        waystones.setText(wrap(v.waystones));
-        // The buttons are only rebuilt when they change, so they don't blink or lose the mouse on every update.
-        StringBuilder boonKey = new StringBuilder();
-        for (Boon b : v.boons) boonKey.append(b.index).append(b.side).append(b.label).append('\n');
+        for (SidebarParts.Part p : drawn) p.show(v);
+        boonsTitle.setText(("Boons " + v.held + "/" + NomadSim.BOONS_HELD).toUpperCase());
+
+        // Buttons are only rebuilt when they change, so they don't blink or lose the mouse on every update.
+        StringBuilder boonKey = new StringBuilder().append(v.live);
+        for (BoonSlot b : v.boons) boonKey.append(b.index).append(b.name).append('|');
         if (!boonKey.toString().equals(shownBoons))
         {
             shownBoons = boonKey.toString();
             boons.removeAll();
-            if (v.boons.isEmpty()) boons.add(new JLabel(wrap("<html>None yet. Milestones summon waystones; stand on one to claim its boon.</html>")));
-            for (Boon b : v.boons)
+            for (int i = 0; i < NomadSim.BOONS_HELD; i++)
             {
-                JButton button = new JButton(b.label);
-                button.setToolTipText(b.tip);
-                button.addActionListener(e -> onBoon.accept(b.index, b.side));
-                boons.add(button);
+                boons.add(boonRow(i < v.boons.size() ? v.boons.get(i) : null, v));
+                if (i < NomadSim.BOONS_HELD - 1) boons.add(gap(4));
+            }
+            fix(boons, NomadSim.BOONS_HELD * SidebarParts.BoonCard.H + (NomadSim.BOONS_HELD - 1) * 4);
+            boons.revalidate();
+        }
+        for (Component row : boons.getComponents())
+        {
+            if (!(row instanceof JPanel)) continue;
+            for (Component c : ((JPanel) row).getComponents())
+            {
+                if (c instanceof SidebarParts.BoonCard) ((SidebarParts.BoonCard) c).show(v);
             }
         }
-        StringBuilder crossKey = new StringBuilder(v.noCrossing).append('\n');
-        for (Option o : v.options) crossKey.append(o.index).append(o.enabled).append(o.label).append('\n');
+
+        StringBuilder crossKey = new StringBuilder().append(v.live);
+        for (CrossRow c : v.crossings) crossKey.append(c.index).append(c.status).append(c.can).append('|');
         if (!crossKey.toString().equals(shownCrossings))
         {
             shownCrossings = crossKey.toString();
             crossings.removeAll();
-            if (v.options.isEmpty())
-            {
-                crossings.add(new JLabel(v.noCrossing));
-            }
-            for (Option o : v.options)
-            {
-                JButton b = new JButton(o.label);
-                b.setEnabled(o.enabled);
-                b.addActionListener(e -> onCross.accept(o.index));
-                crossings.add(b);
-            }
+            if (v.crossings.isEmpty()) crossings.add(note(v.live ? "No circle to cross into from here." : " "));
+            for (CrossRow c : v.crossings) crossings.add(crossRow(c));
+            int rows = Math.max(1, v.crossings.size());
+            fix(crossings, rows * 34);
+            crossings.revalidate();
         }
+
+        timeline.show(v.moments);
         String log = String.join("\n", v.log);
         if (!log.equals(logArea.getText())) logArea.setText(log);
         revalidate();
-        repaint();
     }
 
-    /**
-     * Fixes an HTML label's width so it wraps inside the sidebar. Without it the label is as wide
-     * as its longest line, wider than the panel, and its width changes with every update.
-     */
-    private static String wrap(String html)
+    /** A boon card, with its Use button (or a Rudder's two) beside it. */
+    private JPanel boonRow(BoonSlot slot, View v)
     {
-        return html.startsWith("<html>") ? "<html><body style='width:" + TEXT_WIDTH + "px'>" + html.substring(6) : html;
+        JPanel row = new JPanel(new BorderLayout(4, 0));
+        row.setOpaque(false);
+        if (slot == null)
+        {
+            SidebarParts.BoonCard card = new SidebarParts.BoonCard(null, CONTENT_WIDTH);
+            card.show(v);
+            row.add(card, BorderLayout.CENTER);
+            fix(row, SidebarParts.BoonCard.H);
+            return row;
+        }
+        JPanel side = new JPanel(new GridLayout(0, 1, 0, 2));
+        side.setOpaque(false);
+        if (NomadSim.RUDDER.equals(slot.name))
+        {
+            side.add(small("Left", "Turn your circle 45 degrees left", () -> onBoon.accept(slot.index, 1)));
+            side.add(small("Right", "Turn your circle 45 degrees right", () -> onBoon.accept(slot.index, -1)));
+        }
+        else
+        {
+            side.add(small("Use", slot.description, () -> onBoon.accept(slot.index, 0)));
+        }
+        int sideW = 50;
+        side.setPreferredSize(new Dimension(sideW, SidebarParts.BoonCard.H));
+        SidebarParts.BoonCard card = new SidebarParts.BoonCard(slot, CONTENT_WIDTH - sideW - 4);
+        card.show(v);
+        row.add(card, BorderLayout.CENTER);
+        row.add(side, BorderLayout.EAST);
+        fix(row, SidebarParts.BoonCard.H);
+        return row;
+    }
+
+    /** A crossing: the circle and how far off it is, with a Cross button once you can. */
+    private JPanel crossRow(CrossRow c)
+    {
+        JPanel row = new JPanel(new BorderLayout(4, 0));
+        row.setOpaque(false);
+        SidebarParts.Part info = new SidebarParts.Part(30)
+        {
+            @Override
+            void paint(Graphics2D g, View v)
+            {
+                SidebarParts.card(g, 0, 0, getWidth(), 30, c.colour);
+                Font bold = FontManager.getRunescapeBoldFont();
+                Font smallFont = FontManager.getRunescapeSmallFont();
+                FontMetrics sm = g.getFontMetrics(smallFont);
+                SidebarParts.text(g, bold, SidebarParts.fit(g.getFontMetrics(bold), c.name, getWidth() - 14), 10, 13, c.colour);
+                SidebarParts.text(g, smallFont, SidebarParts.fit(sm, c.status, getWidth() - 14), 10, 25,
+                    c.open ? SidebarParts.IN : Color.LIGHT_GRAY);
+            }
+        };
+        info.view = View.EMPTY;
+        int buttonW = c.can ? 56 : 0;
+        Dimension size = new Dimension(CONTENT_WIDTH - buttonW - (c.can ? 4 : 0), 30);
+        info.setPreferredSize(size);
+        info.setMinimumSize(size);
+        info.setMaximumSize(size);
+        row.add(info, BorderLayout.CENTER);
+        if (c.can)
+        {
+            JButton cross = small("Cross", "Cross into " + c.name, () -> onCross.accept(c.index));
+            cross.setPreferredSize(new Dimension(buttonW, 30));
+            row.add(cross, BorderLayout.EAST);
+        }
+        fix(row, 30);
+        JPanel wrap = new JPanel(new BorderLayout());
+        wrap.setOpaque(false);
+        wrap.add(row, BorderLayout.NORTH);
+        fix(wrap, 34);
+        return wrap;
+    }
+
+    private static JButton button(String label, String tip, Runnable action)
+    {
+        JButton b = new JButton(label);
+        b.setToolTipText(tip);
+        b.addActionListener(e -> action.run());
+        return b;
+    }
+
+    private static JButton small(String label, String tip, Runnable action)
+    {
+        JButton b = button(label, tip, action);
+        b.setMargin(new Insets(0, 2, 0, 2));
+        b.setFont(FontManager.getRunescapeSmallFont());
+        return b;
+    }
+
+    private static JLabel note(String text)
+    {
+        JLabel l = new JLabel(text);
+        l.setFont(FontManager.getRunescapeSmallFont());
+        l.setForeground(SidebarParts.MUTED);
+        return l;
+    }
+
+    private static JPanel column()
+    {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setOpaque(false);
+        return p;
+    }
+
+    /** Pins a component to the sidebar's width and the given height, so nothing around it moves. */
+    private static void fix(JComponent c, int height)
+    {
+        Dimension size = new Dimension(CONTENT_WIDTH, height);
+        c.setPreferredSize(size);
+        c.setMinimumSize(size);
+        c.setMaximumSize(size);
+        c.setAlignmentX(LEFT_ALIGNMENT);
     }
 
     static String time(int minutes)
@@ -197,33 +328,19 @@ class NomadPanel extends PluginPanel
     {
         JLabel l = new JLabel(text.toUpperCase());
         l.setForeground(Color.GRAY);
+        l.setFont(FontManager.getRunescapeSmallFont());
         return l;
     }
 
-    private static JLabel gap()
+    private static Component gap(int height)
     {
-        JLabel l = new JLabel(" ");
-        l.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 0));
-        return l;
+        JComponent gap = (JComponent) Box.createRigidArea(new Dimension(CONTENT_WIDTH, height));
+        // Left-aligned like everything else: BoxLayout shifts and squeezes rows when alignments are mixed.
+        gap.setAlignmentX(LEFT_ALIGNMENT);
+        return gap;
     }
 
-    static final class Boon
-    {
-        final int index;
-        final int side;
-        final String label;
-        final String tip;
-
-        Boon(int index, int side, String label, String tip)
-        {
-            this.index = index;
-            this.side = side;
-            this.label = label;
-            this.tip = tip;
-        }
-    }
-
-    /** What each boon does, for its button's tooltip. */
+    /** What each boon does. */
     static String describe(String boon)
     {
         switch (boon)
@@ -260,115 +377,294 @@ class NomadPanel extends PluginPanel
         return m < 60 ? m + "m" : (m / 60) + "h " + String.format("%02d", m % 60) + "m";
     }
 
-    static final class Option
+    /**
+     * A moment for the timeline: when it happened, in played minutes, and its banner. Steps in and
+     * out along the edge in quick succession share one moment, counted.
+     */
+    static final class Moment
+    {
+        final int minute;
+        final Moments.Banner banner;
+        /** The wall-clock time it first happened, for folding quick repeats together. */
+        final long at;
+        final int count;
+
+        Moment(int minute, Moments.Banner banner, long at, int count)
+        {
+            this.minute = minute;
+            this.banner = banner;
+            this.at = at;
+            this.count = count;
+        }
+
+        String title()
+        {
+            return count > 1 ? "In and out ×" + count : banner.title;
+        }
+
+        String subtitle()
+        {
+            return count > 1 ? "Along the edge. Now " + (banner.event == Moments.Event.LEFT ? "outside." : "inside.") : banner.subtitle;
+        }
+    }
+
+    static final class MapCircle
+    {
+        final double x;
+        final double y;
+        final double r;
+        final Color colour;
+        final String name;
+        final boolean yours;
+        final boolean linked;
+        /** Tiles between its edge and yours. */
+        final double gap;
+
+        MapCircle(Circle c, boolean yours, boolean linked, double gap)
+        {
+            this.x = c.x();
+            this.y = c.y();
+            this.r = c.radius();
+            this.colour = NomadPlugin.colour(c, 255);
+            this.name = c.name();
+            this.yours = yours;
+            this.linked = linked;
+            this.gap = gap;
+        }
+    }
+
+    static final class MapStone
+    {
+        final double x;
+        final double y;
+        final Color colour;
+
+        MapStone(double x, double y, Color colour)
+        {
+            this.x = x;
+            this.y = y;
+            this.colour = colour;
+        }
+    }
+
+    static final class BoonSlot
     {
         final int index;
-        final String label;
-        final boolean enabled;
+        final String name;
+        final String description;
+        final boolean rare;
 
-        Option(int index, String label, boolean enabled)
+        BoonSlot(int index, String name)
         {
             this.index = index;
-            this.label = label;
-            this.enabled = enabled;
+            this.name = name;
+            this.description = describe(name);
+            this.rare = Moments.rare(name);
+        }
+    }
+
+    static final class ActiveBoon
+    {
+        final String name;
+        final int left;
+        final int total;
+
+        ActiveBoon(String name, int left, int total)
+        {
+            this.name = name;
+            this.left = left;
+            this.total = Math.max(total, left);
+        }
+    }
+
+    static final class StoneRow
+    {
+        String boon;
+        boolean rare;
+        boolean yours;
+        Color colour;
+        long distance;
+        /** Which way it lies from you on the map, or NaN if your tile isn't known. */
+        double angle = Double.NaN;
+        String where;
+        String left;
+        double sortKey;
+    }
+
+    static final class CrossRow
+    {
+        final int index;
+        final String name;
+        final Color colour;
+        final boolean open;
+        final boolean can;
+        final String status;
+
+        CrossRow(int index, String name, Color colour, boolean open, boolean can, String status)
+        {
+            this.index = index;
+            this.name = name;
+            this.colour = colour;
+            this.open = open;
+            this.can = can;
+            this.status = status;
         }
     }
 
     /** Everything the panel shows, worked out on the client thread. */
     static final class View
     {
-        String title = "Nomad UIM";
+        static final View EMPTY = new View();
+
+        boolean live;
+        String name = "Nomad UIM";
         Color colour = Color.WHITE;
-        String detail = "Log in to start or resume your run.";
-        String diary = " ";
-        String guard = " ";
-        String waystones = " ";
-        int boonCount;
-        final List<Boon> boons = new ArrayList<>();
-        String noCrossing = " ";
-        final List<Option> options = new ArrayList<>();
+        String state = "";
+        Color stateColour = Color.WHITE;
+        boolean outside;
+        int edgeIn = -1;
+        String mood = "";
+        double heading;
+        double radius;
+        String played = "0h 00m";
+        String where = "";
+        long seed;
+
+        double cx;
+        double cy;
+        double px = Double.NaN;
+        double py = Double.NaN;
+        final List<MapCircle> circles = new ArrayList<>();
+        final List<MapStone> stones = new ArrayList<>();
+        double[][] cone;
+
+        int held;
+        final List<BoonSlot> boons = new ArrayList<>();
+        final List<ActiveBoon> active = new ArrayList<>();
+        final List<StoneRow> waystones = new ArrayList<>();
+        String waystoneNote;
+        final List<CrossRow> crossings = new ArrayList<>();
+
+        int walked;
+        int crossingsMade;
+        int claimed;
+        int timesOutside;
+        String guardShort = "Off";
+        boolean guardClean = true;
+        String diaryShort = "-";
+
+        List<Moment> moments = Collections.emptyList();
         List<String> log = Collections.emptyList();
 
-        static View of(NomadSim sim, Tile at, List<String> log, Radar radar, RuleGuard guard)
+        static View of(NomadSim sim, Tile at, List<String> log, Radar radar, RuleGuard guard, Forecast forecast,
+            RunStats stats, List<Moment> moments, boolean outsideNow)
         {
             View v = new View();
             v.log = log;
+            v.moments = moments;
             if (sim == null) return v;
-            v.guard = guard == null
-                ? "<html>Off. Turn on Rule guard in the settings to note XP, loot and kills outside.</html>"
-                : guard.clean()
-                ? "<html>Clean: nothing gained outside your circle.</html>"
-                : "<html>Outside so far: " + guard.xp + " XP, " + guard.loot + " loot, " + guard.kills + " kills."
-                    + "<br>Fighting back and travelling home are allowed.<br>"
-                    + String.join("<br>", guard.notes.subList(0, Math.min(3, guard.notes.size()))) + "</html>";
-            v.boonCount = sim.boons().size();
-            for (int i = 0; i < sim.boons().size(); i++)
-            {
-                String b = sim.boons().get(i);
-                if (NomadSim.RUDDER.equals(b))
-                {
-                    v.boons.add(new Boon(i, 1, "Rudder: turn left", describe(b)));
-                    v.boons.add(new Boon(i, -1, "Rudder: turn right", describe(b)));
-                }
-                else
-                {
-                    v.boons.add(new Boon(i, 0, "Use " + b, describe(b)));
-                }
-            }
-            List<String> stones = new ArrayList<>();
-            for (Waystone w : sim.waystones())
-            {
-                Circle in = sim.circles().get(w.circle());
-                String where = w.circle() == sim.boundIndex() ? "your circle" : in.name();
-                String away = at == null ? "" : ", " + Math.round(Math.hypot(w.x() - at.x, w.y() - at.y)) + " tiles away";
-                stones.add("<b>" + w.boon() + "</b> at " + w.landmark() + " in " + where + away
-                    + ", about " + roughly(sim.minutesLeft(w)) + " left");
-            }
-            if (sim.pendingSummons() > 0)
-            {
-                stones.add(sim.pendingSummons() + " summoned, waiting for a landmark to drift into reach");
-            }
-            if (sim.bridgeLeft() > 0) stones.add("Bridge open for " + sim.bridgeLeft() + " more min");
-            v.waystones = stones.isEmpty() ? "<html>None. Every 100 total level, 25 quest points or first boss kill summons one.</html>"
-                : "<html>" + String.join("<br>", stones) + "</html>";
-
+            v.live = true;
             Circle c = sim.bound();
-            v.title = c.name() + " circle · " + Math.round(c.radius()) + " tiles";
+            v.name = c.name() + " circle";
             v.colour = NomadPlugin.colour(c, 255);
+            v.outside = outsideNow && sim.bridgeLeft() <= 0;
+            v.state = v.outside ? "Outside your circle" : sim.stranded() ? "Stranded: Main moved on" : "Inside";
+            v.stateColour = v.outside ? SidebarParts.OUT : sim.stranded() ? new Color(0xFFCF8F) : SidebarParts.IN;
+            v.edgeIn = radar == null ? -1 : radar.edgeIn;
+            v.mood = c.moodName() + (c.sailing() ? ", sailing to " + c.voyageTo() : "");
+            v.heading = c.heading();
+            v.radius = c.radius();
+            v.played = time(sim.minutes());
+            v.seed = sim.seed();
             Region over = Geography.regionAt(c.x(), c.y());
-            String where = c.sailing() ? "at sea, bound for " + c.voyageTo() : over == null ? "on the coast" : "over " + over.name;
-            v.detail = "<html>Played " + time(sim.minutes()) + ", seed " + sim.seed() + "<br>Your circle is " + where
-                + ", " + c.moodName().toLowerCase()
-                + (radar != null && radar.edgeIn > 0 ? "<br>The edge reaches you in about " + radar.edgeIn + " min." : "")
-                + effects(c)
-                + (sim.isOutside() ? "<br><b>You are outside it.</b>" : "")
-                + (sim.stranded() ? "<br>Stranded: Main has moved on." : "") + "</html>";
+            v.where = c.sailing() ? "At sea" : over == null ? "On the coast" : "Over " + over.name;
 
-            List<Option> all = new ArrayList<>();
+            // The map: circles near yours, waystones, you, and the next hour's Forecast for yours.
+            v.cx = c.x();
+            v.cy = c.y();
+            if (at != null)
+            {
+                v.px = at.x;
+                v.py = at.y;
+            }
             for (int j = 0; j < sim.circles().size(); j++)
             {
-                if (!sim.linked(j)) continue;
+                Circle o = sim.circles().get(j);
+                v.circles.add(new MapCircle(o, j == sim.boundIndex(), sim.linked(j), c.gap(o)));
+            }
+            // Yours last, so it draws on top.
+            v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));
+            for (Waystone w : sim.waystones())
+            {
+                v.stones.add(new MapStone(w.x(), w.y(), w.circle() == sim.boundIndex() ? Moments.GOLD
+                    : NomadPlugin.colour(sim.circles().get(w.circle()), 255)));
+            }
+            if (forecast != null && sim.boundIndex() < sim.circles().size())
+            {
+                double[] p = forecast.points(0, sim.boundIndex());
+                double[][] pts = new double[p.length / 2][];
+                for (int k = 0; k < pts.length; k++) pts[k] = new double[]{p[k * 2], p[k * 2 + 1]};
+                List<double[]> hull = NomadWorldMapOverlay.hull(pts);
+                if (hull.size() >= 3) v.cone = hull.toArray(new double[0][]);
+            }
+
+            v.held = sim.boons().size();
+            for (int i = 0; i < sim.boons().size(); i++) v.boons.add(new BoonSlot(i, sim.boons().get(i)));
+            if (c.expandLeft() > 0) v.active.add(new ActiveBoon(NomadSim.EXPAND, c.expandLeft(), EXPAND_MINUTES));
+            if (c.tailwindLeft() > 0) v.active.add(new ActiveBoon(NomadSim.TAILWIND, c.tailwindLeft(), TAILWIND_MINUTES));
+            if (c.anchorLeft() > 0) v.active.add(new ActiveBoon(NomadSim.ANCHOR, c.anchorLeft(), ANCHOR_MINUTES));
+            if (sim.bridgeLeft() > 0) v.active.add(new ActiveBoon(NomadSim.BRIDGE, sim.bridgeLeft(), BRIDGE_MINUTES));
+
+            for (Waystone w : sim.waystones())
+            {
+                StoneRow s = new StoneRow();
+                s.boon = w.boon();
+                s.rare = Moments.rare(w.boon());
+                s.yours = w.circle() == sim.boundIndex();
+                s.colour = NomadPlugin.colour(sim.circles().get(w.circle()), 255);
+                s.where = w.landmark() + (s.yours ? "" : ", in " + sim.circles().get(w.circle()).name());
+                s.left = "~" + roughly(sim.minutesLeft(w));
+                if (at != null)
+                {
+                    s.distance = Math.round(Math.hypot(w.x() - at.x, w.y() - at.y));
+                    s.angle = Math.atan2(w.y() - at.y, w.x() - at.x);
+                    s.sortKey = s.distance;
+                }
+                v.waystones.add(s);
+            }
+            v.waystones.sort((a, b) -> Double.compare(a.sortKey, b.sortKey));
+            if (sim.pendingSummons() > 0)
+            {
+                v.waystoneNote = sim.pendingSummons() + " summoned, waiting for a landmark to drift into reach";
+            }
+
+            for (int j = 0; j < sim.circles().size(); j++)
+            {
+                if (j == sim.boundIndex() || !sim.linked(j)) continue;
                 Circle o = sim.circles().get(j);
                 double gap = sim.bound().gap(o);
                 boolean open = gap <= 0;
                 boolean can = sim.canCross(j, at);
                 int soon = radar == null || j >= radar.crossingIn.length ? -1 : radar.crossingIn[j];
-                String label = open ? (can ? "Cross into " + o.name() : o.name() + ": stand in the overlap")
-                    : o.name() + ": " + Math.round(gap) + " tiles apart" + (soon > 0 ? ", touching in ~" + soon + " min" : "");
-                all.add(new Option(j, label, can));
+                String status = open ? (can ? "Open now: you're in the overlap" : "Open now: stand in the overlap")
+                    : Math.round(gap) + " tiles apart" + (soon > 0 ? " · touching in ~" + soon + " min" : "");
+                v.crossings.add(new CrossRow(j, o.name(), NomadPlugin.colour(o, 255), open, can, status));
             }
-            all.sort((a, b) -> Double.compare(sim.bound().gap(sim.circles().get(a.index)),
+            v.crossings.sort((a, b) -> Double.compare(sim.bound().gap(sim.circles().get(a.index)),
                 sim.bound().gap(sim.circles().get(b.index))));
-            v.options.addAll(all.subList(0, Math.min(3, all.size())));
-            v.noCrossing = "No circle to cross into.";
+            while (v.crossings.size() > 4) v.crossings.remove(v.crossings.size() - 1);
 
+            if (stats != null)
+            {
+                v.walked = stats.tilesWalked;
+                v.crossingsMade = stats.crossings;
+                v.claimed = stats.claimed;
+                v.timesOutside = stats.timesOutside;
+            }
+            v.guardClean = guard == null || guard.clean();
+            v.guardShort = guard == null ? "Off" : guard.clean() ? "Clean" : guard.xp + " XP out";
             Region home = c.region();
-            v.diary = home == null
-                ? "<html>Diaries grow region circles. Cross into one to see its progress.</html>"
-                : home.maxTiers() == 0
-                ? "<html>" + home.name + " has no Achievement Diary, so its circle doesn't grow.</html>"
-                : "<html>" + home.name + " diaries: " + c.tiers() + "/" + home.maxTiers() + " tiers<br>Range "
-                    + Math.round(c.radiusMin()) + " to " + Math.round(c.radiusMax()) + " tiles</html>";
+            v.diaryShort = home == null ? "-" : home.maxTiers() == 0 ? "None" : c.tiers() + "/" + home.maxTiers();
             return v;
         }
     }
