@@ -1,6 +1,7 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Landmarks;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Tile;
@@ -148,6 +149,7 @@ class NomadSceneOverlay extends Overlay
             drawFeet(graphics, view, sim, at);
         }
         drawBeacons(graphics, view, sim, now);
+        if (plugin.spots().on()) drawSpots(graphics, view);
         if (config.compass())
         {
             drawCompass(graphics, view, sim, at);
@@ -694,6 +696,26 @@ class NomadSceneOverlay extends Overlay
         if (best == null || bestD <= NomadSim.CLAIM_REACH) return;
         String text = best.boon() + " waystone · " + Math.round(bestD) + " tiles · ~" + NomadPanel.roughly(sim.minutesLeft(best)) + " left";
         drawArrow(graphics, view, at, new double[]{best.x(), best.y()}, GOLD, GOLD, text);
+    }
+
+    /**
+     * Testing: outlines every tile in the scene where a waystone can rise, named, green if you
+     * could stand there, red if it's blocked, blue until it's been checked.
+     */
+    private void drawSpots(Graphics2D graphics, WorldView view)
+    {
+        if (view.getPlane() != 0) return;
+        for (Landmarks.Landmark l : Landmarks.ALL)
+        {
+            LocalPoint lp = LocalPoint.fromWorld(view, l.x, l.y);
+            if (lp == null) continue;
+            Polygon tile = Perspective.getCanvasTilePoly(client, lp);
+            if (tile == null) continue;
+            Color colour = plugin.spots().colour(l);
+            OverlayUtil.renderPolygon(graphics, tile, colour, alpha(colour, 60), YOURS);
+            Point label = Perspective.localToCanvas(client, lp, 0, 120);
+            if (label != null) OverlayUtil.renderTextLocation(graphics, label, l.name + (plugin.spots().isBlocked(l) ? " (blocked)" : ""), colour);
+        }
     }
 
     /** Waystones in the scene stand as pillars of light, with their boon and time left above. */

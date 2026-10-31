@@ -151,6 +151,8 @@ public class NomadPlugin extends Plugin
     private final Moments moments = new Moments();
     /** The half of a forked Main that faded at the last parting, dissolving on the maps; null if none yet. */
     private volatile Fade fade;
+    /** Testing: where waystones can rise, and whether each tile is open. */
+    private final SpotCheck spots = new SpotCheck();
     /** The run's latest moments, newest first, for the sidebar. */
     private final Deque<NomadPanel.Moment> timeline = new ArrayDeque<>();
     private RunStats stats = new RunStats();
@@ -196,7 +198,7 @@ public class NomadPlugin extends Plugin
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
             panel.addTestButtons(
-                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade"},
+                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots"},
                 new Runnable[]{
                     () -> clientThread.invokeLater(() -> test("nomadmoments")),
                     () -> clientThread.invokeLater(() -> test("nomadfork")),
@@ -204,6 +206,9 @@ public class NomadPlugin extends Plugin
                     () -> clientThread.invokeLater(() -> test("nomadstep", "1")),
                     () -> clientThread.invokeLater(() -> test("nomadstep", "30")),
                     () -> clientThread.invokeLater(this::replayFade),
+                    () -> clientThread.invokeLater(() -> reply(spots.toggle()
+                        ? "Waystone spots shown: diamonds on the world map, outlines in the game world and on the minimap. Green is open, red is blocked, blue not checked yet."
+                        : "Waystone spots hidden.")),
                 });
         }
         navButton = NavigationButton.builder()
@@ -277,6 +282,7 @@ public class NomadPlugin extends Plugin
     public void onGameTick(GameTick tick)
     {
         edgeWall.update(sim, config.drawEdge() && config.edge3d() && config.edgeStyle() != NomadConfig.EdgeStyle.TILES);
+        spots.check(client.getTopLevelWorldView());
         if (sim == null)
         {
             if (loadPending && client.getAccountHash() != -1 && client.getLocalPlayer() != null)
@@ -428,6 +434,11 @@ public class NomadPlugin extends Plugin
         fade = f.again(System.currentTimeMillis());
         reply("Replaying the faded half's dissolve.");
         publish();
+    }
+
+    SpotCheck spots()
+    {
+        return spots;
     }
 
     Radar radar()
