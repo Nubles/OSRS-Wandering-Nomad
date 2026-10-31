@@ -86,6 +86,21 @@ const RUDDER_WAY = 150;
 const BRIDGE_MINUTES = 10;
 export const BRIDGE_REACH = 60;
 const LASTING = 30;
+/** Forks come every 6 to 10 played hours, or after 4 quiet ones, with a 10-minute warning. */
+const FORK_EVERY_MIN = 360;
+const FORK_EVERY_MAX = 600;
+export const QUIET = 240;
+export const FORK_WARN = 10;
+/** The halves part at this many tiles a minute each, and settle it after this many minutes regardless. */
+const FORK_SPEED = 0.6;
+const FORK_GIVE_UP = 90;
+/** Main only forks with room to split: at least this radius, and this many tries at an axis. */
+const FORK_MIN_RADIUS = 14;
+const FORK_TRIES = 12;
+const FORK_REACH = 60;
+/** A fork that can't start now (at sea, anchored or too small) tries again this much later. */
+const FORK_RETRY = 30;
+const COMPASS = ['east', 'north-east', 'north', 'north-west', 'west', 'south-west', 'south', 'south-east'];
 
 export interface Temperament {
   name: string;
@@ -191,6 +206,16 @@ export interface SimState {
   pending: string[];
   summons: number;
   bridgeLeft: number;
+  /** Forks so far, the played minute the next is due (0 until scheduled), and the minute of the last big moment. */
+  forks: number;
+  nextFork: number;
+  lastBig: number;
+  /** Minutes of warning left before Main splits, and the heading Main's half takes (the other takes the opposite). */
+  forkWarn: number;
+  forkAxis: number;
+  /** While forked: the other half, and the minutes since the split. */
+  twin?: CircleState;
+  forkAge: number;
 }
 
 export const contains = (c: CircleState, x: number, y: number) => dist(x - c.x, y - c.y) <= c.radius;
@@ -220,6 +245,13 @@ export class NomadSim {
     state.pending ??= [];
     state.summons ??= 0;
     state.bridgeLeft ??= 0;
+    // And runs saved before forks.
+    state.forks ??= 0;
+    state.nextFork ??= 0;
+    state.lastBig ??= 0;
+    state.forkWarn ??= 0;
+    state.forkAxis ??= 0;
+    state.forkAge ??= 0;
   }
 
   static start(geo: Geography, seed: number): NomadSim {
@@ -238,6 +270,7 @@ export class NomadSim {
     return new NomadSim(geo, {
       seed: seed | 0, rngState: rng.state, minutes: 0, bound: MAIN, outside: false, sailingUnlocked: false, circles,
       waystones: [], boons: [], pending: [], summons: 0, bridgeLeft: 0,
+      forks: 0, nextFork: 0, lastBig: 0, forkWarn: 0, forkAxis: 0, forkAge: 0,
     });
   }
 
@@ -256,6 +289,26 @@ export class NomadSim {
 
   get bound() {
     return this.state.circles[this.state.bound];
+  }
+
+  /** While Main is forked, the other half. */
+  get twin(): CircleState | undefined {
+    return this.state.twin;
+  }
+
+  /** Played minutes since the last fork, voyage or crossing. */
+  quietMinutes(): number {
+    return this.state.minutes - this.state.lastBig;
+  }
+
+  /** Whether a tile is inside Main, counting both halves while it's forked. */
+  inMain(x: number, y: number): boolean {
+    return contains(this.main, x, y) || (this.state.twin != null && contains(this.state.twin, x, y));
+  }
+
+  /** Whether a tile is inside your circle, counting both of Main's halves while it's forked. */
+  inYours(x: number, y: number): boolean {
+    return this.state.bound === MAIN ? this.inMain(x, y) : contains(this.bound, x, y);
   }
 
   name(c: CircleState): string {
@@ -352,6 +405,7 @@ export class NomadSim {
     if (!this.canCross(index, player)) return null;
     this.state.bound = index;
     this.state.outside = false;
+    this.state.lastBig = this.state.minutes;
     this.circles.forEach((c, j) => {
       c.waiting = false;
       c.touchingYours = this.linked(j) && touches(this.bound, c);
@@ -388,8 +442,9 @@ export class NomadSim {
     const b = this.bound;
     const main = this.main;
 
-    // An open Bridge lets you walk between circles without it counting as outside.
-    const out = player != null && !contains(b, player.x, player.y) && s.bridgeLeft <= 0;
+    // An open Bridge lets you walk between circles without it counting as outside, and either
+    // half of a forked Main counts as yours.
+    const out = player != null && !this.inYours(player.x, player.y) && s.bridgeLeft <= 0;
     if (out !== s.outside) {
       s.outside = out;
       log.push(out ? 'You are outside your circle. It drifts 5x faster and shrinks 1 tile a minute.' : 'You are back inside your circle.');
@@ -406,17 +461,22 @@ export class NomadSim {
       const pulled = yours && stranded && !!c.regionId;
       const lean = yours && !out && player != null && dist(player.x - c.x, player.y - c.y) >= c.radius - LEAN_BAND ? player : null;
       const speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1);
-      this.move(c, rng, speedup, yours, pulled ? main : null, pulled ? STRANDED_PULL : 0, lean, log);
+      if (j === MAIN && s.twin) part(c, s.twin, this.geo);
+      else this.move(c, rng, speedup, yours, pulled ? main : null, pulled ? STRANDED_PULL : 0, lean, log);
     });
     s.minutes++;
     this.tickBoons(log);
+    this.fork(player, log);
 
     if (s.minutes % 5 === 0) {
       const yours = this.bound;
       this.circles.forEach((c, j) => {
         if (!this.linked(j)) return;
         const touching = touches(yours, c);
-        if (touching && !c.touchingYours) log.push(`Crossing open: your circle touches ${this.name(c)}.`);
+        if (touching && !c.touchingYours) {
+          log.push(`Crossing open: your circle touches ${this.name(c)}.`);
+          s.lastBig = s.minutes;
+        }
         if (!touching && c.touchingYours) {
           log.push(s.bound !== MAIN
             ? `Main moved on. You are stranded in ${this.name(yours)} until it comes back.`
@@ -699,6 +759,127 @@ export class NomadSim {
     c.y = port.tile.y;
     c.voyage = { to, tx: dest.tile.x, ty: dest.tile.y };
     log.push(`The Main circle boarded a boat at ${port.name}, bound for ${to}.`);
+    this.state.lastBig = this.state.minutes;
+  }
+
+  /**
+   * Forks: schedules the next one, brings it forward after 4 quiet hours, warns 10 minutes
+   * ahead, splits Main in two, and once the halves have parted keeps the one you stand in.
+   */
+  private fork(player: Tile | null, log: string[]) {
+    const s = this.state;
+    const m = this.main;
+    if (s.twin) {
+      s.forkAge++;
+      if (gap(m, s.twin) <= 0 && s.forkAge < FORK_GIVE_UP) return;
+      this.settle(player, log);
+      return;
+    }
+    if (s.forkWarn > 0) {
+      if (m.voyage) {
+        // Main set sail during the warning: the fork waits for dry land.
+        s.forkWarn = 0;
+        s.nextFork = s.minutes + FORK_RETRY;
+        return;
+      }
+      if (--s.forkWarn > 0) return;
+      const twin = structuredClone(m);
+      m.heading = s.forkAxis;
+      twin.heading = s.forkAxis + Math.PI;
+      m.turn = 0;
+      twin.turn = 0;
+      s.twin = twin;
+      s.forkAge = 0;
+      s.lastBig = s.minutes;
+      log.push(`The Main circle forked! One half heads ${compass(s.forkAxis)}, the other ${compass(s.forkAxis + Math.PI)}. Stand in the half you want when they part.`);
+      return;
+    }
+    if (s.nextFork <= 0) {
+      const dice = new Rng(s.seed ^ Math.imul(s.forks + 1, 0x85ebca6b | 0));
+      s.nextFork = s.minutes + FORK_EVERY_MIN + Math.trunc(dice.next() * (FORK_EVERY_MAX - FORK_EVERY_MIN));
+    }
+    // Pacing: after 4 quiet hours the next fork comes now.
+    if (s.minutes - s.lastBig >= QUIET) s.nextFork = Math.min(s.nextFork, s.minutes);
+    if (s.minutes < s.nextFork) return;
+    if (m.voyage || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS) {
+      s.nextFork = s.minutes + FORK_RETRY;
+      return;
+    }
+    // The axis that leaves both halves the most land to part across.
+    const dice = new Rng(s.seed ^ Math.imul(s.forks + 1, 0xc2b2ae35 | 0));
+    let best = -1;
+    for (let k = 0; k < FORK_TRIES; k++) {
+      const a = round(dice.next() * Math.PI * 2 * 1e4) / 1e4;
+      const score = Math.min(reach(m, a, this.geo), reach(m, a + Math.PI, this.geo));
+      if (score > best) {
+        best = score;
+        s.forkAxis = a;
+      }
+    }
+    s.forkWarn = FORK_WARN;
+    log.push(`The Main circle is about to fork. In ${FORK_WARN} minutes it splits in two, one half heading ${compass(s.forkAxis)} and the other ${compass(s.forkAxis + Math.PI)}. The half you're standing in when they part lives on.`);
+  }
+
+  /** The halves have parted: the one you stand in lives on as Main, or the seed picks. */
+  private settle(player: Tile | null, log: string[]) {
+    const s = this.state;
+    const m = this.main;
+    const twin = s.twin!;
+    const inA = s.bound === MAIN && player != null && contains(m, player.x, player.y);
+    const inB = s.bound === MAIN && player != null && contains(twin, player.x, player.y);
+    const chose = inA || inB;
+    let keepTwin: boolean;
+    if (inA && inB) keepTwin = dist(player!.x - twin.x, player!.y - twin.y) < dist(player!.x - m.x, player!.y - m.y);
+    else if (chose) keepTwin = inB;
+    else keepTwin = new Rng(s.seed ^ Math.imul(s.forks + 1, 0x27d4eb2f | 0)).next() < 0.5;
+    const kept = keepTwin ? twin : m;
+    kept.moodLeft = 0;
+    kept.wx = kept.wy = 0;
+    kept.turn = 0;
+    kept.pulse = 45;
+    s.circles[MAIN] = kept;
+    const way = compass(kept.heading);
+    delete s.twin;
+    s.forkAge = 0;
+    s.forks++;
+    s.nextFork = 0;
+    s.lastBig = s.minutes;
+    log.push(chose
+      ? `The halves parted. You stood in the ${way} half, so it lives on as the Main circle; the other faded.`
+      : `The halves parted. The seed chose the ${way} half, which lives on as the Main circle; the other faded.`);
+  }
+}
+
+/** A compass word for a heading, such as north-west. */
+export function compass(heading: number): string {
+  const a = Math.atan2(Math.sin(heading), Math.cos(heading));
+  const k = Math.floor(a / (Math.PI / 4) + 0.5);
+  return COMPASS[((k % 8) + 8) % 8];
+}
+
+/** How many tiles of land lie along a heading from Main's centre, up to 60. */
+function reach(c: CircleState, heading: number, geo: Geography): number {
+  const cos = Math.cos(heading);
+  const sin = Math.sin(heading);
+  let d = 1;
+  while (d <= FORK_REACH && geo.onLand(c.x + cos * d, c.y + sin * d)) d++;
+  return d - 1;
+}
+
+/** Moves the two halves of a forked Main apart, each along its own heading, over land. */
+function part(a: CircleState, b: CircleState, geo: Geography) {
+  b.radius = a.radius;
+  b.radiusTarget = a.radius;
+  for (const h of [a, b]) {
+    for (const turn of [0, 0.5, -0.5, 1, -1]) {
+      const nx = h.x + Math.cos(h.heading + turn) * FORK_SPEED;
+      const ny = h.y + Math.sin(h.heading + turn) * FORK_SPEED;
+      if (!geo.onLand(nx, ny)) continue;
+      h.x = nx;
+      h.y = ny;
+      break;
+    }
+    if (h.pulse > 0) h.pulse--;
   }
 }
 

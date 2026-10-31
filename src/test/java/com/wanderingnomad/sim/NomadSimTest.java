@@ -253,7 +253,8 @@ public class NomadSimTest
         String json = gson.toJson(new SavedRun(sim, new Tile(3200, 3200)));
         String code = RunCode.encode(json);
         assertTrue(code.startsWith("N1."));
-        assertTrue("code is " + code.length() + " characters", code.length() < 2500);
+        // Seed 7 is forked at minute 600, so this run carries both halves of Main.
+        assertTrue("code is " + code.length() + " characters", code.length() < 3000);
         assertFalse(code.contains("+") || code.contains("/") || code.contains("="));
         assertEquals(json, RunCode.decode(code));
     }
@@ -266,11 +267,11 @@ public class NomadSimTest
         for (int seed = 1; seed <= 30; seed++)
         {
             NomadSim sim = NomadSim.start(seed);
-            Circle main = sim.main();
-            main.x = 2509;
-            main.y = 3636;
+            sim.main().x = 2509;
+            sim.main().y = 3636;
             int minutes = 0;
-            while (Circle.dist(main.x - 2509, main.y - 3636) < 80 && minutes < 12 * 60)
+            // sim.main() each minute, since a fork can hand Main over to its other half.
+            while (Circle.dist(sim.main().x - 2509, sim.main().y - 3636) < 80 && minutes < 12 * 60)
             {
                 sim.step(null);
                 minutes++;

@@ -28,6 +28,10 @@ import java.util.List;
  * inside your circle, Main or the nearest circle you could cross into. It fades once its circle
  * drifts off the landmark. Stand within 3 tiles of it, inside that circle, to claim the boon; you
  * hold three at most and spend them from the sidebar.</li>
+ * <li>Fork: now and then Main splits in two, after a 10-minute warning, and the halves part. The
+ * half you're standing in when they part lives on; if you're in neither, the seed decides. If
+ * nothing big (a fork, a voyage or a crossing) has happened for 4 hours, the next fork comes now.
+ * Forks have their own dice, like waystones.</li>
  * </ul>
  */
 public final class NomadSim
@@ -111,6 +115,22 @@ public final class NomadSim
     /** A waystone prefers a landmark its circle should keep for at least this many minutes. */
     static final int LASTING = 30;
 
+    /** Forks come every 6 to 10 played hours, or after 4 quiet ones, with a 10-minute warning. */
+    static final int FORK_EVERY_MIN = 360;
+    static final int FORK_EVERY_MAX = 600;
+    public static final int QUIET = 240;
+    public static final int FORK_WARN = 10;
+    /** The halves part at this many tiles a minute each, and settle it after this many minutes regardless. */
+    static final double FORK_SPEED = 0.6;
+    static final int FORK_GIVE_UP = 90;
+    /** Main only forks with room to split: at least this radius, and this many tries at an axis. */
+    static final double FORK_MIN_RADIUS = 14;
+    static final int FORK_TRIES = 12;
+    static final int FORK_REACH = 60;
+    /** A fork that can't start now (at sea, anchored or too small) tries again this much later. */
+    static final int FORK_RETRY = 30;
+    private static final String[] COMPASS = {"east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east"};
+
     int seed;
     int rngState;
     int minutes;
@@ -126,6 +146,19 @@ public final class NomadSim
     int summons;
     /** Minutes left on Bridge. */
     int bridgeLeft;
+    /**
+     * Forks so far (each one's dice come from the seed and this), the played minute the next one
+     * is due (0 until scheduled), and the minute of the last big moment, for pacing.
+     */
+    int forks;
+    int nextFork;
+    int lastBig;
+    /** Minutes of warning left before Main splits, and the heading Main's half takes (the other takes the opposite). */
+    int forkWarn;
+    double forkAxis;
+    /** While forked: the other half, and the minutes since the split. */
+    Circle twin;
+    int forkAge;
 
     public static NomadSim start(int seed)
     {
@@ -159,6 +192,13 @@ public final class NomadSim
         s.pending.addAll(pending);
         s.summons = summons;
         s.bridgeLeft = bridgeLeft;
+        s.forks = forks;
+        s.nextFork = nextFork;
+        s.lastBig = lastBig;
+        s.forkWarn = forkWarn;
+        s.forkAxis = forkAxis;
+        s.twin = twin == null ? null : twin.copy();
+        s.forkAge = forkAge;
         return s;
     }
 
@@ -190,6 +230,50 @@ public final class NomadSim
     public Circle main()
     {
         return circles.get(MAIN);
+    }
+
+    /** While Main is forked, the other half; otherwise null. */
+    public Circle twin()
+    {
+        return twin;
+    }
+
+    /** Minutes until Main splits, while a fork is coming; otherwise 0. */
+    public int forkWarning()
+    {
+        return forkWarn;
+    }
+
+    /** The heading Main's half takes in a fork that's coming or under way; the other half takes the opposite. */
+    public double forkAxis()
+    {
+        return forkAxis;
+    }
+
+    /** Played minutes since the last fork, voyage or crossing. */
+    public int quietMinutes()
+    {
+        return minutes - lastBig;
+    }
+
+    /** Whether a tile is inside Main, counting both halves while it's forked. */
+    public boolean inMain(int x, int y)
+    {
+        return main().contains(x, y) || (twin != null && twin.contains(x, y));
+    }
+
+    /** Whether a tile is inside your circle, counting both of Main's halves while it's forked. */
+    public boolean inYours(int x, int y)
+    {
+        return bound == MAIN ? inMain(x, y) : bound().contains(x, y);
+    }
+
+    /** A compass word for a heading, such as north-west. */
+    public static String compass(double heading)
+    {
+        double a = StrictMath.atan2(StrictMath.sin(heading), StrictMath.cos(heading));
+        int k = (int) Math.floor(a / (Math.PI / 4) + 0.5);
+        return COMPASS[((k % 8) + 8) % 8];
     }
 
     public boolean isOutside()
@@ -359,6 +443,7 @@ public final class NomadSim
         if (!canCross(index, player)) return null;
         bound = index;
         outside = false;
+        lastBig = minutes;
         for (Circle c : circles)
         {
             c.waiting = false;
@@ -418,8 +503,9 @@ public final class NomadSim
         Circle b = bound();
         Circle main = main();
 
-        // An open Bridge lets you walk between circles without it counting as outside.
-        boolean out = player != null && !b.contains(player.x, player.y) && bridgeLeft <= 0;
+        // An open Bridge lets you walk between circles without it counting as outside, and either
+        // half of a forked Main counts as yours.
+        boolean out = player != null && !inYours(player.x, player.y) && bridgeLeft <= 0;
         if (out != outside)
         {
             outside = out;
@@ -444,10 +530,12 @@ public final class NomadSim
             double pull = pulled ? STRANDED_PULL : 0;
             Tile lean = yours && !out && player != null && dist(c, player) >= c.radius - LEAN_BAND ? player : null;
             int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1);
-            move(c, rng, speedup, yours, toward, pull, lean, log);
+            if (j == MAIN && twin != null) part(c, twin);
+            else move(c, rng, speedup, yours, toward, pull, lean, log);
         }
         minutes++;
         tickBoons(log);
+        fork(player, log);
 
         if (minutes % 5 == 0)
         {
@@ -457,7 +545,11 @@ public final class NomadSim
                 if (!linked(j)) continue;
                 Circle c = circles.get(j);
                 boolean touching = yours.touches(c);
-                if (touching && !c.touchingYours) log.add("Crossing open: your circle touches " + c.name() + ".");
+                if (touching && !c.touchingYours)
+                {
+                    log.add("Crossing open: your circle touches " + c.name() + ".");
+                    lastBig = minutes;
+                }
                 if (!touching && c.touchingYours)
                 {
                     log.add(bound != MAIN
@@ -886,6 +978,132 @@ public final class NomadSim
         c.voyage.tx = dest.tile.x;
         c.voyage.ty = dest.tile.y;
         log.add("The Main circle boarded a boat at " + port.name + ", bound for " + to + ".");
+        lastBig = minutes;
+    }
+
+    /**
+     * Forks: schedules the next one, brings it forward after 4 quiet hours, warns 10 minutes
+     * ahead, splits Main in two, and once the halves have parted keeps the one you stand in.
+     */
+    private void fork(Tile player, List<String> log)
+    {
+        Circle m = main();
+        if (twin != null)
+        {
+            forkAge++;
+            if (m.gap(twin) <= 0 && forkAge < FORK_GIVE_UP) return;
+            settle(player, log);
+            return;
+        }
+        if (forkWarn > 0)
+        {
+            if (m.voyage != null)
+            {
+                // Main set sail during the warning: the fork waits for dry land.
+                forkWarn = 0;
+                nextFork = minutes + FORK_RETRY;
+                return;
+            }
+            if (--forkWarn > 0) return;
+            twin = m.copy();
+            m.heading = forkAxis;
+            twin.heading = forkAxis + Math.PI;
+            m.turn = 0;
+            twin.turn = 0;
+            forkAge = 0;
+            lastBig = minutes;
+            log.add("The Main circle forked! One half heads " + compass(forkAxis) + ", the other " + compass(forkAxis + Math.PI)
+                + ". Stand in the half you want when they part.");
+            return;
+        }
+        if (nextFork <= 0)
+        {
+            Rng dice = new Rng(seed ^ ((forks + 1) * 0x85EBCA6B));
+            nextFork = minutes + FORK_EVERY_MIN + (int) (dice.next() * (FORK_EVERY_MAX - FORK_EVERY_MIN));
+        }
+        // Pacing: after 4 quiet hours the next fork comes now.
+        if (minutes - lastBig >= QUIET) nextFork = Math.min(nextFork, minutes);
+        if (minutes < nextFork) return;
+        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS)
+        {
+            nextFork = minutes + FORK_RETRY;
+            return;
+        }
+        // The axis that leaves both halves the most land to part across.
+        Rng dice = new Rng(seed ^ ((forks + 1) * 0xC2B2AE35));
+        double best = -1;
+        for (int k = 0; k < FORK_TRIES; k++)
+        {
+            double a = round(dice.next() * Math.PI * 2 * 1e4) / 1e4;
+            double score = Math.min(reach(m, a), reach(m, a + Math.PI));
+            if (score > best)
+            {
+                best = score;
+                forkAxis = a;
+            }
+        }
+        forkWarn = FORK_WARN;
+        log.add("The Main circle is about to fork. In " + FORK_WARN + " minutes it splits in two, one half heading "
+            + compass(forkAxis) + " and the other " + compass(forkAxis + Math.PI)
+            + ". The half you're standing in when they part lives on.");
+    }
+
+    /** How many tiles of land lie along a heading from Main's centre, up to 60. */
+    private static int reach(Circle c, double heading)
+    {
+        double cos = StrictMath.cos(heading);
+        double sin = StrictMath.sin(heading);
+        int d = 1;
+        while (d <= FORK_REACH && Geography.onLand(c.x + cos * d, c.y + sin * d)) d++;
+        return d - 1;
+    }
+
+    /** Moves the two halves of a forked Main apart, each along its own heading, over land. */
+    private static void part(Circle a, Circle b)
+    {
+        b.radius = a.radius;
+        b.radiusTarget = a.radius;
+        for (Circle h : new Circle[]{a, b})
+        {
+            for (double turn : new double[]{0, 0.5, -0.5, 1, -1})
+            {
+                double nx = h.x + StrictMath.cos(h.heading + turn) * FORK_SPEED;
+                double ny = h.y + StrictMath.sin(h.heading + turn) * FORK_SPEED;
+                if (!Geography.onLand(nx, ny)) continue;
+                h.x = nx;
+                h.y = ny;
+                break;
+            }
+            if (h.pulse > 0) h.pulse--;
+        }
+    }
+
+    /** The halves have parted: the one you stand in lives on as Main, or the seed picks. */
+    private void settle(Tile player, List<String> log)
+    {
+        Circle m = main();
+        boolean inA = bound == MAIN && player != null && m.contains(player.x, player.y);
+        boolean inB = bound == MAIN && player != null && twin.contains(player.x, player.y);
+        boolean keepTwin;
+        boolean chose = inA || inB;
+        if (inA && inB) keepTwin = Circle.dist(player.x - twin.x, player.y - twin.y) < Circle.dist(player.x - m.x, player.y - m.y);
+        else if (inA || inB) keepTwin = inB;
+        else keepTwin = new Rng(seed ^ ((forks + 1) * 0x27D4EB2F)).next() < 0.5;
+        Circle kept = keepTwin ? twin : m;
+        kept.moodLeft = 0;
+        kept.wx = kept.wy = 0;
+        kept.turn = 0;
+        kept.pulse = 45;
+        circles.set(MAIN, kept);
+        String way = compass(kept.heading);
+        twin = null;
+        forkAge = 0;
+        forks++;
+        nextFork = 0;
+        lastBig = minutes;
+        log.add(chose
+            ? "The halves parted. You stood in the " + way + " half, so it lives on as the Main circle; the other faded."
+            : "The halves parted. The seed chose the " + way + " half, which lives on as the Main circle; the other faded.");
     }
 
     private interface Allowed
