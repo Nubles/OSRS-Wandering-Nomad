@@ -30,7 +30,8 @@ import java.util.List;
  * hold three at most and spend them from the sidebar.</li>
  * <li>Fork: now and then Main splits in two, after a 10-minute warning, and the halves part. The
  * half you're standing in when they part lives on; if you're in neither, the seed decides. If
- * nothing big (a fork, a voyage or a crossing) has happened for 4 hours, the next fork comes now.
+ * nothing big (a fork, a voyage or a crossing) has happened for 4 hours, the next fork comes now;
+ * otherwise each fork comes a random 30 minutes to 4 hours after the last one parted.
  * Forks have their own dice, like waystones.</li>
  * </ul>
  */
@@ -115,9 +116,9 @@ public final class NomadSim
     /** A waystone prefers a landmark its circle should keep for at least this many minutes. */
     static final int LASTING = 30;
 
-    /** Forks come every 6 to 10 played hours, or after 4 quiet ones, with a 10-minute warning. */
-    static final int FORK_EVERY_MIN = 360;
-    static final int FORK_EVERY_MAX = 600;
+    /** A fork comes a random 30 minutes to 4 played hours after the last one parted, with a 10-minute warning. */
+    static final int FORK_EVERY_MIN = 30;
+    static final int FORK_EVERY_MAX = 240;
     public static final int QUIET = 240;
     public static final int FORK_WARN = 10;
     /** The halves part at this many tiles a minute each, and settle it after this many minutes regardless. */
@@ -1104,7 +1105,14 @@ public final class NomadSim
         boolean chose = inA || inB;
         if (inA && inB) keepTwin = Circle.dist(player.x - twin.x, player.y - twin.y) < Circle.dist(player.x - m.x, player.y - m.y);
         else if (inA || inB) keepTwin = inB;
-        else keepTwin = new Rng(seed ^ ((forks + 1) * 0x27D4EB2F)).next() < 0.5;
+        else
+        {
+            // The seed never keeps the half deeper in a peninsula, so forks can't keep throwing
+            // Main back into one; otherwise it tosses a coin.
+            int depth = Math.max(0, Geography.pocketDepth(m.x, m.y));
+            int twinDepth = Math.max(0, Geography.pocketDepth(twin.x, twin.y));
+            keepTwin = depth != twinDepth ? twinDepth < depth : new Rng(seed ^ ((forks + 1) * 0x27D4EB2F)).next() < 0.5;
+        }
         Circle kept = keepTwin ? twin : m;
         kept.moodLeft = 0;
         kept.wx = kept.wy = 0;
