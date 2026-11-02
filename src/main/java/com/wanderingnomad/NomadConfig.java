@@ -106,15 +106,24 @@ public interface NomadConfig extends Config
         return "";
     }
 
+    /** Whether the Main circle can sail between any two ports: read from the account, or forced either way. */
+    enum SailingMode
+    {
+        AUTO,
+        ALWAYS,
+        NEVER
+    }
+
     @ConfigItem(
-        keyName = "sailingUnlocked",
-        name = "Sailing unlocked",
-        description = "Tick once Sailing is unlocked: the Main circle can then sail between any two ports.",
+        keyName = "sailingMode",
+        name = "Sailing",
+        description = "Auto: Sailing counts as unlocked once the account has any Sailing XP or has finished Pandemonium, "
+            + "and then the Main circle can sail between any two ports. Always or Never overrides that.",
         position = 1
     )
-    default boolean sailingUnlocked()
+    default SailingMode sailingMode()
     {
-        return false;
+        return SailingMode.AUTO;
     }
 
     @ConfigItem(
