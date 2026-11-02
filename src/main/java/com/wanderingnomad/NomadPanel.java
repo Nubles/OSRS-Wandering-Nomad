@@ -161,7 +161,7 @@ class NomadPanel extends PluginPanel
      */
     void addTestButtons(String[] labels, Runnable[] actions)
     {
-        JComponent title = heading("Testing (changes your run)");
+        JComponent title = heading("Testing (plays a copy of your run)");
         title.setAlignmentX(LEFT_ALIGNMENT);
         add(gap(10));
         add(title);
@@ -568,6 +568,8 @@ class NomadPanel extends PluginPanel
         int quiet;
         /** The last parting's faded half while it's dissolving, or null. */
         Fade fade;
+        /** A test sandbox is open: the run shown is a copy, and the real one is paused. */
+        boolean sandbox;
 
         int held;
         final List<BoonSlot> boons = new ArrayList<>();

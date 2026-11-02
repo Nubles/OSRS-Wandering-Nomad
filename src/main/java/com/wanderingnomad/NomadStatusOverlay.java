@@ -45,6 +45,12 @@ class NomadStatusOverlay extends OverlayPanel
         if (sim == null || !plugin.config().statusBox()) return null;
         Circle c = sim.bound();
         Tile at = plugin.surface();
+        if (plugin.sandboxed())
+        {
+            // A test sandbox is unmistakable: everything below is the copy, and the real run is paused.
+            panelComponent.getChildren().add(TitleComponent.builder().text("TEST SANDBOX").color(OUTSIDE).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("Real run").right("paused").rightColor(OUTSIDE).build());
+        }
         panelComponent.getChildren().add(TitleComponent.builder()
             .text(c.name() + " circle").color(NomadPlugin.colour(c, 255)).build());
 
