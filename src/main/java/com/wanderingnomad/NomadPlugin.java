@@ -388,13 +388,13 @@ public class NomadPlugin extends Plugin
     {
         Skill skill = ev.getSkill();
         Integer before = lastXp.put(skill, ev.getXp());
-        // The first value per skill arrives at login; only later rises are gains.
         if (skill == Skill.SAILING && sim != null && ev.getXp() > 0 && !sailingDetected)
         {
             sailingDetected = true;
             // The first value per skill arrives at login, which is no moment to announce; a real gain is.
             applySailing(before != null);
         }
+        // The first value per skill arrives at login; only later rises are gains.
         if (before == null || sim == null || !config.ruleGuard() || !outsideNow()) return;
         guard.xp(skill.getName(), ev.getXp() - before);
     }
