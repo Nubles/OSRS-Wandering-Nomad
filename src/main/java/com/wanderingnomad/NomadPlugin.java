@@ -43,11 +43,14 @@ import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.Quest;
+import net.runelite.api.QuestState;
 import net.runelite.api.Scene;
 import net.runelite.api.Skill;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.CommandExecuted;
 import net.runelite.api.events.GameStateChanged;
@@ -156,6 +159,8 @@ public class NomadPlugin extends Plugin
     /** The run's latest moments, newest first, for the sidebar. */
     private final Deque<NomadPanel.Moment> timeline = new ArrayDeque<>();
     private RunStats stats = new RunStats();
+    /** Sailing found unlocked on the account this session: Sailing XP or Pandemonium finished. */
+    private boolean sailingDetected;
 
     private NomadPanel panel;
     private LiveShare live;
@@ -296,6 +301,7 @@ public class NomadPlugin extends Plugin
         {
             diariesRead = true;
             readDiaries();
+            readSailing();
         }
         Tile before = surface;
         surface = locate();
@@ -317,7 +323,7 @@ public class NomadPlugin extends Plugin
     /** Plays one minute of the run and everything that follows from it. Client thread. */
     private void minute()
     {
-        sim.setSailingUnlocked(config.sailingUnlocked());
+        applySailing(true);
         int boundBefore = sim.boundIndex();
         List<String> lines = sim.step(surface);
         report(lines);
@@ -383,6 +389,12 @@ public class NomadPlugin extends Plugin
         Skill skill = ev.getSkill();
         Integer before = lastXp.put(skill, ev.getXp());
         // The first value per skill arrives at login; only later rises are gains.
+        if (skill == Skill.SAILING && sim != null && ev.getXp() > 0 && !sailingDetected)
+        {
+            sailingDetected = true;
+            // The first value per skill arrives at login, which is no moment to announce; a real gain is.
+            applySailing(before != null);
+        }
         if (before == null || sim == null || !config.ruleGuard() || !outsideNow()) return;
         guard.xp(skill.getName(), ev.getXp() - before);
     }
@@ -649,6 +661,7 @@ public class NomadPlugin extends Plugin
         bannerOverlay.clear();
         timeline.clear();
         stats = new RunStats();
+        sailingDetected = false;
     }
 
     Tile surface()
@@ -676,6 +689,63 @@ public class NomadPlugin extends Plugin
         WorldPoint at = player.getWorldLocation();
         if (at == null || !Surface.isSurface(at.getX(), at.getY())) return surface;
         return new Tile(at.getX(), at.getY());
+    }
+
+    /**
+     * Reads from the account whether Sailing is unlocked: any Sailing XP, or Pandemonium (the quest
+     * that unlocks it) finished. Client thread, as reading a quest's state runs a game script.
+     */
+    private void readSailing()
+    {
+        boolean xp = client.getSkillExperience(Skill.SAILING) > 0;
+        boolean quest = Quest.PANDEMONIUM.getState(client) == QuestState.FINISHED;
+        if (xp || quest) sailingDetected = true;
+        applySailing(false);
+    }
+
+    /**
+     * Brings the run in line with the Sailing setting. On Auto it only ever unlocks, since Sailing
+     * is a one-way unlock: once detected, the run keeps it. {@code announce} shows a banner when
+     * it unlocks during play rather than at login.
+     */
+    private void applySailing(boolean announce)
+    {
+        if (sim == null) return;
+        NomadConfig.SailingMode mode = config.sailingMode();
+        boolean want = mode == NomadConfig.SailingMode.ALWAYS
+            || mode == NomadConfig.SailingMode.AUTO && (sim.sailingUnlocked() || sailingDetected);
+        if (want == sim.sailingUnlocked()) return;
+        sim.setSailingUnlocked(want);
+        save();
+        if (want && announce && mode == NomadConfig.SailingMode.AUTO)
+        {
+            show(Moments.sailing());
+        }
+        publish();
+    }
+
+    /** The sidebar's word for Sailing: whether it's unlocked, and whether that was read from the account or set. */
+    private String sailingText()
+    {
+        if (sim == null) return "-";
+        switch (config.sailingMode())
+        {
+            case ALWAYS:
+                return "on (set)";
+            case NEVER:
+                return "off (set)";
+            default:
+                return sim.sailingUnlocked() ? "unlocked" : "locked";
+        }
+    }
+
+    @Subscribe
+    public void onConfigChanged(ConfigChanged ev)
+    {
+        if (NomadConfig.GROUP.equals(ev.getGroup()) && "sailingMode".equals(ev.getKey()))
+        {
+            clientThread.invokeLater(() -> applySailing(false));
+        }
     }
 
     private void readDiaries()
@@ -999,6 +1069,7 @@ public class NomadPlugin extends Plugin
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
+        view.sailing = sailingText();
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 

@@ -568,6 +568,8 @@ class NomadPanel extends PluginPanel
         int quiet;
         /** The last parting's faded half while it's dissolving, or null. */
         Fade fade;
+        /** Whether Sailing is unlocked for the run, and how it was decided. */
+        String sailing = "-";
 
         int held;
         final List<BoonSlot> boons = new ArrayList<>();

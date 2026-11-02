@@ -310,6 +310,13 @@ final class Moments
         return c;
     }
 
+    /** Sailing found unlocked on the account during play: from now on Main can sail between any two ports. */
+    static Banner sailing()
+    {
+        return new Banner("Sailing unlocked", "Main can now sail from any port.", new Color(0x4FC3F7), Icon.CROSSING, true,
+            SoundEffectID.GE_ADD_OFFER_DINGALING);
+    }
+
     /** A milestone, told the moment it's reached; the waystone it summons gets a banner of its own when it rises. */
     static Banner milestone(String why, boolean rare)
     {

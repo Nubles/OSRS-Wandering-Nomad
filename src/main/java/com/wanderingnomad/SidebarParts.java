@@ -589,7 +589,7 @@ final class SidebarParts
                 {"Crossings", String.valueOf(v.crossingsMade)}, {"Claimed", String.valueOf(v.claimed)},
                 {"Outside", v.timesOutside + (v.timesOutside == 1 ? " time" : " times")}, {"Seed", String.valueOf(v.seed)},
                 {"Guard", v.guardShort}, {"Diaries", v.diaryShort},
-                {"Quiet for", NomadPanel.time(v.quiet)}, {"", ""},
+                {"Quiet for", NomadPanel.time(v.quiet)}, {"Sailing", v.sailing},
             };
             Font small = FontManager.getRunescapeSmallFont();
             FontMetrics sm = g.getFontMetrics(small);
