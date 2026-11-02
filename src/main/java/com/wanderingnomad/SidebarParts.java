@@ -185,6 +185,12 @@ final class SidebarParts
             arrow(g, tx + 5, 53, v.heading, 6, v.colour);
             text(g, FontManager.getRunescapeSmallFont(), fit(sm, v.mood, tw - 14), tx + 14, 57, Color.WHITE);
             text(g, FontManager.getRunescapeSmallFont(), fit(sm, Math.round(v.radius) + " tiles · played " + v.played, tw), tx, 73, MUTED);
+            if (v.sandbox)
+            {
+                // During a test the bottom line says so, ahead of anything else.
+                text(g, FontManager.getRunescapeSmallFont(), fit(sm, "TEST SANDBOX: real run paused", SIDEBAR_WIDTH - 20), tx, 86, OUT);
+                return;
+            }
             // A coming or running fork takes the bottom line; otherwise it says where the circle is.
             if (v.forkLine != null) text(g, FontManager.getRunescapeSmallFont(), fit(sm, v.forkLine, SIDEBAR_WIDTH - 20), tx, 86, NomadStatusOverlay.FORK);
             else text(g, FontManager.getRunescapeSmallFont(), fit(sm, v.where, tw), tx, 86, MUTED);

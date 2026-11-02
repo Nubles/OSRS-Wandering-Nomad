@@ -153,6 +153,8 @@ public class NomadPlugin extends Plugin
     private volatile Fade fade;
     /** Testing: where waystones can rise, and whether each tile is open. */
     private final SpotCheck spots = new SpotCheck();
+    /** Testing: a throwaway copy of the run that the Testing buttons play, while the real one is paused. */
+    private Sandbox sandbox;
     /** The run's latest moments, newest first, for the sidebar. */
     private final Deque<NomadPanel.Moment> timeline = new ArrayDeque<>();
     private RunStats stats = new RunStats();
@@ -192,13 +194,14 @@ public class NomadPlugin extends Plugin
     protected void startUp()
     {
         live = new LiveShare(okHttpClient);
+        sandbox = new Sandbox(gson);
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
             this::copyRunCode, this::copyLiveLink);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
             panel.addTestButtons(
-                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots"},
+                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots", "End test"},
                 new Runnable[]{
                     () -> clientThread.invokeLater(() -> test("nomadmoments")),
                     () -> clientThread.invokeLater(() -> test("nomadfork")),
@@ -209,6 +212,7 @@ public class NomadPlugin extends Plugin
                     () -> clientThread.invokeLater(() -> reply(spots.toggle()
                         ? "Waystone spots shown: diamonds on the world map, outlines in the game world and on the minimap. Green is open, red is blocked, blue not checked yet."
                         : "Waystone spots hidden.")),
+                    () -> clientThread.invokeLater(() -> endSandbox(true)),
                 });
         }
         navButton = NavigationButton.builder()
@@ -230,6 +234,8 @@ public class NomadPlugin extends Plugin
     @Override
     protected void shutDown()
     {
+        // A test never outlives the plugin: drop it so the real run is what gets saved.
+        if (sandboxed()) sandbox.exit();
         save();
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(minimapOverlay);
@@ -259,7 +265,8 @@ public class NomadPlugin extends Plugin
         }
         else if (state == GameState.LOGIN_SCREEN && sim != null)
         {
-            // The next login may be another account, with a run of its own.
+            // The next login may be another account, with a run of its own. A test ends with the session.
+            if (sandboxed()) swapIn(false);
             save();
             if (config.liveShare()) live.offline(liveCode(), liveToken(), runCode());
             sim = null;
@@ -333,7 +340,8 @@ public class NomadPlugin extends Plugin
         Forecast f = forecast;
         if (f == null || sim.boundIndex() != boundBefore || sim.minutes() - f.minutes() >= FORECAST_EVERY) forecastSoon();
         if (sim.minutes() % 5 == 0) save();
-        if (config.liveShare())
+        // A test sandbox is never shared live: the link keeps showing the real run.
+        if (config.liveShare() && !sandboxed())
         {
             if (!lines.isEmpty()) live.markDirty();
             live.minute(liveCode(), liveToken(), runCode());
@@ -420,6 +428,61 @@ public class NomadPlugin extends Plugin
     {
         Fade f = fade;
         return f == null || f.progress(now) > 1 ? null : f;
+    }
+
+    /** Whether a test sandbox is open, so the real run is paused and everything shown is the copy. */
+    boolean sandboxed()
+    {
+        return sandbox != null && sandbox.active();
+    }
+
+    /** Opens a test sandbox if one isn't open yet. Client thread. */
+    private void enterSandbox()
+    {
+        if (sandboxed() || sim == null) return;
+        save();
+        sandbox.enter(sim, stats, guard, milestones);
+        swapIn(true);
+        reply("TEST SANDBOX: your real run is paused and safe. Tests play on a copy. Press End test to go back.");
+    }
+
+    /** Ends a test sandbox: drops the copy and resumes the real run as it was. Client thread. */
+    private void endSandbox(boolean say)
+    {
+        if (!sandboxed())
+        {
+            if (say) reply("No test is running; your real run is live.");
+            return;
+        }
+        swapIn(false);
+        if (say) reply("Test ended. Your real run is back, exactly as it was, and running again.");
+    }
+
+    /**
+     * Puts the sandbox's copy in play ({@code entering}) or puts the real run back, and works out
+     * afresh everything derived from whichever run is now in play.
+     */
+    private void swapIn(boolean entering)
+    {
+        if (!entering) sandbox.exit();
+        sim = sandbox.sim;
+        stats = sandbox.stats;
+        guard = sandbox.guard;
+        milestones = sandbox.milestones;
+        generation++;
+        radar = null;
+        radarTile = null;
+        forecast = null;
+        edgeWarned = false;
+        moments.reset();
+        // Diary tiers may have moved on during the test; read them again into the run now in play.
+        diariesRead = false;
+        if (sim != null)
+        {
+            look();
+            forecastSoon();
+        }
+        publish();
     }
 
     /** Testing: plays the last parting's dissolve again. Client thread. */
@@ -583,13 +646,14 @@ public class NomadPlugin extends Plugin
                 break;
             case "nomadfork":
                 // Testing: the next fork comes at the next played minute; "now" cuts a warning short.
+                enterSandbox();
                 boolean now = args.length > 0 && "now".equalsIgnoreCase(args[0]);
                 sim.forkSoonForTesting(now);
                 reply(sim.twin() != null ? "Main is already forked." : now && sim.forkWarning() > 0
                     ? "The fork's warning ends at the next minute." : "A fork comes at the next played minute.");
                 break;
             case "nomadstep":
-                // Testing: plays this many minutes of the run straight away (up to 120). This really advances the run.
+                // Testing: plays this many minutes straight away (up to 120), in the sandbox so the real run is untouched.
                 int minutes = 1;
                 try
                 {
@@ -601,6 +665,7 @@ public class NomadPlugin extends Plugin
                     return;
                 }
                 minutes = Math.max(1, Math.min(120, minutes));
+                enterSandbox();
                 for (int i = 0; i < minutes; i++) minute();
                 reply("Played " + minutes + (minutes == 1 ? " minute." : " minutes."));
                 break;
@@ -762,6 +827,8 @@ public class NomadPlugin extends Plugin
     /** Every 100 total level and every 25 quest points summons a common waystone. */
     private void readMilestones()
     {
+        // During a test the marks stay put, so a milestone reached meanwhile is counted for the real run once it resumes.
+        if (sandboxed()) return;
         if (milestoneWait > 0)
         {
             milestoneWait--;
@@ -777,6 +844,14 @@ public class NomadPlugin extends Plugin
 
     private void summon(String tier, String why)
     {
+        if (sandboxed())
+        {
+            // A first boss kill during a test still belongs to the real run.
+            String line = sandbox.real().summon(tier);
+            chat(why + " summoned a waystone in your real run (paused while you test)." + (line != null ? " " + line : ""));
+            save();
+            return;
+        }
         show(Moments.milestone(why, NomadSim.RARE.equals(tier)));
         String line = sim.summon(tier);
         report(java.util.Collections.singletonList(line != null ? why + " summoned a waystone. " + line
@@ -818,19 +893,21 @@ public class NomadPlugin extends Plugin
 
     private void saveStats()
     {
-        if (sim != null) configManager.setRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY, gson.toJson(stats));
+        if (sim != null && !sandboxed()) configManager.setRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY, gson.toJson(stats));
     }
 
     private void saveGuard()
     {
-        configManager.setRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY, gson.toJson(guard));
+        if (!sandboxed()) configManager.setRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY, gson.toJson(guard));
     }
 
+    /** Saves the run. During a test that's always the real, paused run: a sandbox is never saved. */
     private void save()
     {
-        if (sim == null) return;
+        NomadSim run = sandboxed() ? sandbox.real() : sim;
+        if (run == null) return;
         saveStats();
-        configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(new SavedRun(sim, surface)));
+        configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(new SavedRun(run, surface)));
     }
 
     private int seed()
@@ -874,6 +951,7 @@ public class NomadPlugin extends Plugin
         clientThread.invokeLater(() ->
         {
             if (client.getGameState() != GameState.LOGGED_IN) return;
+            if (sandboxed()) sandbox.exit();
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY);
             sim = null;
             runLog.clear();
@@ -999,6 +1077,7 @@ public class NomadPlugin extends Plugin
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
+        view.sandbox = sandboxed();
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 
