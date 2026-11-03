@@ -393,8 +393,17 @@ public class NomadPlugin extends Plugin
         clientThread.invokeLater(() ->
         {
             if (sim == null) return;
-            String line = sim.useBoon(index, side);
-            if (line == null) return;
+            Tile at = locate();
+            String line = sim.useBoon(index, side, at);
+            if (line == null)
+            {
+                if (index < sim.boons().size() && NomadSim.LANTERN.equals(sim.boons().get(index)))
+                {
+                    report(java.util.Collections.singletonList("Light the Lantern while you stand inside your circle."));
+                    publish();
+                }
+                return;
+            }
             report(java.util.Collections.singletonList(line));
             journey.add(Trials.BOONS, 1);
             checkTrials();

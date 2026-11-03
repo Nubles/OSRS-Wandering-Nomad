@@ -26,13 +26,15 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
     /** Sails with Sailing at level 20 and two docks' quests not done. */
     static final int DOCK_SEED = 123;
     /** Stays in Main and summons often, so waystones get claimed and every boon spent. */
     static final int BOON_SEED = 2024;
+    /** Hands out a Lantern and Calms, lit where Main is and spent as a fork and a storm come. */
+    static final int CALM_SEED = 77;
 
     private SharedVectors()
     {
@@ -71,6 +73,7 @@ public final class SharedVectors
             return events;
         }
         if (seed == BOON_SEED) return boonScript(seed);
+        if (seed == CALM_SEED) return calmScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
         Circle m = probe.main();
@@ -119,7 +122,8 @@ public final class SharedVectors
             events.add(event(found[0], "player", found[1], found[2]));
             events.add(event(found[0] + 3, "player"));
             // Spend it half an hour later: Rudder alternates sides.
-            events.add(event(found[0] + 30, "boon", 0, k % 2 == 0 ? 1 : -1));
+            // Spent where it was claimed, so a Lantern can be lit.
+            events.add(event(found[0] + 30, "boon", 0, k % 2 == 0 ? 1 : -1, found[1], found[2]));
             // Crossing only opens if they touch, or through a Bridge.
             events.add(event(found[0] + 31, "cross"));
             at = found[0] + 60;
@@ -130,6 +134,50 @@ public final class SharedVectors
         events.add(event(at, "summon", NomadSim.COMMON));
         events.add(event(at, "summon", NomadSim.RARE));
         return events;
+    }
+
+    static JsonArray calmScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        // A Lantern lit at Main's middle, then a common summon that should rise at the landmark nearest it.
+        NomadSim probe = NomadSim.start(seed);
+        for (int i = 0; i < 20; i++) probe.step(null);
+        Circle m = probe.main();
+        int lx = (int) Math.round(m.x);
+        int ly = (int) Math.round(m.y);
+        events.add(event(20, "give", NomadSim.LANTERN));
+        events.add(event(20, "player", lx, ly));
+        events.add(event(20, "boon", 0, 0, lx, ly));
+        events.add(event(21, "player"));
+        events.add(event(25, "summon", NomadSim.COMMON));
+        // A Calm spent in the first fork's warning, and another in the first storm's.
+        int fork = firstMinute(seed, events, s -> s.forkWarning() > 0);
+        if (fork >= 0)
+        {
+            events.add(event(fork, "give", NomadSim.CALM));
+            events.add(event(fork, "boon", 0, 0));
+        }
+        int storm = firstMinute(seed, events, s -> s.stormWarning() > 0 || s.stormLeft() > 0);
+        if (storm >= 0)
+        {
+            events.add(event(storm, "give", NomadSim.CALM));
+            events.add(event(storm, "boon", 0, 0));
+        }
+        return events;
+    }
+
+    /** The first minute the script reaches where {@code when} holds, or -1. */
+    static int firstMinute(int seed, JsonArray events, java.util.function.Predicate<NomadSim> when)
+    {
+        NomadSim sim = NomadSim.start(seed);
+        Tile[] player = {null};
+        for (int minute = 0; minute < MINUTES; minute++)
+        {
+            apply(sim, events, minute, player);
+            if (when.test(sim)) return minute;
+            sim.step(player[0]);
+        }
+        return -1;
     }
 
     /**
@@ -186,11 +234,16 @@ public final class SharedVectors
                     sim.setSailing(a.get(0).getAsInt(), missing);
                     break;
                 }
+                case "give":
+                    // Only the vectors hand out boons, to try ones the summons don't happen to roll.
+                    sim.boons.add(a.get(0).getAsString());
+                    break;
                 case "summon":
                     line = sim.summon(a.get(0).getAsString());
                     break;
                 case "boon":
-                    line = sim.useBoon(a.get(0).getAsInt(), a.get(1).getAsInt());
+                    line = sim.useBoon(a.get(0).getAsInt(), a.get(1).getAsInt(),
+                        a.size() >= 4 ? new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()) : null);
                     break;
                 default:
                     throw new IllegalArgumentException(e.toString());

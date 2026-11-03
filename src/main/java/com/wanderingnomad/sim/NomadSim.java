@@ -98,9 +98,11 @@ public final class NomadSim
     public static final String ANCHOR = "Anchor";
     public static final String RUDDER = "Rudder";
     public static final String BRIDGE = "Bridge";
+    public static final String LANTERN = "Lantern";
+    public static final String CALM = "Calm";
     public static final String COMMON = "common";
     public static final String RARE = "rare";
-    private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR};
+    private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR, LANTERN, CALM};
     private static final String[] RARE_BOONS = {RUDDER, BRIDGE};
     public static final int BOONS_HELD = 3;
     public static final int CLAIM_REACH = 3;
@@ -113,6 +115,8 @@ public final class NomadSim
     static final int RUDDER_WAY = 150;
     static final int BRIDGE_MINUTES = 10;
     public static final int BRIDGE_REACH = 60;
+    /** Calm keeps forks and storms off Main for this long, and breaks one that's brewing or blowing. */
+    public static final int CALM_MINUTES = 180;
     /** A waystone prefers a landmark its circle should keep for at least this many minutes. */
     static final int LASTING = 30;
 
@@ -165,6 +169,11 @@ public final class NomadSim
     int summons;
     /** Minutes left on Bridge. */
     int bridgeLeft;
+    /** Minutes left on Calm. */
+    int calmLeft;
+    /** Where a Lantern was lit, so the next waystone in your circle rises at the landmark nearest it; 0, 0 when unlit. */
+    int lanternX;
+    int lanternY;
     /**
      * Forks so far (each one's dice come from the seed and this), the played minute the next one
      * is due (0 until scheduled), and the minute of the last big moment, for pacing.
@@ -220,6 +229,9 @@ public final class NomadSim
         s.pending.addAll(pending);
         s.summons = summons;
         s.bridgeLeft = bridgeLeft;
+        s.calmLeft = calmLeft;
+        s.lanternX = lanternX;
+        s.lanternY = lanternY;
         s.forks = forks;
         s.nextFork = nextFork;
         s.lastBig = lastBig;
@@ -431,11 +443,18 @@ public final class NomadSim
         return log.isEmpty() ? null : log.get(0);
     }
 
+    /** Spends a boon without saying where you stand, so a Lantern can't be lit. */
+    public String useBoon(int index, int side)
+    {
+        return useBoon(index, side, null);
+    }
+
     /**
      * Spends the boon at {@code index}. {@code side} is for Rudder: 1 turns left, -1 right.
+     * {@code player} is for Lantern, which has to be lit inside your circle.
      * Returns the log line, or null if nothing was spent.
      */
-    public String useBoon(int index, int side)
+    public String useBoon(int index, int side, Tile player)
     {
         if (index < 0 || index >= boons.size()) return null;
         String boon = boons.get(index);
@@ -474,11 +493,68 @@ public final class NomadSim
                 line = "Bridge: for 10 minutes you can cross to any circle within " + BRIDGE_REACH
                     + " tiles, and walking between them doesn't count as outside.";
                 break;
+            case LANTERN:
+                if (player == null || !c.contains(player.x, player.y)) return null;
+                lanternX = player.x;
+                lanternY = player.y;
+                line = "Lantern: the next waystone to rise in your circle rises at the landmark nearest where you lit it.";
+                break;
+            case CALM:
+                line = calm();
+                break;
             default:
                 return null;
         }
         boons.remove(index);
         return line;
+    }
+
+    /** Calm: no fork or storm over Main for 3 hours; a fork's warning or a storm under way breaks off now. */
+    private String calm()
+    {
+        calmLeft = CALM_MINUTES;
+        String broke = "";
+        if (forkWarn > 0)
+        {
+            forkWarn = 0;
+            nextFork = minutes + FORK_RETRY;
+            broke = " The fork that was coming won't.";
+        }
+        if (stormWarn > 0)
+        {
+            stormWarn = 0;
+            stormKind = 0;
+            nextStorm = minutes + STORM_RETRY;
+            broke = " The storm that was brewing holds off.";
+        }
+        else if (stormLeft > 0)
+        {
+            Circle m = main();
+            if (stormKind == SQUALL) m.radiusTarget = clamp(squallFrom, m.radiusMin, m.radiusMax);
+            stormLeft = 0;
+            stormKind = 0;
+            storms++;
+            nextStorm = 0;
+            broke = " The storm breaks off.";
+        }
+        return "Calm: no fork or storm comes over the Main circle for 3 hours." + broke;
+    }
+
+    /** Minutes left on Calm, 0 when not active. */
+    public int calmLeft()
+    {
+        return calmLeft;
+    }
+
+    /** Whether a Lantern is lit, and where. */
+    public boolean lanternLit()
+    {
+        return lanternX != 0 || lanternY != 0;
+    }
+
+    public Tile lantern()
+    {
+        return lanternLit() ? new Tile(lanternX, lanternY) : null;
     }
 
     /**
@@ -654,6 +730,7 @@ public final class NomadSim
             }
         }
         if (bridgeLeft > 0 && --bridgeLeft == 0) log.add("The Bridge closed.");
+        if (calmLeft > 0 && --calmLeft == 0) log.add("The Calm has lifted: forks and storms can come again.");
     }
 
     /** Moves a circle's whole range, and its radius with it, by {@code tiles}. */
@@ -738,6 +815,7 @@ public final class NomadSim
             }
         }
         if (options.isEmpty()) return null;
+        List<int[]> all = options;
         // Prefer landmarks the circle won't leave for a while, so there's time for the walk.
         List<int[]> lasting = new ArrayList<>();
         for (int[] o : options)
@@ -746,9 +824,22 @@ public final class NomadSim
             if (minutesLeft(circles.get(o[1]), l.x, l.y) >= LASTING) lasting.add(o);
         }
         if (!lasting.isEmpty()) options = lasting;
+        // A lit Lantern takes the lasting landmark nearest it in your circle, else the nearest at all.
+        int[] lit = null;
+        if (lanternLit())
+        {
+            lit = nearestLantern(options);
+            if (lit == null) lit = nearestLantern(all);
+        }
         Rng rng = new Rng(seed ^ ((summons + 1) * 0x9E3779B9));
         summons++;
         int[] o = options.get((int) (rng.next() * options.size()));
+        if (lit != null)
+        {
+            o = lit;
+            lanternX = 0;
+            lanternY = 0;
+        }
         String[] pool = RARE.equals(tier) ? RARE_BOONS : COMMON_BOONS;
         Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
         Waystone w = new Waystone();
@@ -761,6 +852,25 @@ public final class NomadSim
         Circle c = circles.get(w.circle);
         return "A waystone rose at " + l.name + (w.circle == bound ? " in your circle" : " in " + c.name())
             + ", holding " + w.boon + " (" + (RARE.equals(tier) ? "rare" : "common") + ").";
+    }
+
+    /** The option in your circle nearest the lit Lantern, or null if none is in your circle. */
+    private int[] nearestLantern(List<int[]> options)
+    {
+        int[] best = null;
+        double bestD = 0;
+        for (int[] o : options)
+        {
+            if (o[1] != bound) continue;
+            Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
+            double d = Circle.dist(l.x - lanternX, l.y - lanternY);
+            if (best == null || d < bestD)
+            {
+                best = o;
+                bestD = d;
+            }
+        }
+        return best;
     }
 
     private boolean taken(Landmarks.Landmark l)
@@ -1099,7 +1209,7 @@ public final class NomadSim
         // Pacing: after 4 quiet hours the next fork comes now.
         if (minutes - lastBig >= QUIET) nextFork = Math.min(nextFork, minutes);
         if (minutes < nextFork) return;
-        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS || stormWarn > 0 || stormLeft > 0)
+        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS || stormWarn > 0 || stormLeft > 0 || calmLeft > 0)
         {
             nextFork = minutes + FORK_RETRY;
             return;
@@ -1168,7 +1278,7 @@ public final class NomadSim
             nextStorm = minutes + STORM_EVERY_MIN + (int) (dice.next() * (STORM_EVERY_MAX - STORM_EVERY_MIN));
         }
         if (minutes < nextStorm) return;
-        if (twin != null || m.voyage != null || forkWarn > 0)
+        if (twin != null || m.voyage != null || forkWarn > 0 || calmLeft > 0)
         {
             nextStorm = minutes + STORM_RETRY;
             return;

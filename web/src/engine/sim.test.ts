@@ -51,8 +51,9 @@ describe('the TypeScript sim matches the plugin', () => {
             sim.state.sailingLevel = e.args[0] as number;
             sim.state.questsMissing = e.args.slice(1) as string[];
           }
+          else if (e.kind === 'give') sim.state.boons.push(e.args[0] as string);
           else if (e.kind === 'summon') line = sim.summon(e.args[0] as string);
-          else if (e.kind === 'boon') line = sim.useBoon(e.args[0] as number, e.args[1] as number);
+          else if (e.kind === 'boon') line = sim.useBoon(e.args[0] as number, e.args[1] as number, e.args.length >= 4 ? { x: e.args[2] as number, y: e.args[3] as number } : null);
           if (line != null) log.push([minute, line]);
         }
         for (const line of sim.step(player)) log.push([minute, line]);

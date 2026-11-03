@@ -460,6 +460,7 @@ final class Moments
             if (c.anchorLeft() > 0) out.add(NomadSim.ANCHOR + "@" + j);
         }
         if (sim.bridgeLeft() > 0) out.add(NomadSim.BRIDGE + "@-1");
+        if (sim.calmLeft() > 0) out.add(NomadSim.CALM + "@-1");
         return out;
     }
 

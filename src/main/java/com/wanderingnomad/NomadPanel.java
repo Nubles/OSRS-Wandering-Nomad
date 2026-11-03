@@ -495,6 +495,10 @@ class NomadPanel extends PluginPanel
                 return "Turn your circle 45 degrees, once";
             case NomadSim.BRIDGE:
                 return "For 10 minutes, cross to any circle within 60 tiles";
+            case NomadSim.LANTERN:
+                return "Light it where you stand: the next waystone in your circle rises at the landmark nearest it";
+            case NomadSim.CALM:
+                return "No fork or storm for 3 hours, and one under way breaks off";
             default:
                 return boon;
         }
@@ -796,6 +800,7 @@ class NomadPanel extends PluginPanel
             if (c.tailwindLeft() > 0) v.active.add(new ActiveBoon(NomadSim.TAILWIND, c.tailwindLeft(), TAILWIND_MINUTES));
             if (c.anchorLeft() > 0) v.active.add(new ActiveBoon(NomadSim.ANCHOR, c.anchorLeft(), ANCHOR_MINUTES));
             if (sim.bridgeLeft() > 0) v.active.add(new ActiveBoon(NomadSim.BRIDGE, sim.bridgeLeft(), BRIDGE_MINUTES));
+            if (sim.calmLeft() > 0) v.active.add(new ActiveBoon(NomadSim.CALM, sim.calmLeft(), NomadSim.CALM_MINUTES));
 
             for (Waystone w : sim.waystones())
             {
