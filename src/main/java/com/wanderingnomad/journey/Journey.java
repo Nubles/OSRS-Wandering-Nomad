@@ -27,6 +27,13 @@ public final class Journey
     int streak;
     /** The played minute Main last docked, while following it still counts; -1 if not. */
     int docked = -1;
+    /** The port Main last docked at, for the harbours you've followed it to. */
+    String dockedAt;
+    /** The trial sworn as this run's oath, by id, or null. */
+    String oath;
+    /** The played minute the oath was sworn; it can be changed for an hour after. */
+    int oathSworn;
+    public static final int OATH_GRACE = 60;
     /** The omen under way, or null; the played minute the next is due (0 until the first); how many have ended. */
     Omen omen;
     int nextOmen;
@@ -85,6 +92,36 @@ public final class Journey
     {
         streak = inside ? streak + 1 : 0;
         atLeast(Trials.STREAK, streak);
+    }
+
+    public String oath()
+    {
+        return oath;
+    }
+
+    /**
+     * Swears a trial as the run's oath at played minute {@code now}. An oath can be changed or
+     * dropped for an hour after it's sworn, then it's binding; one already done or carried can't
+     * be sworn.
+     */
+    public boolean swear(Trial t, int now)
+    {
+        if (!canSwear(now)) return false;
+        if (t == null)
+        {
+            oath = null;
+            return true;
+        }
+        if (done.contains(t.id) || carried.contains(t.id)) return false;
+        if (!t.id.equals(oath)) oathSworn = now;
+        oath = t.id;
+        return true;
+    }
+
+    /** Whether the oath can still be sworn or changed. */
+    public boolean canSwear(int now)
+    {
+        return oath == null || (!done.contains(oath) && now - oathSworn < OATH_GRACE);
     }
 
     public int streak()

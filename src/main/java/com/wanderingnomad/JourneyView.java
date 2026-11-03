@@ -69,6 +69,13 @@ final class JourneyView
     String omenAsk;
     int omenLeft;
     double omenProgress;
+    /** The run's oath: its trial's name, or null; how far along; and the names it could be sworn to. */
+    String oath;
+    double oathProgress;
+    boolean oathKept;
+    /** Whether the oath can still be sworn or changed. */
+    boolean oathOpen;
+    List<String> oaths = Collections.emptyList();
     List<Row> next = Collections.emptyList();
     List<Row> all = Collections.emptyList();
 
@@ -93,13 +100,21 @@ final class JourneyView
         v.done = j.doneCount();
         v.total = trials.size();
         v.runs = r.runs();
-        v.palette = r.palette().palette;
-        List<String> unlocked = new ArrayList<>();
-        for (Rank each : Rank.values())
+        v.palette = r.paletteName();
+        v.palettes = r.unlocked();
+        List<String> oaths = new ArrayList<>();
+        for (Trial t : trials)
         {
-            if (each.ordinal() <= rank.ordinal()) unlocked.add(each.palette);
+            if (Trials.OATHS.contains(t.id) && !j.isCarried(t) && (!j.isDone(t) || t.id.equals(j.oath()))) oaths.add(t.name);
+            if (t.id.equals(j.oath()))
+            {
+                v.oath = t.name;
+                v.oathProgress = j.progress(t);
+                v.oathKept = j.isDone(t);
+            }
         }
-        v.palettes = unlocked;
+        v.oaths = oaths;
+        v.oathOpen = j.canSwear(minutes);
         Omen o = Omens.current(j);
         if (o != null)
         {

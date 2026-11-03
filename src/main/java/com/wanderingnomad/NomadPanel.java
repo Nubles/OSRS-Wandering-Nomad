@@ -68,6 +68,9 @@ class NomadPanel extends PluginPanel
     private final SidebarParts.Stats stats = new SidebarParts.Stats();
     private final SidebarParts.Journey journey = new SidebarParts.Journey();
     private final JComboBox<String> palette = new JComboBox<>();
+    private final JComboBox<String> oath = new JComboBox<>();
+    private List<String> shownOaths = Collections.emptyList();
+    private boolean fillingOaths;
     /** The palettes the box lists, so it's only refilled when a rank unlocks one. */
     private List<String> shownPalettes = Collections.emptyList();
     private boolean fillingPalettes;
@@ -79,7 +82,7 @@ class NomadPanel extends PluginPanel
     private String shownCrossings;
 
     NomadPanel(IntConsumer onCross, BiConsumer<Integer, Integer> onBoon, Runnable onNewRun, Runnable onViewOnWebsite,
-        Runnable onCopyRunCode, Runnable onCopyLiveLink, Consumer<String> onPalette)
+        Runnable onCopyRunCode, Runnable onCopyLiveLink, Consumer<String> onPalette, Consumer<String> onOath)
     {
         this.onBoon = onBoon;
         this.onCross = onCross;
@@ -125,6 +128,16 @@ class NomadPanel extends PluginPanel
         journeyRow.add(palette);
         fix(journeyRow, 24);
         add(journeyRow);
+        add(gap(4));
+        oath.setToolTipText("Swear one long goal as this run's oath. Keep it for 300 renown and the Oathbound edge colour.");
+        oath.setFont(FontManager.getRunescapeSmallFont());
+        oath.addActionListener(e ->
+        {
+            Object picked = oath.getSelectedItem();
+            if (!fillingOaths && picked != null) onOath.accept(picked.toString().replaceFirst("^Oath: ", ""));
+        });
+        fix(oath, 24);
+        add(oath);
         add(gap(10));
         add(heading("Moments"));
         add(gap(4));
@@ -257,6 +270,28 @@ class NomadPanel extends PluginPanel
             palette.setSelectedItem(v.journey.palette);
             fillingPalettes = false;
         }
+
+        List<String> oathItems = new ArrayList<>();
+        oathItems.add("Oath: None");
+        for (String name : v.journey.oaths) oathItems.add("Oath: " + name);
+        String oathPick = v.journey.oath == null ? "Oath: None" : "Oath: " + v.journey.oath + (v.journey.oathKept ? " (kept)" : "");
+        if (v.journey.oathKept || !v.journey.oathOpen)
+        {
+            oathItems = Collections.singletonList(oathPick);
+        }
+        if (!oathItems.equals(shownOaths) || !oathPick.equals(oath.getSelectedItem()))
+        {
+            fillingOaths = true;
+            if (!oathItems.equals(shownOaths))
+            {
+                shownOaths = oathItems;
+                oath.removeAllItems();
+                for (String item : oathItems) oath.addItem(item);
+            }
+            oath.setSelectedItem(oathPick);
+            fillingOaths = false;
+        }
+        oath.setEnabled(v.journey.live && v.journey.oathOpen);
 
         timeline.show(v.moments);
         String log = String.join("\n", v.log);

@@ -40,6 +40,11 @@ public final class Trials
     /** Every kill count line, repeats included, and omens met. */
     public static final String KILLS = "kills";
     public static final String OMENS = "omens";
+    /** Distinct ports you've followed Main into. */
+    public static final String HARBOURS = "harbours";
+    /** The trials a run can swear as its oath: the long goals a whole run is built around. */
+    public static final List<String> OATHS = Collections.unmodifiableList(java.util.Arrays.asList(
+        "diary-all", "harbours-all", "landmarks-all", "total-max", "bosses-50", "regions-all"));
 
     /** The game's six clue tiers, as its "You have completed 1 easy Treasure Trail." line names them. */
     public static final String[] CLUE_TIERS = {"beginner", "easy", "medium", "hard", "elite", "master"};
@@ -129,6 +134,8 @@ public final class Trials
 
         t.add(trial("voyage-1", SEAFARER, "Cast off", "Follow Main across the sea: be back inside within an hour of it docking.", VOYAGES, 1, Tier.BRONZE));
         t.add(trial("voyage-10", SEAFARER, "Sea legs", "Follow Main across the sea 10 times.", VOYAGES, 10, Tier.SILVER));
+        t.add(trial("harbours-all", SEAFARER, "Round the world", "Follow Main into all " + com.wanderingnomad.sim.Geography.PORTS.size() + " ports.",
+            HARBOURS, com.wanderingnomad.sim.Geography.PORTS.size(), Tier.LEGEND));
         t.add(trial("voyage-50", SEAFARER, "Old salt", "Follow Main across the sea 50 times.", VOYAGES, 50, Tier.GOLD));
 
         t.add(account("total-500", "Apprentice", "Reach 500 total level.", TOTAL_LEVEL, 500, Tier.BRONZE));

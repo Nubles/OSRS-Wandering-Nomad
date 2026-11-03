@@ -344,6 +344,13 @@ final class Moments
             SoundEffectID.PRAYER_DEACTIVE_VWOOP);
     }
 
+    static Banner oathKept(com.wanderingnomad.journey.Trial t)
+    {
+        return new Banner("Oath kept: " + t.name, "+" + com.wanderingnomad.journey.Renown.OATH_RENOWN
+            + " renown, and the Oathbound edge colour on every run.", new Color(com.wanderingnomad.journey.Renown.OATHBOUND_COLOUR),
+            Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
     /** A new Nomad rank, and the edge colour it unlocked. */
     static Banner rankUp(com.wanderingnomad.journey.Rank r)
     {

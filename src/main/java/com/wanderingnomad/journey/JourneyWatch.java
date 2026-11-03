@@ -21,6 +21,7 @@ public final class JourneyWatch
     private boolean forked;
     private boolean sailing;
     private Tile lastTile;
+    private String voyageTo;
 
     public void reset()
     {
@@ -43,7 +44,12 @@ public final class JourneyWatch
         }
         if (forked && !nowForked && main && inside) j.add(Trials.FORKS, 1);
         forked = nowForked;
-        if (sailing && !nowSailing) j.docked = sim.minutes();
+        if (nowSailing) voyageTo = sim.main().voyageTo();
+        if (sailing && !nowSailing)
+        {
+            j.docked = sim.minutes();
+            j.dockedAt = voyageTo;
+        }
         sailing = nowSailing;
         if (j.docked >= 0)
         {
@@ -51,6 +57,7 @@ public final class JourneyWatch
             else if (main && inside && !nowSailing)
             {
                 j.add(Trials.VOYAGES, 1);
+                if (j.dockedAt != null) j.addTo(Trials.HARBOURS, j.dockedAt);
                 j.docked = -1;
             }
         }

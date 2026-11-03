@@ -39,6 +39,7 @@ What works:
 - **Only the run counts:** account trials (levels, quests, diaries, 99s) pay out only if the run is what takes you past the target; ones you'd passed before it show as "Before this run". The max total level follows the game's skill count (2,376 with Sailing).
 - **Renown and ranks:** each trial pays renown once per run (Bronze 10, Silver 25, Gold 50, Legend 100). Renown is kept across runs and raises your Nomad rank, from Wanderer to Nomad Sovereign. Every rank unlocks an edge colour for the Main circle, picked in the sidebar. Ranks only change looks, never the rules.
 
+- **Oaths:** swear one long goal as the run's oath from the sidebar: every diary tier, round the world (follow Main into all 14 ports), every landmark, max total, 50 bosses or every region circle. You can change it for an hour after swearing, then it binds. Keeping it pays 300 renown and unlocks the Oathbound edge colour on every run.
 - **Omens:** an hour into the run, and then every 2 to 4 played hours, an omen turns up with a deadline: a **Pilgrimage** to a landmark inside your circle (90 minutes), **Hold fast** (don't step outside for 2 hours), **Wanderlust** (walk 1,500 tiles in 2 hours) or **The hunt** (a boss kill count or a Treasure Trail in 3 hours). Meeting one pays 25 renown and summons a waystone; missing one costs nothing. They're dealt from the run's seed, so relogging can't reroll them.
 
 ### The living edge

@@ -15,6 +15,11 @@ public final class Renown
     /** The Main edge colour picked, by its name; null for the rank's newest. */
     String palette;
     int runs;
+    /** Oaths kept, over every run; the first unlocks the Oathbound edge colour. */
+    int oathsKept;
+    public static final String OATHBOUND = "Oathbound";
+    public static final int OATHBOUND_COLOUR = 0xFFF2C2;
+    public static final int OATH_RENOWN = 300;
 
     public Renown ready()
     {
@@ -83,12 +88,54 @@ public final class Renown
         return picked != null && picked.ordinal() <= rank.ordinal() ? picked : rank;
     }
 
+    /** The edge colour's name in use, Oathbound included. */
+    public String paletteName()
+    {
+        return OATHBOUND.equals(palette) && oathsKept > 0 ? OATHBOUND : palette().palette;
+    }
+
+    /** The edge colour in use, as 0xRRGGBB. */
+    public int paletteColour()
+    {
+        return OATHBOUND.equals(palette) && oathsKept > 0 ? OATHBOUND_COLOUR : palette().colour;
+    }
+
+    /** Every colour unlocked, in rank order, Oathbound last. */
+    public java.util.List<String> unlocked()
+    {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (Rank r : Rank.values())
+        {
+            if (r.ordinal() <= rank().ordinal()) out.add(r.palette);
+        }
+        if (oathsKept > 0) out.add(OATHBOUND);
+        return out;
+    }
+
     /** Picks an unlocked colour by name; false if it's locked or unknown. */
     public boolean pick(String name)
     {
+        if (OATHBOUND.equalsIgnoreCase(name))
+        {
+            if (oathsKept <= 0) return false;
+            palette = OATHBOUND;
+            return true;
+        }
         Rank r = Rank.byPalette(name);
         if (r == null || r.ordinal() > rank().ordinal()) return false;
         palette = r.palette;
         return true;
+    }
+
+    /** An oath kept: its renown, and the Oathbound colour. Returns the new rank if it went up, else null. */
+    public Rank keepOath()
+    {
+        oathsKept++;
+        return add(OATH_RENOWN);
+    }
+
+    public int oathsKept()
+    {
+        return oathsKept;
     }
 }

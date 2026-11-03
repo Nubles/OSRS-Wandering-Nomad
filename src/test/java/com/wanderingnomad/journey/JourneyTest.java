@@ -237,4 +237,27 @@ public class JourneyTest
         }
         throw new AssertionError("no Hold fast in 40 deals");
     }
+
+    @Test
+    public void anOathBindsAfterAnHourAndPaysWhenKept()
+    {
+        Journey j = new Journey();
+        Trial atlas = byId("landmarks-all");
+        Trial ports = byId("harbours-all");
+        assertTrue(Trials.OATHS.contains(atlas.id));
+        assertTrue(j.swear(atlas, 10));
+        assertTrue(j.swear(ports, 30));
+        assertEquals(ports.id, j.oath());
+        assertFalse("binding an hour after swearing", j.swear(atlas, 30 + Journey.OATH_GRACE));
+        for (com.wanderingnomad.sim.Geography.Port p : com.wanderingnomad.sim.Geography.PORTS) j.addTo(Trials.HARBOURS, p.name);
+        assertTrue(j.check(ALL).contains(ports));
+        assertFalse(j.canSwear(1000));
+        Renown r = new Renown();
+        assertFalse(r.pick(Renown.OATHBOUND));
+        r.keepOath();
+        assertEquals(Renown.OATH_RENOWN, r.renown());
+        assertTrue(r.unlocked().contains(Renown.OATHBOUND));
+        assertTrue(r.pick(Renown.OATHBOUND));
+        assertEquals(Renown.OATHBOUND_COLOUR, r.paletteColour());
+    }
 }

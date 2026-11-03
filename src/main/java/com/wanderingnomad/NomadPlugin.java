@@ -214,7 +214,7 @@ public class NomadPlugin extends Plugin
         live = new LiveShare(okHttpClient);
         trials = Trials.all(Skill.values().length);
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
-            this::copyRunCode, this::copyLiveLink, this::pickPalette);
+            this::copyRunCode, this::copyLiveLink, this::pickPalette, this::swearOath);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
@@ -923,6 +923,14 @@ public class NomadPlugin extends Plugin
         {
             Rank up = renown.award(t);
             show(Moments.trial(t));
+            if (t.id.equals(journey.oath()))
+            {
+                Rank oathUp = renown.keepOath();
+                up = oathUp != null ? oathUp : up;
+                show(Moments.oathKept(t));
+                report(java.util.Collections.singletonList("Oath kept: " + t.name + "! +" + Renown.OATH_RENOWN
+                    + " renown, and the " + Renown.OATHBOUND + " edge colour is yours on every run."));
+            }
             report(java.util.Collections.singletonList("Trial complete: " + t.name + " (" + t.tier.label + ", +" + t.tier.renown
                 + " renown). " + t.detail));
             if (up != null)
@@ -940,7 +948,36 @@ public class NomadPlugin extends Plugin
 
     private void applyPalette()
     {
-        mainColour = renown.palette().colour;
+        mainColour = renown.paletteColour();
+    }
+
+    /** Swears the run's oath from the sidebar, by its trial's name; "None" clears it. */
+    private void swearOath(String name)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null || trials == null) return;
+            Trial pick = null;
+            for (Trial t : trials)
+            {
+                if (Trials.OATHS.contains(t.id) && t.name.equals(name)) pick = t;
+            }
+            if (pick == null && !"None".equals(name)) return;
+            String before = journey.oath();
+            if (!journey.swear(pick, sim.minutes()))
+            {
+                report(java.util.Collections.singletonList("Your oath is sworn: it can only be changed in the hour after swearing it."));
+                publish();
+                return;
+            }
+            if (pick != null && !pick.id.equals(before))
+            {
+                report(java.util.Collections.singletonList("You swore an oath: " + pick.name + ". " + pick.detail
+                    + " Keep it for +" + Renown.OATH_RENOWN + " renown."));
+            }
+            saveJourney();
+            publish();
+        });
     }
 
     /** Picks an unlocked edge colour from the sidebar. */
