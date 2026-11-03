@@ -103,6 +103,13 @@ public class JourneyTest
         assertTrue(JourneyChat.read("Your Barrows chest count is: 3.", j));
         assertEquals(3, j.value(Trials.BOSSES));
         assertEquals("Zulrah", JourneyChat.boss("Your Zulrah kill count is: 1,204."));
+        assertEquals("Gauntlet", JourneyChat.boss("Your Gauntlet completion count is: 1."));
+        assertEquals("Corrupted Gauntlet", JourneyChat.boss("Your Corrupted Gauntlet completion count is: 4729."));
+        assertEquals("Yama", JourneyChat.boss("Your Yama success count is: 1"));
+        assertEquals("Lunar", JourneyChat.boss("Your Lunar Chest count is: 1."));
+        assertEquals("Chambers of Xeric", JourneyChat.boss("Your completed Chambers of Xeric count is: 51."));
+        assertNull(JourneyChat.boss("Your herbiboar harvest count is: 12."));
+        assertNull(JourneyChat.boss("Your Gnome Stronghold Agility lap count is: 40."));
         assertEquals(1204, JourneyChat.killCount("Your Zulrah kill count is: 1,204."));
 
         assertTrue(JourneyChat.read("You have completed 1 master Treasure Trail.", j));

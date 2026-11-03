@@ -107,8 +107,7 @@ public class NomadPlugin extends Plugin
     /** Ticks after a run loads before milestones are read, so the account's totals have arrived. */
     private static final int MILESTONE_DELAY = 10;
     /** "Your Zulrah kill count is: 1." and the like; the first kill of any boss summons a rare waystone. */
-    private static final Pattern KILL_COUNT = Pattern.compile(
-        "Your (?:(.+?) (?:kill|chest) count|(?:completed|subdued) (.+?) count) is: ([\\d,]+)");
+    private static final Pattern KILL_COUNT = JourneyChat.KILL_COUNT;
     /** Played minutes between Forecasts; each one imagines 40 six-hour futures off the client thread. */
     static final int FORECAST_EVERY = 15;
     /** Warn once the edge will reach you within this many played minutes. */

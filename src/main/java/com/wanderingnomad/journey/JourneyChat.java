@@ -10,9 +10,13 @@ import java.util.regex.Pattern;
  */
 public final class JourneyChat
 {
-    /** "Your Zulrah kill count is: 1.", "Your Barrows chest count is: 3.", "Your subdued Wintertodt count is: 5." */
+    /**
+     * "Your Zulrah kill count is: 1.", "Your Barrows chest count is: 3.", "Your Lunar Chest count is: 1.",
+     * "Your Gauntlet completion count is: 1.", "Your Yama success count is: 1", "Your completed Chambers
+     * of Xeric count is: 1." and "Your subdued Wintertodt count is: 5."
+     */
     public static final Pattern KILL_COUNT = Pattern.compile(
-        "Your (?:(.+?) (?:kill|chest|success) count|(?:completed|subdued) (.+?) count) is: ?([\\d,]+)");
+        "Your (?:(.+?) (?i:kill|chest|success|completion) count|(?:completed|subdued) (.+?) count) is: ?([\\d,]+)");
     /** "You have completed 4 hard Treasure Trails." */
     static final Pattern CLUE = Pattern.compile("You have completed [\\d,]+ ([a-z]+) Treasure Trails?\\.");
     /** "Congratulations, you've completed an easy combat task: Noxious Foe (1 point)." */

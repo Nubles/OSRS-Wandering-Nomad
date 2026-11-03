@@ -69,7 +69,7 @@ public final class Geography
 
     /**
      * Boats anyone can take without a quest, each sailing between every pair of its docks: the
-     * Port Sarim ferry, Veos, the Entrana monks, Captain Barnaby, Captain Tock, the Void Knights'
+     * Port Sarim ferry, Veos, the Entrana monks, Captain Barnaby, the Void Knights'
      * squire, Jarvald, and the charter ships' quest-free ports.
      */
     private static final String[][] BOATS = {
@@ -77,7 +77,6 @@ public final class Geography
         {"Port Sarim", "Port Piscarilius", "Land's End"},
         {"Port Sarim", "Entrana"},
         {"East Ardougne", "Brimhaven", "Rimmington"},
-        {"Rimmington", "Corsair Cove"},
         {"Port Sarim", "Void Knights' Outpost"},
         {"Rellekka", "Waterbirth Island"},
         {"Port Sarim", "Musa Point", "Brimhaven", "Catherby", "Port Khazard", "Corsair Cove", "Port Piscarilius", "Land's End"},

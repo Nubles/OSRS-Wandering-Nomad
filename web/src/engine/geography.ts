@@ -64,7 +64,6 @@ const BOATS: string[][] = [
   ['Port Sarim', 'Port Piscarilius', "Land's End"],
   ['Port Sarim', 'Entrana'],
   ['East Ardougne', 'Brimhaven', 'Rimmington'],
-  ['Rimmington', 'Corsair Cove'],
   ['Port Sarim', "Void Knights' Outpost"],
   ['Rellekka', 'Waterbirth Island'],
   ['Port Sarim', 'Musa Point', 'Brimhaven', 'Catherby', 'Port Khazard', 'Corsair Cove', 'Port Piscarilius', "Land's End"],
