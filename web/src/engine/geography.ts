@@ -22,7 +22,14 @@ export interface Port {
   name: string;
   /** A land tile at the dock, where the Main circle's centre lands after a voyage. */
   tile: Tile;
+  /** The Sailing level its docking point needs (oldschool.runescape.wiki/w/Docking_points). */
+  sailing: number;
+  /** A quest its docking point needs done, or null. */
+  quest: string | null;
 }
+
+export const CORSAIR_CURSE = 'The Corsair Curse';
+export const FREMENNIK_TRIALS = 'The Fremennik Trials';
 
 /** The eleven kingdoms with a region circle, in the order of Geography.java. */
 const REGIONS: Omit<Region, 'home'>[] = [
@@ -40,22 +47,22 @@ const REGIONS: Omit<Region, 'home'>[] = [
   { id: 'varlamore', name: 'Varlamore', colour: 0xffa726, index: 10, diaries: [] },
 ];
 
-/** Docks by map chunk, as in Geography.java. */
-const PORT_CHUNKS: [string, number, number][] = [
-  ['Port Sarim', 47, 50],
-  ['Musa Point', 46, 49],
-  ['Rimmington', 45, 50],
-  ['Brimhaven', 43, 50],
-  ['East Ardougne', 41, 51],
-  ['Catherby', 43, 53],
-  ['Port Khazard', 41, 49],
-  ['Corsair Cove', 40, 44],
-  ["Void Knights' Outpost", 41, 41],
-  ['Entrana', 44, 52],
-  ['Port Piscarilius', 28, 57],
-  ["Land's End", 23, 53],
-  ['Rellekka', 41, 57],
-  ['Waterbirth Island', 39, 58],
+/** Docks by map chunk, with each docking point's Sailing level and quest, as in Geography.java. */
+const PORT_CHUNKS: [string, number, number, number, string | null][] = [
+  ['Port Sarim', 47, 50, 1, null],
+  ['Musa Point', 46, 49, 10, null],
+  ['Rimmington', 45, 50, 18, null],
+  ['Brimhaven', 43, 50, 25, null],
+  ['East Ardougne', 41, 51, 28, null],
+  ['Catherby', 43, 53, 20, null],
+  ['Port Khazard', 41, 49, 30, null],
+  ['Corsair Cove', 40, 44, 40, CORSAIR_CURSE],
+  ["Void Knights' Outpost", 41, 41, 50, null],
+  ['Entrana', 44, 52, 36, null],
+  ['Port Piscarilius', 28, 57, 15, null],
+  ["Land's End", 23, 53, 5, null],
+  ['Rellekka', 41, 57, 62, FREMENNIK_TRIALS],
+  ['Waterbirth Island', 39, 58, 74, FREMENNIK_TRIALS],
 ];
 
 /** Quest-free boats, each sailing between every pair of its docks. */
@@ -78,7 +85,12 @@ export class Geography {
   readonly ports: Port[];
 
   constructor(readonly world: World) {
-    this.ports = PORT_CHUNKS.map(([name, cx, cy]) => ({ name, tile: this.nearestLand(cx * 64 + 32, cy * 64 + 32) }));
+    this.ports = PORT_CHUNKS.map(([name, cx, cy, sailing, quest]) => ({
+      name,
+      tile: this.nearestLand(cx * 64 + 32, cy * 64 + 32),
+      sailing,
+      quest,
+    }));
     this.regions = REGIONS.map((r) => ({ ...r, home: { x: 0, y: 0 } }));
     for (const r of this.regions) r.home = this.middleOf(r);
   }
@@ -154,12 +166,20 @@ export class Geography {
     return this.ports.find((p) => p.name === name);
   }
 
-  /** Before Sailing, the quest-free boats only; after Sailing, any port. */
-  routesFrom(name: string, sailing: boolean): string[] {
+  /**
+   * Where a boat can take Main from a port: every quest-free boat's stops, and with Sailing
+   * (`sailing` is the level, 0 without it; `true` means level unknown) every dock your level
+   * reaches whose quest isn't in `questsMissing`. Sailing's docks come first, in the list's order.
+   */
+  routesFrom(name: string, sailing: number | boolean, questsMissing: string[] = []): string[] {
+    const level = sailing === true ? 99 : sailing === false ? 0 : sailing;
     const out = new Set<string>();
-    if (sailing) {
-      for (const p of this.ports) if (p.name !== name) out.add(p.name);
-      return [...out];
+    if (level > 0) {
+      for (const p of this.ports) {
+        if (p.name === name || p.sailing > level) continue;
+        if (p.quest !== null && questsMissing.includes(p.quest)) continue;
+        out.add(p.name);
+      }
     }
     for (const boat of BOATS) {
       if (!boat.includes(name)) continue;

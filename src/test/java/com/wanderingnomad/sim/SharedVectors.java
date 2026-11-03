@@ -26,9 +26,11 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
+    /** Sails with Sailing at level 20 and two docks' quests not done. */
+    static final int DOCK_SEED = 123;
     /** Stays in Main and summons often, so waystones get claimed and every boon spent. */
     static final int BOON_SEED = 2024;
 
@@ -60,6 +62,14 @@ public final class SharedVectors
     {
         // Left alone, this seed's Main circle boards a boat, which covers voyages and docking.
         if (seed == VOYAGE_SEED) return new JsonArray();
+        if (seed == DOCK_SEED)
+        {
+            // The voyage seed again, with Sailing at a low level and a dock's quest not done.
+            JsonArray events = new JsonArray();
+            events.add(event(0, "sailing", true));
+            events.add(event(0, "dock", 20, Geography.CORSAIR_CURSE, Geography.FREMENNIK_TRIALS));
+            return events;
+        }
         if (seed == BOON_SEED) return boonScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
@@ -169,6 +179,13 @@ public final class SharedVectors
                 case "sailing":
                     sim.setSailingUnlocked(a.get(0).getAsBoolean());
                     break;
+                case "dock":
+                {
+                    List<String> missing = new ArrayList<>();
+                    for (int i = 1; i < a.size(); i++) missing.add(a.get(i).getAsString());
+                    sim.setSailing(a.get(0).getAsInt(), missing);
+                    break;
+                }
                 case "summon":
                     line = sim.summon(a.get(0).getAsString());
                     break;

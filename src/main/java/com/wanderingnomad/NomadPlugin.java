@@ -50,6 +50,8 @@ import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.Quest;
+import net.runelite.api.QuestState;
 import net.runelite.api.Scene;
 import net.runelite.api.Skill;
 import net.runelite.api.WorldView;
@@ -336,6 +338,7 @@ public class NomadPlugin extends Plugin
     private void minute()
     {
         sim.setSailingUnlocked(config.sailingUnlocked());
+        sim.setSailing(client.getRealSkillLevel(Skill.SAILING), docksQuestsMissing());
         int boundBefore = sim.boundIndex();
         List<String> lines = sim.step(surface);
         report(lines);
@@ -809,6 +812,15 @@ public class NomadPlugin extends Plugin
         if (earned <= 0) return;
         for (int i = 0; i < earned; i++) summon(NomadSim.COMMON, "A milestone");
         saveMilestones();
+    }
+
+    /** The quests a Sailing dock needs that this account hasn't finished, so Main never sails where you can't dock. */
+    private List<String> docksQuestsMissing()
+    {
+        List<String> missing = new ArrayList<>(2);
+        if (Quest.THE_CORSAIR_CURSE.getState(client) != QuestState.FINISHED) missing.add(Geography.CORSAIR_CURSE);
+        if (Quest.THE_FREMENNIK_TRIALS.getState(client) != QuestState.FINISHED) missing.add(Geography.FREMENNIK_TRIALS);
+        return missing;
     }
 
     /**

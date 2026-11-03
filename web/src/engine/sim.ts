@@ -200,6 +200,10 @@ export interface SimState {
   bound: number;
   outside: boolean;
   sailingUnlocked: boolean;
+  /** The account's Sailing level, 0 if not known (then every dock counts as in reach). */
+  sailingLevel?: number;
+  /** Quests a dock needs that the account hasn't done. */
+  questsMissing?: string[];
   circles: CircleState[];
   waystones: Waystone[];
   boons: string[];
@@ -268,7 +272,7 @@ export class NomadSim {
       circles.push({ regionId: r.id, ...base(r.home.x, r.home.y, rng.next() * Math.PI * 2, REGION_START, REGION_MIN, REGION_MAX) });
     }
     return new NomadSim(geo, {
-      seed: seed | 0, rngState: rng.state, minutes: 0, bound: MAIN, outside: false, sailingUnlocked: false, circles,
+      seed: seed | 0, rngState: rng.state, minutes: 0, bound: MAIN, outside: false, sailingUnlocked: false, sailingLevel: 0, questsMissing: [], circles,
       waystones: [], boons: [], pending: [], summons: 0, bridgeLeft: 0,
       forks: 0, nextFork: 0, lastBig: 0, forkWarn: 0, forkAxis: 0, forkAge: 0,
     });
@@ -751,7 +755,9 @@ export class NomadSim {
   private maybeBoard(c: CircleState, rng: Rng, log: string[]) {
     const port = this.geo.ports.find((p) => contains(c, p.tile.x, p.tile.y));
     if (!port || rng.next() >= BOARD_CHANCE) return;
-    const routes = this.geo.routesFrom(port.name, this.state.sailingUnlocked);
+    const s = this.state;
+    const level = !s.sailingUnlocked ? 0 : s.sailingLevel && s.sailingLevel > 0 ? s.sailingLevel : 99;
+    const routes = this.geo.routesFrom(port.name, level, s.questsMissing ?? []);
     if (routes.length === 0) return;
     const to = routes[Math.floor(rng.next() * routes.length)];
     const dest = this.geo.port(to)!;

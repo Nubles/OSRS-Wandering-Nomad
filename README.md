@@ -2,7 +2,7 @@
 
 A RuneLite plugin for **Nomad UIM**: Ultimate Ironman, but everything you do happens inside circles that drift across Gielinor.
 
-- **The Main circle** is where you start, over Lumbridge. It roams the whole world and turns back at the coast. While a port sits inside it, it may board a quest-free boat (Veos, Captain Barnaby, the charter ships and others), or sail to any port once Sailing is unlocked.
+- **The Main circle** is where you start, over Lumbridge. It roams the whole world and turns back at the coast. While a port sits inside it, it may board a quest-free boat (Veos, Captain Barnaby, the charter ships and others), or, once Sailing is unlocked, sail to any dock your Sailing level reaches (each dock's level and quest are from the wiki's Docking points page, so Main never sails somewhere you can't follow).
 - **Eleven region circles** (Kandarin, Fremennik, Asgarnia, Misthalin, the Desert, Morytania, the Wilderness, Karamja, Kourend & Kebos, Tirannwn and Varlamore) each patrol their own kingdom, three times as fast as Main, and never follow it.
 - **Moods and temperaments:** every hour or two each circle changes mood (roaming somewhere new, meandering, looping, dashing, lingering or drifting), its path curves, and it bends away from coasts before reaching them. Each kingdom has a temperament that sets which moods it favours and how fast it goes (`Temperament.java`); Main heads for far-off waypoints that favour ground it hasn't covered lately.
 - **Lean:** standing within 2 tiles of your circle's edge turns it toward you, up to 3 degrees a minute.

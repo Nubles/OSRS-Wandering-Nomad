@@ -138,6 +138,10 @@ public final class NomadSim
     int bound;
     boolean outside;
     boolean sailingUnlocked;
+    /** The account's Sailing level, 0 if not known (then every dock counts as in reach). */
+    int sailingLevel;
+    /** Quests a dock needs that the account hasn't done, so Main never sails where you can't follow. */
+    List<String> questsMissing = new ArrayList<>();
     List<Circle> circles;
     /** Waystones waiting to be claimed, boons held, and summons still waiting for a landmark to drift into reach. */
     List<Waystone> waystones = new ArrayList<>();
@@ -186,6 +190,8 @@ public final class NomadSim
         s.bound = bound;
         s.outside = outside;
         s.sailingUnlocked = sailingUnlocked;
+        s.sailingLevel = sailingLevel;
+        if (questsMissing != null) s.questsMissing = new ArrayList<>(questsMissing);
         s.circles = new ArrayList<>(circles.size());
         for (Circle c : circles) s.circles.add(c.copy());
         for (Waystone w : waystones) s.waystones.add(w.copy());
@@ -306,6 +312,28 @@ public final class NomadSim
     public void setSailingUnlocked(boolean unlocked)
     {
         sailingUnlocked = unlocked;
+    }
+
+    /**
+     * What Main can sail to on your own boat: your Sailing level, and the quests a dock needs that
+     * you haven't done. A dock out of reach is never a voyage's destination.
+     */
+    public void setSailing(int level, List<String> missing)
+    {
+        sailingLevel = Math.max(0, level);
+        questsMissing = missing == null ? new ArrayList<>() : new ArrayList<>(missing);
+    }
+
+    public int sailingLevel()
+    {
+        return sailingLevel;
+    }
+
+    /** The level docks are checked against: 0 without Sailing, 99 if it's unlocked but the level isn't known. */
+    int dockLevel()
+    {
+        if (!sailingUnlocked) return 0;
+        return sailingLevel > 0 ? sailingLevel : 99;
     }
 
     /** In a region circle that Main no longer touches. */
@@ -984,7 +1012,8 @@ public final class NomadSim
             }
         }
         if (port == null || rng.next() >= BOARD_CHANCE) return;
-        List<String> routes = Geography.routesFrom(port.name, sailingUnlocked);
+        List<String> routes = Geography.routesFrom(port.name, dockLevel(),
+            questsMissing == null ? java.util.Collections.<String>emptyList() : questsMissing);
         if (routes.isEmpty()) return;
         String to = routes.get((int) (rng.next() * routes.size()));
         Geography.Port dest = Geography.port(to);
