@@ -155,6 +155,7 @@ class NomadWorldMapOverlay extends Overlay
         }
         drawWaystones(graphics, sim, bounds, west, south, zoom);
         if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
+        drawOmen(graphics, bounds, west, south, zoom);
         drawPointers(graphics, sim, rings, bounds);
         drawHover(graphics, sim, rings, bounds);
         graphics.setFont(font);
@@ -355,6 +356,22 @@ class NomadWorldMapOverlay extends Overlay
             String text = hovered.name + " (" + hovered.x + ", " + hovered.y + ")" + (plugin.spots().isBlocked(hovered) ? " blocked" : "");
             outlined(graphics, text, (float) hx + 8, (float) hy + 4, plugin.spots().colour(hovered), false);
         }
+    }
+
+    /** A pilgrimage omen's landmark: a pale blue ring and its name, so you can plan the walk. */
+    private void drawOmen(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        com.wanderingnomad.journey.Omen o = plugin.omen();
+        if (o == null || !com.wanderingnomad.journey.Omen.PILGRIMAGE.equals(o.kind())) return;
+        double px = bounds.x + (o.x() - west) * zoom;
+        double py = bounds.y + bounds.height - (o.y() - south) * zoom;
+        if (!bounds.contains(px, py)) return;
+        Color colour = new Color(0x9FE9FF);
+        double r = Math.max(6, com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK * zoom);
+        graphics.setStroke(new BasicStroke(2f));
+        graphics.setColor(colour);
+        graphics.draw(new Ellipse2D.Double(px - r, py - r, 2 * r, 2 * r));
+        outlined(graphics, "Omen: " + o.landmark(), (float) (px + r + 4), (float) py + 4, colour, false);
     }
 
     /** Hovering a circle shows what it's doing: size, mood, how far it is from you and whether you can cross. */

@@ -184,7 +184,7 @@ public class NomadPlugin extends Plugin
     private RuleGuard guard = new RuleGuard();
     private Milestones milestones = new Milestones();
     private int milestoneWait;
-    private Journey journey = new Journey();
+    private volatile Journey journey = new Journey();
     private Renown renown = new Renown();
     private final JourneyWatch watch = new JourneyWatch();
     /** Every trial, built once the game's skill count is known. */
@@ -464,6 +464,13 @@ public class NomadPlugin extends Plugin
         fade = f.again(System.currentTimeMillis());
         reply("Replaying the faded half's dissolve.");
         publish();
+    }
+
+    /** The omen under way, or null. Any thread. */
+    Omen omen()
+    {
+        Journey j = journey;
+        return j == null ? null : Omens.current(j);
     }
 
     SpotCheck spots()

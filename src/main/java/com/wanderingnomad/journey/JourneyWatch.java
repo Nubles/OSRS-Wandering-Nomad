@@ -13,7 +13,7 @@ import com.wanderingnomad.sim.Tile;
 public final class JourneyWatch
 {
     /** How close counts as standing at a landmark, in tiles each way. */
-    static final int AT_LANDMARK = 4;
+    public static final int AT_LANDMARK = 4;
     /** Played minutes after Main docks in which being back inside still counts as following it. */
     static final int FOLLOW_MINUTES = 60;
 

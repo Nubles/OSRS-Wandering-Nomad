@@ -154,6 +154,7 @@ class NomadSceneOverlay extends Overlay
         {
             drawCompass(graphics, view, sim, at);
             drawWaystoneArrow(graphics, view, sim, at);
+            drawPilgrimage(graphics, view, sim, at);
         }
         return null;
     }
@@ -696,6 +697,24 @@ class NomadSceneOverlay extends Overlay
         if (best == null || bestD <= NomadSim.CLAIM_REACH) return;
         String text = best.boon() + " waystone · " + Math.round(bestD) + " tiles · ~" + NomadPanel.roughly(sim.minutesLeft(best)) + " left";
         drawArrow(graphics, view, at, new double[]{best.x(), best.y()}, GOLD, GOLD, text);
+    }
+
+    /** A pilgrimage omen's landmark: its tile outlined, and an arrow to it with the time left. */
+    private void drawPilgrimage(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at)
+    {
+        com.wanderingnomad.journey.Omen o = plugin.omen();
+        if (o == null || !com.wanderingnomad.journey.Omen.PILGRIMAGE.equals(o.kind())) return;
+        Color colour = new Color(0x9FE9FF);
+        LocalPoint lp = LocalPoint.fromWorld(view, o.x(), o.y());
+        if (lp != null && view.getPlane() == 0)
+        {
+            Polygon tile = Perspective.getCanvasTileAreaPoly(client, lp, 2 * com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK + 1);
+            if (tile != null) OverlayUtil.renderPolygon(graphics, tile, colour, alpha(colour, 40), YOURS);
+        }
+        double d = Math.hypot(o.x() - at.getX(), o.y() - at.getY());
+        if (d <= com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK) return;
+        String text = "Omen: " + o.landmark() + " · " + Math.round(d) + " tiles · " + NomadPanel.time(Math.max(0, o.deadline() - sim.minutes())) + " left";
+        drawArrow(graphics, view, at, new double[]{o.x(), o.y()}, colour, colour, text);
     }
 
     /**
