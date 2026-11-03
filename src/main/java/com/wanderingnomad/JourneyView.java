@@ -1,6 +1,8 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.journey.Journey;
+import com.wanderingnomad.journey.Omen;
+import com.wanderingnomad.journey.Omens;
 import com.wanderingnomad.journey.Rank;
 import com.wanderingnomad.journey.Renown;
 import com.wanderingnomad.journey.Trial;
@@ -62,10 +64,20 @@ final class JourneyView
     int runs;
     String palette = Rank.WANDERER.palette;
     List<String> palettes = Collections.singletonList(Rank.WANDERER.palette);
+    /** The omen under way: its title, what it asks, minutes left and progress; null title if none. */
+    String omen;
+    String omenAsk;
+    int omenLeft;
+    double omenProgress;
     List<Row> next = Collections.emptyList();
     List<Row> all = Collections.emptyList();
 
     static JourneyView of(Journey j, Renown r, List<Trial> trials)
+    {
+        return of(j, r, trials, 0);
+    }
+
+    static JourneyView of(Journey j, Renown r, List<Trial> trials, int minutes)
     {
         JourneyView v = new JourneyView();
         if (j == null || r == null || trials == null) return v;
@@ -88,6 +100,15 @@ final class JourneyView
             if (each.ordinal() <= rank.ordinal()) unlocked.add(each.palette);
         }
         v.palettes = unlocked;
+        Omen o = Omens.current(j);
+        if (o != null)
+        {
+            v.omen = o.title();
+            v.omenAsk = o.ask();
+            v.omenLeft = Math.max(0, o.deadline() - minutes);
+            int now = Omen.WANDERLUST.equals(o.kind()) ? j.value(Trials.WALKED) : Omens.trophies(j);
+            v.omenProgress = o.progress(now, minutes);
+        }
         List<Row> next = new ArrayList<>();
         for (Trial t : j.next(trials, NEXT)) next.add(new Row(t, j, r));
         v.next = next;

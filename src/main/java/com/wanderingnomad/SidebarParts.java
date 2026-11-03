@@ -669,7 +669,7 @@ final class SidebarParts
 
         Journey()
         {
-            super(RANK_H + 6 + JourneyView.NEXT * (ROW_H + 4));
+            super(RANK_H + 6 + (JourneyView.NEXT + 1) * (ROW_H + 4));
         }
 
         @Override
@@ -694,6 +694,22 @@ final class SidebarParts
             text(g, small, fit(sm, under, SIDEBAR_WIDTH - 24), 12, 44, MUTED);
 
             int y = RANK_H + 6;
+            Color omen = new Color(0x9FE9FF);
+            card(g, 0, y, SIDEBAR_WIDTH, ROW_H, j.omen != null ? omen : null);
+            if (j.omen != null)
+            {
+                String left = NomadPanel.time(j.omenLeft) + " left";
+                int leftW = sm.stringWidth(left);
+                text(g, small, fit(sm, "Omen: " + j.omen, SIDEBAR_WIDTH - leftW - 28), 10, y + 13, omen);
+                text(g, small, left, SIDEBAR_WIDTH - 8 - leftW, y + 13, Color.WHITE);
+                bar(g, 10, y + 18, SIDEBAR_WIDTH - 20, 4, j.omenProgress, omen);
+                text(g, small, fit(sm, j.omenAsk, SIDEBAR_WIDTH - 20), 10, y + 32, MUTED);
+            }
+            else
+            {
+                text(g, small, "No omen yet. One comes every few hours.", 10, y + 22, MUTED);
+            }
+            y += ROW_H + 4;
             for (JourneyView.Row r : j.next)
             {
                 card(g, 0, y, SIDEBAR_WIDTH, ROW_H, r.colour);

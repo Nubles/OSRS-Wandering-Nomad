@@ -6,6 +6,8 @@ import com.google.inject.Provides;
 import com.wanderingnomad.journey.Journey;
 import com.wanderingnomad.journey.JourneyChat;
 import com.wanderingnomad.journey.JourneyWatch;
+import com.wanderingnomad.journey.Omen;
+import com.wanderingnomad.journey.Omens;
 import com.wanderingnomad.journey.Rank;
 import com.wanderingnomad.journey.Renown;
 import com.wanderingnomad.journey.Trial;
@@ -862,8 +864,46 @@ public class NomadPlugin extends Plugin
         journey.set(Trials.WALKED, stats.tilesWalked);
         journey.set(Trials.CLAIMED, stats.claimed);
         journey.set(Trials.CROSSINGS, stats.crossings);
-        watch.tick(sim, surface, surface != null && !outsideNow(), journey);
+        boolean inside = surface != null && !outsideNow();
+        watch.tick(sim, surface, inside, journey);
+        Omen before = Omens.current(journey);
+        settleOmen(Omens.minute(journey, sim, surface, inside), before);
         checkTrials();
+    }
+
+    /** Tells of an omen dealt, met or missed; a met one pays renown and summons a waystone. Client thread. */
+    private void settleOmen(Omens.Result result, Omen before)
+    {
+        switch (result)
+        {
+            case DEALT:
+            {
+                Omen o = Omens.current(journey);
+                show(Moments.omen(o));
+                report(java.util.Collections.singletonList("An omen: " + o.title() + ". " + o.ask() + " You have "
+                    + NomadPanel.time(o.deadline() - sim.minutes()) + "."));
+                break;
+            }
+            case MET:
+            {
+                Rank up = renown.add(Omens.RENOWN);
+                show(Moments.omenMet(before));
+                report(java.util.Collections.singletonList("Omen met: " + before.title() + ". +" + Omens.RENOWN + " renown."));
+                if (up != null) show(Moments.rankUp(up));
+                applyPalette();
+                saveRenown();
+                summon(NomadSim.COMMON, "A met omen");
+                break;
+            }
+            case MISSED:
+                show(Moments.omenMissed(before));
+                report(java.util.Collections.singletonList("The omen passed: " + before.title() + ". Another will come."));
+                break;
+            default:
+                return;
+        }
+        saveJourney();
+        publish();
     }
 
     /** Pays out every trial now done: a banner, a chat line and its renown, and a rank up if it's earned. */
@@ -1175,7 +1215,7 @@ public class NomadPlugin extends Plugin
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
-        view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials);
+        view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials, sim.minutes());
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 

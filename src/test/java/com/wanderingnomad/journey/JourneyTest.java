@@ -98,10 +98,11 @@ public class JourneyTest
     {
         Journey j = new Journey();
         assertTrue(JourneyChat.read("Your Zulrah kill count is: 1.", j));
-        assertFalse(JourneyChat.read("Your Zulrah kill count is: 2.", j));
+        assertTrue(JourneyChat.read("Your Zulrah kill count is: 2.", j));
         assertTrue(JourneyChat.read("Your subdued Wintertodt count is: 12.", j));
         assertTrue(JourneyChat.read("Your Barrows chest count is: 3.", j));
         assertEquals(3, j.value(Trials.BOSSES));
+        assertEquals(4, j.value(Trials.KILLS));
         assertEquals("Zulrah", JourneyChat.boss("Your Zulrah kill count is: 1,204."));
         assertEquals("Gauntlet", JourneyChat.boss("Your Gauntlet completion count is: 1."));
         assertEquals("Corrupted Gauntlet", JourneyChat.boss("Your Corrupted Gauntlet completion count is: 4729."));
@@ -176,5 +177,64 @@ public class JourneyTest
         w.tick(sim, lumbridge, true, j);
         assertTrue(j.has(Trials.LANDMARKS, "Lumbridge Castle"));
         assertEquals(0, j.value(Trials.REGIONS));
+    }
+
+    @Test
+    public void omensComeAnHourInAndPayOnlyWhenMet()
+    {
+        NomadSim sim = NomadSim.start(777);
+        Journey j = new Journey();
+        Tile home = new Tile(Geography.LUMBRIDGE.x, Geography.LUMBRIDGE.y);
+        assertEquals(Omens.Result.NONE, Omens.minute(j, sim, home, true));
+        while (sim.minutes() < Omens.FIRST) sim.step(home);
+        assertEquals(Omens.Result.DEALT, Omens.minute(j, sim, home, true));
+        Omen o = Omens.current(j);
+        assertNotNull(o);
+        assertFalse(o.ask().isEmpty());
+        Omens.Result r = Omens.Result.NONE;
+        if (o.kind().equals(Omen.PILGRIMAGE)) r = Omens.minute(j, sim, new Tile(o.x(), o.y()), true);
+        else if (o.kind().equals(Omen.WANDERLUST))
+        {
+            j.add(Trials.WALKED, Omens.WANDER_TILES);
+            r = Omens.minute(j, sim, home, true);
+        }
+        else if (o.kind().equals(Omen.HUNT))
+        {
+            JourneyChat.read("Your Zulrah kill count is: 9.", j);
+            r = Omens.minute(j, sim, home, true);
+        }
+        else
+        {
+            while (sim.minutes() < o.deadline()) sim.step(home);
+            r = Omens.minute(j, sim, home, true);
+        }
+        assertEquals(o.kind(), Omens.Result.MET, r);
+        assertEquals(1, j.value(Trials.OMENS));
+        assertNull(Omens.current(j));
+        assertTrue(j.nextOmen >= sim.minutes() + Omens.GAP_MIN && j.nextOmen <= sim.minutes() + Omens.GAP_MAX);
+    }
+
+    @Test
+    public void anOmenRunsOutAndASteppingOutBreaksHoldFast()
+    {
+        NomadSim sim = NomadSim.start(778);
+        Tile home = new Tile(Geography.LUMBRIDGE.x, Geography.LUMBRIDGE.y);
+        for (int seed = 0; seed < 40; seed++)
+        {
+            Journey j = new Journey();
+            j.nextOmen = 1;
+            j.omensDealt = seed;
+            while (sim.minutes() < 1) sim.step(home);
+            Omens.minute(j, sim, null, true);
+            Omen o = Omens.current(j);
+            assertNotNull(o);
+            if (o.kind().equals(Omen.HOLD_FAST))
+            {
+                assertEquals(Omens.Result.MISSED, Omens.minute(j, sim, home, false));
+                assertEquals(0, j.value(Trials.OMENS));
+                return;
+            }
+        }
+        throw new AssertionError("no Hold fast in 40 deals");
     }
 }

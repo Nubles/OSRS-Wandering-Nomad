@@ -27,6 +27,10 @@ public final class Journey
     int streak;
     /** The played minute Main last docked, while following it still counts; -1 if not. */
     int docked = -1;
+    /** The omen under way, or null; the played minute the next is due (0 until the first); how many have ended. */
+    Omen omen;
+    int nextOmen;
+    int omensDealt;
 
     /** Gson leaves fields null when an older save lacks them. */
     public Journey ready()

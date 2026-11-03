@@ -37,6 +37,9 @@ public final class Trials
     public static final String GRANDMASTER_TASKS = "combat:grandmaster";
     public static final String PETS = "pets";
     public static final String COLLECTION = "collection";
+    /** Every kill count line, repeats included, and omens met. */
+    public static final String KILLS = "kills";
+    public static final String OMENS = "omens";
 
     /** The game's six clue tiers, as its "You have completed 1 easy Treasure Trail." line names them. */
     public static final String[] CLUE_TIERS = {"beginner", "easy", "medium", "hard", "elite", "master"};
@@ -102,6 +105,9 @@ public final class Trials
         t.add(trial("claimed-10", FATE, "Stonecaller", "Claim 10 waystones.", CLAIMED, 10, Tier.SILVER));
         t.add(trial("claimed-50", FATE, "Waystone keeper", "Claim 50 waystones.", CLAIMED, 50, Tier.GOLD));
         t.add(trial("boons-25", FATE, "Gifted", "Spend 25 boons.", BOONS, 25, Tier.SILVER));
+        t.add(trial("omens-1", FATE, "Read the signs", "Meet an omen before its time runs out.", OMENS, 1, Tier.BRONZE));
+        t.add(trial("omens-10", FATE, "Augur", "Meet 10 omens.", OMENS, 10, Tier.SILVER));
+        t.add(trial("omens-50", FATE, "Oracle", "Meet 50 omens.", OMENS, 50, Tier.GOLD));
         t.add(trial("crossings-25", FATE, "Border hopper", "Cross between circles 25 times.", CROSSINGS, 25, Tier.SILVER));
 
         t.add(trial("regions-3", KINGDOMS, "Three crowns", "Be inside 3 different region circles.", REGIONS, 3, Tier.BRONZE));

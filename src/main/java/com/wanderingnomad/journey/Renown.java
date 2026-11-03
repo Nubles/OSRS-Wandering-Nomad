@@ -47,6 +47,15 @@ public final class Renown
         return after != before ? after : null;
     }
 
+    /** Pays renown that isn't a trial's, such as an omen's; returns the new rank if it went up, else null. */
+    public Rank add(int amount)
+    {
+        Rank before = rank();
+        renown += Math.max(0, amount);
+        Rank after = rank();
+        return after != before ? after : null;
+    }
+
     /** Renown from this rank to the next, from 0 to 1 (1 at the top). */
     public double toNext()
     {

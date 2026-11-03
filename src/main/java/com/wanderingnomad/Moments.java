@@ -325,6 +325,25 @@ final class Moments
             new Color(t.tier.colour), Icon.STAR, big, big ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.GE_COIN_TINKLE);
     }
 
+    private static final Color OMEN = new Color(0x9FE9FF);
+
+    static Banner omen(com.wanderingnomad.journey.Omen o)
+    {
+        return new Banner("Omen: " + o.title(), o.ask(), OMEN, Icon.STAR, false, SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+    }
+
+    static Banner omenMet(com.wanderingnomad.journey.Omen o)
+    {
+        return new Banner("Omen met: " + o.title(), "+" + com.wanderingnomad.journey.Omens.RENOWN + " renown, and a waystone rises.",
+            OMEN, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner omenMissed(com.wanderingnomad.journey.Omen o)
+    {
+        return new Banner("The omen passed", o.title() + " ran out of time. Another will come.", OMEN.darker(), Icon.STAR, false,
+            SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+    }
+
     /** A new Nomad rank, and the edge colour it unlocked. */
     static Banner rankUp(com.wanderingnomad.journey.Rank r)
     {

@@ -49,7 +49,12 @@ public final class JourneyChat
     public static boolean read(String line, Journey j)
     {
         String boss = boss(line);
-        if (boss != null) return j.addTo(Trials.BOSSES, boss.toLowerCase());
+        if (boss != null)
+        {
+            j.add(Trials.KILLS, 1);
+            j.addTo(Trials.BOSSES, boss.toLowerCase());
+            return true;
+        }
         Matcher m = CLUE.matcher(line);
         if (m.find())
         {
