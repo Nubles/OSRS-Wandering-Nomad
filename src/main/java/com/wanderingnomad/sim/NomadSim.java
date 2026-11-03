@@ -130,6 +130,20 @@ public final class NomadSim
     static final int FORK_REACH = 60;
     /** A fork that can't start now (at sea, anchored or too small) tries again this much later. */
     static final int FORK_RETRY = 30;
+    /**
+     * Storms over Main, one every 6 to 12 played hours with a 10-minute warning: a Gale drives it
+     * three times as fast for half an hour, a Squall squeezes it to three quarters of its size for
+     * half an hour before it eases back. They wait out forks and voyages.
+     */
+    public static final int STORM_EVERY_MIN = 360;
+    public static final int STORM_EVERY_MAX = 720;
+    public static final int STORM_WARN = 10;
+    public static final int STORM_MINUTES = 30;
+    static final int STORM_RETRY = 15;
+    public static final int GALE = 1;
+    public static final int SQUALL = 2;
+    static final int GALE_SPEEDUP = 3;
+    static final double SQUALL_SHRINK = 0.75;
     private static final String[] COMPASS = {"east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east"};
 
     int seed;
@@ -164,6 +178,13 @@ public final class NomadSim
     /** While forked: the other half, and the minutes since the split. */
     Circle twin;
     int forkAge;
+    /** Storms so far, the minute the next is due (0 until scheduled), its warning and time left, its kind, and Main's size before a Squall. */
+    int storms;
+    int nextStorm;
+    int stormWarn;
+    int stormLeft;
+    int stormKind;
+    double squallFrom;
 
     public static NomadSim start(int seed)
     {
@@ -204,6 +225,12 @@ public final class NomadSim
         s.lastBig = lastBig;
         s.forkWarn = forkWarn;
         s.forkAxis = forkAxis;
+        s.storms = storms;
+        s.nextStorm = nextStorm;
+        s.stormWarn = stormWarn;
+        s.stormLeft = stormLeft;
+        s.stormKind = stormKind;
+        s.squallFrom = squallFrom;
         s.twin = twin == null ? null : twin.copy();
         s.forkAge = forkAge;
         return s;
@@ -574,13 +601,15 @@ public final class NomadSim
             Circle toward = pulled ? main : null;
             double pull = pulled ? STRANDED_PULL : 0;
             Tile lean = yours && !out && player != null && dist(c, player) >= c.radius - LEAN_BAND ? player : null;
-            int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1);
+            int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
+                * (j == MAIN && stormLeft > 0 && stormKind == GALE ? GALE_SPEEDUP : 1);
             if (j == MAIN && twin != null) part(c, twin);
             else move(c, rng, speedup, yours, toward, pull, lean, log);
         }
         minutes++;
         tickBoons(log);
         fork(player, log);
+        storm(log);
 
         if (minutes % 5 == 0)
         {
@@ -1070,7 +1099,7 @@ public final class NomadSim
         // Pacing: after 4 quiet hours the next fork comes now.
         if (minutes - lastBig >= QUIET) nextFork = Math.min(nextFork, minutes);
         if (minutes < nextFork) return;
-        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS)
+        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS || stormWarn > 0 || stormLeft > 0)
         {
             nextFork = minutes + FORK_RETRY;
             return;
@@ -1092,6 +1121,80 @@ public final class NomadSim
         log.add("The Main circle is about to fork. In " + FORK_WARN + " minutes it splits in two, one half heading "
             + compass(forkAxis) + " and the other " + compass(forkAxis + Math.PI)
             + ". The half you're standing in when they part lives on.");
+    }
+
+    /** Brews, starts and ends storms over Main; see {@link #STORM_EVERY_MIN}. */
+    private void storm(List<String> log)
+    {
+        Circle m = main();
+        if (stormLeft > 0)
+        {
+            if (--stormLeft > 0) return;
+            if (stormKind == SQUALL) m.radiusTarget = clamp(squallFrom, m.radiusMin, m.radiusMax);
+            log.add(stormKind == GALE ? "The gale has blown itself out." : "The squall has passed. The Main circle eases back to its size.");
+            stormKind = 0;
+            storms++;
+            nextStorm = 0;
+            return;
+        }
+        if (stormWarn > 0)
+        {
+            if (--stormWarn > 0) return;
+            if (twin != null || m.voyage != null)
+            {
+                log.add("The storm blew past the Main circle.");
+                stormKind = 0;
+                nextStorm = minutes + STORM_RETRY;
+                return;
+            }
+            stormLeft = STORM_MINUTES;
+            lastBig = minutes;
+            if (stormKind == SQUALL)
+            {
+                squallFrom = m.radius;
+                m.radius = Math.max(m.radiusMin, m.radius * SQUALL_SHRINK);
+                m.radiusTarget = m.radius;
+                log.add("Squall! The Main circle shrinks to " + Math.round(m.radius) + " tiles for " + STORM_MINUTES + " minutes.");
+            }
+            else
+            {
+                log.add("Gale! The Main circle drifts three times as fast for " + STORM_MINUTES + " minutes.");
+            }
+            return;
+        }
+        if (nextStorm <= 0)
+        {
+            Rng dice = new Rng(seed ^ ((storms + 1) * 0x165667B1));
+            nextStorm = minutes + STORM_EVERY_MIN + (int) (dice.next() * (STORM_EVERY_MAX - STORM_EVERY_MIN));
+        }
+        if (minutes < nextStorm) return;
+        if (twin != null || m.voyage != null || forkWarn > 0)
+        {
+            nextStorm = minutes + STORM_RETRY;
+            return;
+        }
+        Rng dice = new Rng(seed ^ ((storms + 1) * 0x27D4EB2D));
+        stormKind = dice.next() < 0.5 ? GALE : SQUALL;
+        stormWarn = STORM_WARN;
+        log.add("A storm is brewing over the Main circle: a " + (stormKind == GALE ? "gale" : "squall") + " in " + STORM_WARN + " minutes.");
+    }
+
+    /** The storm brewing or blowing: {@link #GALE}, {@link #SQUALL} or 0. */
+    public int stormKind()
+    {
+        return stormKind;
+    }
+
+    /** Minutes of warning left before the storm breaks, 0 if none is brewing. */
+    public int stormWarning()
+    {
+        return stormWarn;
+    }
+
+    /** Minutes the storm has left to blow, 0 if none is. */
+    public int stormLeft()
+    {
+        return stormLeft;
     }
 
     /** How many tiles of land lie along a heading from Main's centre, up to 60. */

@@ -103,6 +103,8 @@ final class Moments
     /** Whether a fork was coming, and whether Main was forked, at the last look. */
     private boolean forkComing;
     private boolean forked;
+    /** The storm at the last look: 0 none, 1 brewing, 2 blowing. */
+    private int storm;
     /** Main and its other half at the last look while forked, to tell which one faded when they part. */
     private Circle lastMain;
     private Circle lastTwin;
@@ -240,6 +242,7 @@ final class Moments
                     SoundEffectID.PRAYER_DEACTIVE_VWOOP));
             }
             fork(sim, out);
+            storm(sim, out);
             // Stepping back and forth near the edge re-arms these, so each one only gets a banner once a minute.
             if (stage > edgeStage && now - edgeToldAt[stage] >= QUIET_MS)
             {
@@ -269,6 +272,7 @@ final class Moments
         edgeStage = stage;
         forkComing = sim.forkWarning() > 0;
         forked = sim.twin() != null;
+        storm = stormStage(sim);
         lastMain = sim.main();
         lastTwin = sim.twin();
         return out;
@@ -299,6 +303,38 @@ final class Moments
             out.add(new Banner("The halves parted", "The " + NomadSim.compass(kept.heading()) + " half lives on"
                 + (gone == null ? " as Main." : "; the " + NomadSim.compass(gone.heading()) + " half faded."),
                 main, Icon.FORK, true, SoundEffectID.PRAYER_ACTIVATE_PIETY));
+        }
+    }
+
+    private static int stormStage(NomadSim sim)
+    {
+        return sim.stormLeft() > 0 ? 2 : sim.stormWarning() > 0 ? 1 : 0;
+    }
+
+    private static final Color STORM = new Color(0x8FB8FF);
+
+    /** A storm brewing, breaking and passing over Main. */
+    private void storm(NomadSim sim, List<Banner> out)
+    {
+        int now = stormStage(sim);
+        if (now == storm) return;
+        boolean gale = sim.stormKind() == NomadSim.GALE;
+        if (now == 1)
+        {
+            out.add(new Banner("A storm is brewing", "In " + sim.stormWarning() + " min a " + (gale
+                ? "gale drives Main three times as fast" : "squall squeezes Main to three quarters") + " for half an hour.",
+                STORM, Icon.EDGE, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
+        }
+        else if (now == 2)
+        {
+            out.add(new Banner(gale ? "Gale!" : "Squall!", gale ? "Main drifts three times as fast for " + sim.stormLeft() + " minutes."
+                : "Main shrinks to " + Math.round(sim.main().radius()) + " tiles for " + sim.stormLeft() + " minutes.",
+                STORM, Icon.EDGE, true, SoundEffectID.TELEPORT_VWOOP));
+        }
+        else if (storm == 2)
+        {
+            out.add(new Banner("The storm has passed", "Main is back to its own pace and size.", STORM, Icon.EDGE, false,
+                SoundEffectID.PRAYER_DEACTIVE_VWOOP));
         }
     }
 

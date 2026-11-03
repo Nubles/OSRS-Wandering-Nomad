@@ -766,6 +766,14 @@ class NomadPanel extends PluginPanel
             {
                 v.forkLine = "Forked: stand in the half you want";
             }
+            else if (sim.stormWarning() > 0)
+            {
+                v.forkLine = (sim.stormKind() == NomadSim.GALE ? "Gale" : "Squall") + " over Main in " + sim.stormWarning() + " min";
+            }
+            else if (sim.stormLeft() > 0)
+            {
+                v.forkLine = (sim.stormKind() == NomadSim.GALE ? "Gale: Main 3x fast" : "Squall: Main shrunk") + ", " + sim.stormLeft() + " min left";
+            }
             // Yours last, so it draws on top.
             v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));
             for (Waystone w : sim.waystones())

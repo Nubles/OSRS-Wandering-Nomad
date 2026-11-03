@@ -86,7 +86,8 @@ describe('run codes', () => {
     const c = CASES[1];
     const code = await encodeRun({ sim: c.final, surface: { x: 3200, y: 3200 } });
     expect(code.startsWith('N1.')).toBe(true);
-    expect(code.length).toBeLessThan(2500);
+    // Storms, Sailing docks and their fields grew the saved run a little; links stay far under URL limits.
+    expect(code.length).toBeLessThan(2600);
     expect((await decodeRun(code)).sim).toEqual(c.final);
   });
 

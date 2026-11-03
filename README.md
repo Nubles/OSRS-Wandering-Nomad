@@ -32,6 +32,10 @@ What works:
 - **Boons** are spent from the sidebar: **Expand** (+12 tiles for 2 hours), **Tailwind** (twice the drift for an hour), **Anchor** (holds still for an hour) and the rare **Rudder** (turn 45 degrees left or right, once) and **Bridge** (for 10 minutes, cross to any circle within 60 tiles, and the walk doesn't count as outside).
 - A waystone's dice come from the seed and how many have been placed, never from the drift's own, so earning a boon never changes where the circles go. The website's engine does the same, and the shared vectors cover summoning, claiming and every boon.
 
+### Storms
+
+- Every 6 to 12 played hours a storm brews over the Main circle, with a 10-minute warning: a **Gale** drives Main three times as fast for half an hour, or a **Squall** squeezes it to three quarters of its size for half an hour before it eases back. Storms wait out forks and voyages, and forks wait out storms. Their dice come from the seed and how many storms came before, in both engines, and the shared vectors cover them.
+
 ### Journey: trials, renown and ranks
 
 - **Trials** are the run's goals: 60+ of them in eight chapters (First steps, The long road, Forks and fate, Kingdoms, Atlas, Seafarer, Deeds, Treasure and glory), each Bronze, Silver, Gold or Legend. The full list is `journey/Trials.java`; the sidebar's **All trials** button shows every one with its progress.

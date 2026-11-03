@@ -22,6 +22,7 @@ class NomadStatusOverlay extends OverlayPanel
     private static final Color INSIDE = new Color(0x8FE0A2);
     private static final Color OUTSIDE = new Color(0xFF8A80);
     private static final Color STRANDED = new Color(0xFFCF8F);
+    static final Color STORM = new Color(0x8FB8FF);
     static final Color FORK = new Color(0xFFC46B);
     private static final Color CALM = new Color(0x6FD08C);
     private static final Color AMBER = new Color(0xFFB040);
@@ -84,6 +85,13 @@ class NomadStatusOverlay extends OverlayPanel
         else if (sim.twin() != null)
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Forked").right("pick a half").rightColor(FORK).build());
+        }
+        if (sim.stormWarning() > 0 || sim.stormLeft() > 0)
+        {
+            String kind = sim.stormKind() == NomadSim.GALE ? "Gale" : "Squall";
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left(sim.stormWarning() > 0 ? kind + " in " + sim.stormWarning() + " min" : kind)
+                .right(sim.stormWarning() > 0 ? "over Main" : sim.stormLeft() + " min left").rightColor(STORM).build());
         }
         Radar radar = plugin.radar();
         boolean hud = plugin.config().hudExtras();

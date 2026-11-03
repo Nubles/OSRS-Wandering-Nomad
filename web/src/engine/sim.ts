@@ -100,6 +100,16 @@ const FORK_TRIES = 12;
 const FORK_REACH = 60;
 /** A fork that can't start now (at sea, anchored or too small) tries again this much later. */
 const FORK_RETRY = 30;
+/** Storms over Main, as in NomadSim.java. */
+export const STORM_EVERY_MIN = 360;
+export const STORM_EVERY_MAX = 720;
+export const STORM_WARN = 10;
+export const STORM_MINUTES = 30;
+const STORM_RETRY = 15;
+export const GALE = 1;
+export const SQUALL = 2;
+const GALE_SPEEDUP = 3;
+const SQUALL_SHRINK = 0.75;
 const COMPASS = ['east', 'north-east', 'north', 'north-west', 'west', 'south-west', 'south', 'south-east'];
 
 export interface Temperament {
@@ -220,6 +230,13 @@ export interface SimState {
   /** While forked: the other half, and the minutes since the split. */
   twin?: CircleState;
   forkAge: number;
+  /** Storms so far, the next one's minute, its warning and time left, its kind, and Main's size before a Squall. */
+  storms: number;
+  nextStorm: number;
+  stormWarn: number;
+  stormLeft: number;
+  stormKind: number;
+  squallFrom: number;
 }
 
 export const contains = (c: CircleState, x: number, y: number) => dist(x - c.x, y - c.y) <= c.radius;
@@ -256,6 +273,13 @@ export class NomadSim {
     state.forkWarn ??= 0;
     state.forkAxis ??= 0;
     state.forkAge ??= 0;
+    // And runs saved before storms.
+    state.storms ??= 0;
+    state.nextStorm ??= 0;
+    state.stormWarn ??= 0;
+    state.stormLeft ??= 0;
+    state.stormKind ??= 0;
+    state.squallFrom ??= 0;
   }
 
   static start(geo: Geography, seed: number): NomadSim {
@@ -275,6 +299,7 @@ export class NomadSim {
       seed: seed | 0, rngState: rng.state, minutes: 0, bound: MAIN, outside: false, sailingUnlocked: false, sailingLevel: 0, questsMissing: [], circles,
       waystones: [], boons: [], pending: [], summons: 0, bridgeLeft: 0,
       forks: 0, nextFork: 0, lastBig: 0, forkWarn: 0, forkAxis: 0, forkAge: 0,
+      storms: 0, nextStorm: 0, stormWarn: 0, stormLeft: 0, stormKind: 0, squallFrom: 0,
     });
   }
 
@@ -464,13 +489,15 @@ export class NomadSim {
       const yours = j === s.bound;
       const pulled = yours && stranded && !!c.regionId;
       const lean = yours && !out && player != null && dist(player.x - c.x, player.y - c.y) >= c.radius - LEAN_BAND ? player : null;
-      const speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1);
+      const speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
+        * (j === MAIN && s.stormLeft > 0 && s.stormKind === GALE ? GALE_SPEEDUP : 1);
       if (j === MAIN && s.twin) part(c, s.twin, this.geo);
       else this.move(c, rng, speedup, yours, pulled ? main : null, pulled ? STRANDED_PULL : 0, lean, log);
     });
     s.minutes++;
     this.tickBoons(log);
     this.fork(player, log);
+    this.storm(log);
 
     if (s.minutes % 5 === 0) {
       const yours = this.bound;
@@ -772,6 +799,54 @@ export class NomadSim {
    * Forks: schedules the next one, brings it forward after 4 quiet hours, warns 10 minutes
    * ahead, splits Main in two, and once the halves have parted keeps the one you stand in.
    */
+  /** Brews, starts and ends storms over Main, as in NomadSim.java. */
+  private storm(log: string[]) {
+    const s = this.state;
+    const m = this.main;
+    if (s.stormLeft > 0) {
+      if (--s.stormLeft > 0) return;
+      if (s.stormKind === SQUALL) m.radiusTarget = clamp(s.squallFrom, m.radiusMin, m.radiusMax);
+      log.push(s.stormKind === GALE ? 'The gale has blown itself out.' : 'The squall has passed. The Main circle eases back to its size.');
+      s.stormKind = 0;
+      s.storms++;
+      s.nextStorm = 0;
+      return;
+    }
+    if (s.stormWarn > 0) {
+      if (--s.stormWarn > 0) return;
+      if (s.twin || m.voyage) {
+        log.push('The storm blew past the Main circle.');
+        s.stormKind = 0;
+        s.nextStorm = s.minutes + STORM_RETRY;
+        return;
+      }
+      s.stormLeft = STORM_MINUTES;
+      s.lastBig = s.minutes;
+      if (s.stormKind === SQUALL) {
+        s.squallFrom = m.radius;
+        m.radius = Math.max(m.radiusMin, m.radius * SQUALL_SHRINK);
+        m.radiusTarget = m.radius;
+        log.push(`Squall! The Main circle shrinks to ${javaRound(m.radius)} tiles for ${STORM_MINUTES} minutes.`);
+      } else {
+        log.push(`Gale! The Main circle drifts three times as fast for ${STORM_MINUTES} minutes.`);
+      }
+      return;
+    }
+    if (s.nextStorm <= 0) {
+      const dice = new Rng(s.seed ^ Math.imul(s.storms + 1, 0x165667b1));
+      s.nextStorm = s.minutes + STORM_EVERY_MIN + Math.trunc(dice.next() * (STORM_EVERY_MAX - STORM_EVERY_MIN));
+    }
+    if (s.minutes < s.nextStorm) return;
+    if (s.twin || m.voyage || s.forkWarn > 0) {
+      s.nextStorm = s.minutes + STORM_RETRY;
+      return;
+    }
+    const dice = new Rng(s.seed ^ Math.imul(s.storms + 1, 0x27d4eb2d));
+    s.stormKind = dice.next() < 0.5 ? GALE : SQUALL;
+    s.stormWarn = STORM_WARN;
+    log.push(`A storm is brewing over the Main circle: a ${s.stormKind === GALE ? 'gale' : 'squall'} in ${STORM_WARN} minutes.`);
+  }
+
   private fork(player: Tile | null, log: string[]) {
     const s = this.state;
     const m = this.main;
@@ -807,7 +882,7 @@ export class NomadSim {
     // Pacing: after 4 quiet hours the next fork comes now.
     if (s.minutes - s.lastBig >= QUIET) s.nextFork = Math.min(s.nextFork, s.minutes);
     if (s.minutes < s.nextFork) return;
-    if (m.voyage || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS) {
+    if (m.voyage || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS || s.stormWarn > 0 || s.stormLeft > 0) {
       s.nextFork = s.minutes + FORK_RETRY;
       return;
     }
