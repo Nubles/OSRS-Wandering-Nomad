@@ -32,6 +32,13 @@ What works:
 - **Boons** are spent from the sidebar: **Expand** (+12 tiles for 2 hours), **Tailwind** (twice the drift for an hour), **Anchor** (holds still for an hour) and the rare **Rudder** (turn 45 degrees left or right, once) and **Bridge** (for 10 minutes, cross to any circle within 60 tiles, and the walk doesn't count as outside).
 - A waystone's dice come from the seed and how many have been placed, never from the drift's own, so earning a boon never changes where the circles go. The website's engine does the same, and the shared vectors cover summoning, claiming and every boon.
 
+### Journey: trials, renown and ranks
+
+- **Trials** are the run's goals: 60+ of them in eight chapters (First steps, The long road, Forks and fate, Kingdoms, Atlas, Seafarer, Deeds, Treasure and glory), each Bronze, Silver, Gold or Legend. The full list is `journey/Trials.java`; the sidebar's **All trials** button shows every one with its progress.
+- **Everything is read, never ticked:** the circles give tiles walked, waystones claimed, boons spent, crossings, forks parted while you're inside, region circles you've been in, landmarks you've stood at (within 4 tiles), following Main across the sea (back inside within an hour of it docking), played time and your longest stretch without stepping outside. The game gives total level, quest points, 99s and diary tiers, plus its own chat lines for boss kill counts, Treasure Trails, combat tasks, pets and new collection log items (the same wordings RuneLite's Screenshot and Loot Tracker plugins match).
+- **Only the run counts:** account trials (levels, quests, diaries, 99s) pay out only if the run is what takes you past the target; ones you'd passed before it show as "Before this run". The max total level follows the game's skill count (2,376 with Sailing).
+- **Renown and ranks:** each trial pays renown once per run (Bronze 10, Silver 25, Gold 50, Legend 100). Renown is kept across runs and raises your Nomad rank, from Wanderer to Nomad Sovereign. Every rank unlocks an edge colour for the Main circle, picked in the sidebar. Ranks only change looks, never the rules.
+
 ### The living edge
 
 - **The Wall:** your circle's edge rises out of the ground as a glowing curtain, with bands of light running along it and sparks drifting up. It stands taller while the circle pulses. Where a circle you can cross into reaches inside yours, its wall stands brighter: that stretch is the gateway. (Edge style: Wall, Tiles or Both.)

@@ -317,6 +317,21 @@ final class Moments
             GOLD, Icon.STAR, rare, SoundEffectID.GE_COIN_TINKLE);
     }
 
+    /** A trial done: its name, what it was, and the renown it paid. Gold and Legend trials are big moments. */
+    static Banner trial(com.wanderingnomad.journey.Trial t)
+    {
+        boolean big = t.tier == com.wanderingnomad.journey.Tier.GOLD || t.tier == com.wanderingnomad.journey.Tier.LEGEND;
+        return new Banner("Trial complete: " + t.name, t.detail + " " + t.tier.label + ", +" + t.tier.renown + " renown.",
+            new Color(t.tier.colour), Icon.STAR, big, big ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.GE_COIN_TINKLE);
+    }
+
+    /** A new Nomad rank, and the edge colour it unlocked. */
+    static Banner rankUp(com.wanderingnomad.journey.Rank r)
+    {
+        return new Banner("Rank up: " + r.title, "Unlocked the " + r.palette + " edge colour. Pick it in the sidebar's Journey section.",
+            new Color(r.colour), Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
     /** One of every kind of banner, for trying them out with ::nomadmoments. */
     static List<Banner> samples(NomadSim sim)
     {
@@ -333,6 +348,7 @@ final class Moments
         out.add(new Banner("Crossing closed", "Kandarin has drifted apart from yours.", other, Icon.CROSSING, false,
             SoundEffectID.CLOSE_DOOR));
         out.add(milestone("A milestone", false));
+        out.add(rankUp(com.wanderingnomad.journey.Rank.PATHFINDER));
         out.add(new Banner("Waystone risen", "Tailwind at Draynor Village, in your circle.", GOLD, Icon.WAYSTONE, false,
             SoundEffectID.PRAYER_DEPLETE_TWINKLE));
         out.add(new Banner("Rare waystone risen", "Bridge at the Grand Exchange, in your circle.", GOLD, Icon.WAYSTONE, true,

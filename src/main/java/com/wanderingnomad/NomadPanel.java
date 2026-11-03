@@ -21,12 +21,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
+import javax.swing.JEditorPane;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -63,6 +66,12 @@ class NomadPanel extends PluginPanel
     private final SidebarParts.Waystones waystones = new SidebarParts.Waystones();
     private final JPanel crossings = column();
     private final SidebarParts.Stats stats = new SidebarParts.Stats();
+    private final SidebarParts.Journey journey = new SidebarParts.Journey();
+    private final JComboBox<String> palette = new JComboBox<>();
+    /** The palettes the box lists, so it's only refilled when a rank unlocks one. */
+    private List<String> shownPalettes = Collections.emptyList();
+    private boolean fillingPalettes;
+    private volatile JourneyView lastJourney = JourneyView.EMPTY;
     private final SidebarParts.Timeline timeline = new SidebarParts.Timeline();
     private final JTextArea logArea = new JTextArea();
     private final List<SidebarParts.Part> drawn = new ArrayList<>();
@@ -70,7 +79,7 @@ class NomadPanel extends PluginPanel
     private String shownCrossings;
 
     NomadPanel(IntConsumer onCross, BiConsumer<Integer, Integer> onBoon, Runnable onNewRun, Runnable onViewOnWebsite,
-        Runnable onCopyRunCode, Runnable onCopyLiveLink)
+        Runnable onCopyRunCode, Runnable onCopyLiveLink, Consumer<String> onPalette)
     {
         this.onBoon = onBoon;
         this.onCross = onCross;
@@ -98,6 +107,24 @@ class NomadPanel extends PluginPanel
         add(heading("Run"));
         add(gap(4));
         add(stats);
+        add(gap(10));
+        add(heading("Journey"));
+        add(gap(4));
+        add(journey);
+        add(gap(4));
+        JPanel journeyRow = new JPanel(new GridLayout(1, 2, 4, 0));
+        journeyRow.setOpaque(false);
+        journeyRow.add(small("All trials", "Every trial of the run, chapter by chapter", this::showTrials));
+        palette.setToolTipText("The Main circle's edge colour. Ranks unlock more.");
+        palette.setFont(FontManager.getRunescapeSmallFont());
+        palette.addActionListener(e ->
+        {
+            Object picked = palette.getSelectedItem();
+            if (!fillingPalettes && picked != null) onPalette.accept(picked.toString());
+        });
+        journeyRow.add(palette);
+        fix(journeyRow, 24);
+        add(journeyRow);
         add(gap(10));
         add(heading("Moments"));
         add(gap(4));
@@ -146,6 +173,7 @@ class NomadPanel extends PluginPanel
         drawn.add(active);
         drawn.add(waystones);
         drawn.add(stats);
+        drawn.add(journey);
         // BoxLayout lines children up by their alignment, which differs between labels (left) and
         // panels (centre); with both, rows slide sideways whenever something changes width.
         for (Component child : getComponents())
@@ -216,10 +244,68 @@ class NomadPanel extends PluginPanel
             crossings.revalidate();
         }
 
+        lastJourney = v.journey;
+        if (!v.journey.palettes.equals(shownPalettes) || !v.journey.palette.equals(palette.getSelectedItem()))
+        {
+            fillingPalettes = true;
+            if (!v.journey.palettes.equals(shownPalettes))
+            {
+                shownPalettes = v.journey.palettes;
+                palette.removeAllItems();
+                for (String name : shownPalettes) palette.addItem(name);
+            }
+            palette.setSelectedItem(v.journey.palette);
+            fillingPalettes = false;
+        }
+
         timeline.show(v.moments);
         String log = String.join("\n", v.log);
         if (!log.equals(logArea.getText())) logArea.setText(log);
         revalidate();
+    }
+
+    /** Every trial of the run, by chapter, in a window of its own. */
+    private void showTrials()
+    {
+        JourneyView j = lastJourney;
+        StringBuilder html = new StringBuilder("<html><body style='font-family:sans-serif;font-size:10px;color:#dddddd;background:#1e1e1e'>");
+        if (!j.live) html.append("<p>Log in to see your trials.</p>");
+        else
+        {
+            html.append(String.format("<p><b style='color:%s'>%s</b> &middot; %,d renown &middot; %d of %d trials this run &middot; run %d</p>",
+                hex(j.rankColour), j.rank, j.renown, j.done, j.total, Math.max(1, j.runs)));
+        }
+        String chapter = null;
+        for (JourneyView.Row r : j.all)
+        {
+            if (!r.chapter.equals(chapter))
+            {
+                if (chapter != null) html.append("</table>");
+                chapter = r.chapter;
+                html.append("<h3 style='margin:8px 0 2px 0;color:#ffffff'>").append(chapter).append("</h3><table width='100%' cellpadding='2'>");
+            }
+            String state = r.done ? "<b style='color:#8fe0a2'>Done</b>" : r.carried ? "<span style='color:#9a9a9a'>Before this run</span>"
+                : (int) Math.round(r.progress * 100) + "%";
+            html.append("<tr><td><b style='color:").append(r.done ? "#ffffff" : "#cccccc").append("'>").append(r.name).append("</b>")
+                .append(r.times > 0 ? " <span style='color:#9a9a9a'>(done in " + r.times + (r.times == 1 ? " run" : " runs") + ")</span>" : "")
+                .append("<br><span style='color:#9a9a9a'>").append(r.detail).append(" ").append(r.done || r.carried ? "" : r.count).append("</span></td>")
+                .append("<td align='right' valign='top' style='color:").append(hex(r.colour)).append("'>").append(r.tier).append(" +").append(r.renown)
+                .append("<br>").append(state).append("</td></tr>");
+        }
+        if (chapter != null) html.append("</table>");
+        html.append("</body></html>");
+        JEditorPane pane = new JEditorPane("text/html", html.toString());
+        pane.setEditable(false);
+        pane.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        pane.setCaretPosition(0);
+        JScrollPane scroll = new JScrollPane(pane);
+        scroll.setPreferredSize(new Dimension(420, 520));
+        JOptionPane.showMessageDialog(this, scroll, "Nomad UIM: trials", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    private static String hex(Color c)
+    {
+        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
     }
 
     /** A boon card, with its Use button (or a Rudder's two) beside it. */
@@ -583,6 +669,7 @@ class NomadPanel extends PluginPanel
         String guardShort = "Off";
         boolean guardClean = true;
         String diaryShort = "-";
+        JourneyView journey = JourneyView.EMPTY;
 
         List<Moment> moments = Collections.emptyList();
         List<String> log = Collections.emptyList();

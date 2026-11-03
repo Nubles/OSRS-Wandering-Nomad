@@ -3,6 +3,13 @@ package com.wanderingnomad;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
+import com.wanderingnomad.journey.Journey;
+import com.wanderingnomad.journey.JourneyChat;
+import com.wanderingnomad.journey.JourneyWatch;
+import com.wanderingnomad.journey.Rank;
+import com.wanderingnomad.journey.Renown;
+import com.wanderingnomad.journey.Trial;
+import com.wanderingnomad.journey.Trials;
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Forecast;
 import com.wanderingnomad.sim.Geography;
@@ -94,6 +101,9 @@ public class NomadPlugin extends Plugin
     static final String LIVE_TOKEN_KEY = "liveToken";
     static final String GUARD_KEY = "guard";
     static final String MILESTONES_KEY = "milestones";
+    /** The run's trials, and the account's renown, rank and edge colour, which outlive every run. */
+    static final String JOURNEY_KEY = "journey";
+    static final String RENOWN_KEY = "renown";
     /** Ticks after a run loads before milestones are read, so the account's totals have arrived. */
     private static final int MILESTONE_DELAY = 10;
     /** "Your Zulrah kill count is: 1." and the like; the first kill of any boss summons a rare waystone. */
@@ -171,6 +181,13 @@ public class NomadPlugin extends Plugin
     private RuleGuard guard = new RuleGuard();
     private Milestones milestones = new Milestones();
     private int milestoneWait;
+    private Journey journey = new Journey();
+    private Renown renown = new Renown();
+    private final JourneyWatch watch = new JourneyWatch();
+    /** Every trial, built once the game's skill count is known. */
+    private List<Trial> trials;
+    /** The Main circle's edge colour, from the account's rank; any thread reads it. */
+    static volatile int mainColour = Rank.WANDERER.colour;
     private final Map<Skill, Integer> lastXp = new EnumMap<>(Skill.class);
     /** The next 15 minutes, worked out each minute and whenever you step onto a new tile. */
     private Radar radar;
@@ -192,8 +209,9 @@ public class NomadPlugin extends Plugin
     protected void startUp()
     {
         live = new LiveShare(okHttpClient);
+        trials = Trials.all(Skill.values().length);
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
-            this::copyRunCode, this::copyLiveLink);
+            this::copyRunCode, this::copyLiveLink, this::pickPalette);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
@@ -301,6 +319,7 @@ public class NomadPlugin extends Plugin
         surface = locate();
         if (before != null && surface != null) stats.walked(surface.x - before.x, surface.y - before.y);
         readMilestones();
+        watchJourney();
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
         // Moments are read after the minute's step below too; here they catch stepping over the edge.
         announce();
@@ -321,6 +340,8 @@ public class NomadPlugin extends Plugin
         int boundBefore = sim.boundIndex();
         List<String> lines = sim.step(surface);
         report(lines);
+        journey.minute(!outsideNow());
+        journey.set(Trials.PLAYED, sim.minutes());
         if (config.ruleGuard())
         {
             List<String> notes = guard.endMinute(sim.minutes());
@@ -353,8 +374,11 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onChatMessage(ChatMessage ev)
     {
-        if (sim == null || ev.getType() != ChatMessageType.GAMEMESSAGE) return;
-        Matcher m = KILL_COUNT.matcher(Text.removeTags(ev.getMessage()));
+        if (sim == null || (ev.getType() != ChatMessageType.GAMEMESSAGE && ev.getType() != ChatMessageType.SPAM)) return;
+        String line = Text.removeTags(ev.getMessage());
+        if (JourneyChat.read(line, journey)) checkTrials();
+        if (ev.getType() != ChatMessageType.GAMEMESSAGE) return;
+        Matcher m = KILL_COUNT.matcher(line);
         if (!m.find() || !"1".equals(m.group(3).replace(",", ""))) return;
         summon(NomadSim.RARE, "Your first " + (m.group(1) != null ? m.group(1) : m.group(2)) + " kill");
     }
@@ -368,6 +392,8 @@ public class NomadPlugin extends Plugin
             String line = sim.useBoon(index, side);
             if (line == null) return;
             report(java.util.Collections.singletonList(line));
+            journey.add(Trials.BOONS, 1);
+            checkTrials();
             save();
             live.markDirty();
             look();
@@ -649,6 +675,8 @@ public class NomadPlugin extends Plugin
         bannerOverlay.clear();
         timeline.clear();
         stats = new RunStats();
+        journey = new Journey();
+        watch.reset();
     }
 
     Tile surface()
@@ -719,6 +747,7 @@ public class NomadPlugin extends Plugin
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
+            configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY);
             List<String> lines = new ArrayList<>();
             lines.add("A new run started with seed " + seed + ". You're in the Main circle, centred on Lumbridge.");
             report(lines);
@@ -732,6 +761,13 @@ public class NomadPlugin extends Plugin
         loadGuard();
         loadMilestones();
         loadStats();
+        loadJourney();
+        loadRenown();
+        if (run == null || run.sim == null)
+        {
+            renown.newRun();
+            saveRenown();
+        }
         ticks = 0;
         diariesRead = false;
         forecastSoon();
@@ -767,12 +803,140 @@ public class NomadPlugin extends Plugin
             milestoneWait--;
             return;
         }
+        readAccountTrials();
         boolean first = milestones.levelMark < 0;
         int earned = milestones.earned(client.getTotalLevel(), client.getVarpValue(VarPlayerID.QP));
         if (first && milestones.levelMark >= 0) saveMilestones();
         if (earned <= 0) return;
         for (int i = 0; i < earned; i++) summon(NomadSim.COMMON, "A milestone");
         saveMilestones();
+    }
+
+    /**
+     * The account's side of the trials: total level, quest points, 99s and diary tiers. Read only
+     * once the totals have arrived after a load, so the run's start values are the real ones.
+     */
+    private void readAccountTrials()
+    {
+        int total = client.getTotalLevel();
+        if (total <= 0) return;
+        journey.set(Trials.TOTAL_LEVEL, total);
+        journey.set(Trials.QUEST_POINTS, Math.max(0, client.getVarpValue(VarPlayerID.QP)));
+        int maxed = 0;
+        for (Skill skill : Skill.values())
+        {
+            if (client.getRealSkillLevel(skill) >= 99) maxed++;
+        }
+        journey.set(Trials.MAXED, maxed);
+        int all = 0;
+        for (Region region : Geography.REGIONS)
+        {
+            int done = 0;
+            for (String diary : region.diaries)
+            {
+                for (int varbit : DiaryVarbits.TIERS.get(diary))
+                {
+                    if (DiaryVarbits.done(varbit, client.getVarbitValue(varbit))) done++;
+                }
+            }
+            if (!region.diaries.isEmpty()) journey.set(Trials.diaryOf(region), done);
+            all += done;
+        }
+        journey.set(Trials.DIARY_TIERS, all);
+    }
+
+    /** The circles' side of the trials, every tick. */
+    private void watchJourney()
+    {
+        journey.set(Trials.WALKED, stats.tilesWalked);
+        journey.set(Trials.CLAIMED, stats.claimed);
+        journey.set(Trials.CROSSINGS, stats.crossings);
+        watch.tick(sim, surface, surface != null && !outsideNow(), journey);
+        checkTrials();
+    }
+
+    /** Pays out every trial now done: a banner, a chat line and its renown, and a rank up if it's earned. */
+    private void checkTrials()
+    {
+        if (sim == null || trials == null) return;
+        List<Trial> got = journey.check(trials);
+        if (got.isEmpty()) return;
+        for (Trial t : got)
+        {
+            Rank up = renown.award(t);
+            show(Moments.trial(t));
+            report(java.util.Collections.singletonList("Trial complete: " + t.name + " (" + t.tier.label + ", +" + t.tier.renown
+                + " renown). " + t.detail));
+            if (up != null)
+            {
+                show(Moments.rankUp(up));
+                report(java.util.Collections.singletonList("You're now a " + up.title + ". The " + up.palette
+                    + " edge colour is unlocked in the sidebar."));
+            }
+        }
+        applyPalette();
+        saveJourney();
+        saveRenown();
+        publish();
+    }
+
+    private void applyPalette()
+    {
+        mainColour = renown.palette().colour;
+    }
+
+    /** Picks an unlocked edge colour from the sidebar. */
+    private void pickPalette(String name)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (!renown.pick(name)) return;
+            applyPalette();
+            saveRenown();
+            publish();
+        });
+    }
+
+    private void loadJourney()
+    {
+        String saved = configManager.getRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY);
+        Journey loaded = null;
+        try
+        {
+            loaded = saved == null ? null : gson.fromJson(saved, Journey.class);
+        }
+        catch (JsonParseException e)
+        {
+            log.warn("Nomad UIM: couldn't read the run's trials, so they start again", e);
+        }
+        journey = loaded == null ? new Journey() : loaded.ready();
+        watch.reset();
+    }
+
+    private void loadRenown()
+    {
+        String saved = configManager.getRSProfileConfiguration(NomadConfig.GROUP, RENOWN_KEY);
+        Renown loaded = null;
+        try
+        {
+            loaded = saved == null ? null : gson.fromJson(saved, Renown.class);
+        }
+        catch (JsonParseException e)
+        {
+            log.warn("Nomad UIM: couldn't read the account's renown, so it was left alone and starts from zero here", e);
+        }
+        renown = loaded == null ? new Renown() : loaded.ready();
+        applyPalette();
+    }
+
+    private void saveJourney()
+    {
+        if (sim != null) configManager.setRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY, gson.toJson(journey));
+    }
+
+    private void saveRenown()
+    {
+        configManager.setRSProfileConfiguration(NomadConfig.GROUP, RENOWN_KEY, gson.toJson(renown));
     }
 
     private void summon(String tier, String why)
@@ -830,6 +994,7 @@ public class NomadPlugin extends Plugin
     {
         if (sim == null) return;
         saveStats();
+        saveJourney();
         configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(new SavedRun(sim, surface)));
     }
 
@@ -999,6 +1164,7 @@ public class NomadPlugin extends Plugin
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
+        view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials);
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 
@@ -1017,7 +1183,7 @@ public class NomadPlugin extends Plugin
 
     static Color colour(Circle c, int alpha)
     {
-        int rgb = c.colour();
+        int rgb = c.isMain() ? mainColour : c.colour();
         return new Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, alpha);
     }
 }

@@ -657,4 +657,66 @@ final class SidebarParts
             g.dispose();
         }
     }
+
+    /**
+     * The account's Nomad rank with its bar to the next one, then the run's three trials nearest
+     * done, each with its tier and a progress bar.
+     */
+    static final class Journey extends Part
+    {
+        static final int RANK_H = 50;
+        static final int ROW_H = 36;
+
+        Journey()
+        {
+            super(RANK_H + 6 + JourneyView.NEXT * (ROW_H + 4));
+        }
+
+        @Override
+        void paint(Graphics2D g, NomadPanel.View v)
+        {
+            JourneyView j = v.journey;
+            Font bold = FontManager.getRunescapeBoldFont();
+            Font small = FontManager.getRunescapeSmallFont();
+            FontMetrics sm = g.getFontMetrics(small);
+            card(g, 0, 0, SIDEBAR_WIDTH, RANK_H, j.rankColour);
+            if (!j.live)
+            {
+                text(g, small, "Log in to see your trials.", 12, 20, MUTED);
+                return;
+            }
+            text(g, bold, fit(g.getFontMetrics(bold), j.rank, SIDEBAR_WIDTH - 110), 12, 18, j.rankColour);
+            String renown = String.format("%,d renown", j.renown);
+            text(g, small, renown, SIDEBAR_WIDTH - 10 - sm.stringWidth(renown), 17, Color.WHITE);
+            bar(g, 12, 25, SIDEBAR_WIDTH - 24, 5, j.toNext, j.rankColour);
+            String under = (j.nextRank == null ? "Top rank" : String.format("%s at %,d", j.nextRank, j.nextRenown))
+                + " · " + j.done + "/" + j.total + " trials";
+            text(g, small, fit(sm, under, SIDEBAR_WIDTH - 24), 12, 44, MUTED);
+
+            int y = RANK_H + 6;
+            for (JourneyView.Row r : j.next)
+            {
+                card(g, 0, y, SIDEBAR_WIDTH, ROW_H, r.colour);
+                String tier = r.tier + " +" + r.renown;
+                int tierW = sm.stringWidth(tier);
+                text(g, small, fit(sm, r.name, SIDEBAR_WIDTH - tierW - 28), 10, y + 13, Color.WHITE);
+                text(g, small, tier, SIDEBAR_WIDTH - 8 - tierW, y + 13, r.colour);
+                bar(g, 10, y + 18, SIDEBAR_WIDTH - 20, 4, r.progress, r.colour);
+                text(g, small, fit(sm, r.count + " · " + r.detail, SIDEBAR_WIDTH - 20), 10, y + 32, MUTED);
+                y += ROW_H + 4;
+            }
+            if (j.next.isEmpty()) text(g, small, "Every trial is done. Legendary.", 10, y + 14, Moments.GOLD);
+        }
+    }
+
+    /** A thin rounded progress bar, {@code share} from 0 to 1. */
+    static void bar(Graphics2D g, int x, int y, int w, int h, double share, Color colour)
+    {
+        g.setColor(new Color(255, 255, 255, 28));
+        g.fill(new RoundRectangle2D.Float(x, y, w, h, h, h));
+        int filled = (int) Math.round(w * Math.max(0, Math.min(1, share)));
+        if (filled <= 0) return;
+        g.setColor(colour);
+        g.fill(new RoundRectangle2D.Float(x, y, Math.max(h, filled), h, h, h));
+    }
 }
