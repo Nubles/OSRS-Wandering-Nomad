@@ -6,6 +6,7 @@ import com.google.inject.Provides;
 import com.wanderingnomad.journey.Journey;
 import com.wanderingnomad.journey.JourneyChat;
 import com.wanderingnomad.journey.JourneyWatch;
+import com.wanderingnomad.journey.Ledger;
 import com.wanderingnomad.journey.Omen;
 import com.wanderingnomad.journey.Omens;
 import com.wanderingnomad.journey.Rank;
@@ -903,6 +904,7 @@ public class NomadPlugin extends Plugin
             case MET:
             {
                 Rank up = renown.add(Omens.RENOWN);
+                journey.earn(Omens.RENOWN);
                 show(Moments.omenMet(before));
                 report(java.util.Collections.singletonList("Omen met: " + before.title() + ". +" + Omens.RENOWN + " renown."));
                 if (up != null) show(Moments.rankUp(up));
@@ -931,10 +933,12 @@ public class NomadPlugin extends Plugin
         for (Trial t : got)
         {
             Rank up = renown.award(t);
+            journey.earn(t.tier.renown);
             show(Moments.trial(t));
             if (t.id.equals(journey.oath()))
             {
                 Rank oathUp = renown.keepOath();
+                journey.earn(Renown.OATH_RENOWN);
                 up = oathUp != null ? oathUp : up;
                 show(Moments.oathKept(t));
                 report(java.util.Collections.singletonList("Oath kept: " + t.name + "! +" + Renown.OATH_RENOWN
@@ -1269,6 +1273,7 @@ public class NomadPlugin extends Plugin
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
         view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials, sim.minutes());
+        if (sim != null && journey != null && renown != null && trials != null) view.journey.ledger = Ledger.text(sim, journey, renown, trials);
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 

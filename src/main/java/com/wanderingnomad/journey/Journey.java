@@ -38,6 +38,8 @@ public final class Journey
     Omen omen;
     int nextOmen;
     int omensDealt;
+    /** Renown this run has earned: trials, omens and a kept oath. */
+    int earned;
 
     /** Gson leaves fields null when an older save lacks them. */
     public Journey ready()
@@ -48,6 +50,22 @@ public final class Journey
         if (done == null) done = new LinkedHashSet<>();
         if (carried == null) carried = new HashSet<>();
         return this;
+    }
+
+    public void earn(int renown)
+    {
+        earned += Math.max(0, renown);
+    }
+
+    public int earned()
+    {
+        return earned;
+    }
+
+    /** Omens that have ended, met or missed. */
+    public int omensDealt()
+    {
+        return omensDealt;
     }
 
     public int value(String metric)

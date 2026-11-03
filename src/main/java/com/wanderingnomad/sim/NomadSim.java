@@ -1289,6 +1289,12 @@ public final class NomadSim
         log.add("A storm is brewing over the Main circle: a " + (stormKind == GALE ? "gale" : "squall") + " in " + STORM_WARN + " minutes.");
     }
 
+    /** Storms that have blown over Main and passed. */
+    public int storms()
+    {
+        return storms;
+    }
+
     /** The storm brewing or blowing: {@link #GALE}, {@link #SQUALL} or 0. */
     public int stormKind()
     {

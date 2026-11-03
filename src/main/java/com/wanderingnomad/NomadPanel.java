@@ -118,6 +118,10 @@ class NomadPanel extends PluginPanel
         JPanel journeyRow = new JPanel(new GridLayout(1, 2, 4, 0));
         journeyRow.setOpaque(false);
         journeyRow.add(small("All trials", "Every trial of the run, chapter by chapter", this::showTrials));
+        journeyRow.add(small("Run ledger", "The run's story so far, to copy into Discord or a video", this::showLedger));
+        fix(journeyRow, 24);
+        add(journeyRow);
+        add(gap(4));
         palette.setToolTipText("The Main circle's edge colour. Ranks unlock more.");
         palette.setFont(FontManager.getRunescapeSmallFont());
         palette.addActionListener(e ->
@@ -125,9 +129,8 @@ class NomadPanel extends PluginPanel
             Object picked = palette.getSelectedItem();
             if (!fillingPalettes && picked != null) onPalette.accept(picked.toString());
         });
-        journeyRow.add(palette);
-        fix(journeyRow, 24);
-        add(journeyRow);
+        fix(palette, 24);
+        add(palette);
         add(gap(4));
         oath.setToolTipText("Swear one long goal as this run's oath. Keep it for 300 renown and the Oathbound edge colour.");
         oath.setFont(FontManager.getRunescapeSmallFont());
@@ -336,6 +339,30 @@ class NomadPanel extends PluginPanel
         JScrollPane scroll = new JScrollPane(pane);
         scroll.setPreferredSize(new Dimension(420, 520));
         JOptionPane.showMessageDialog(this, scroll, "Nomad UIM: trials", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    /** The run ledger in a window of its own, with a button to copy it. */
+    private void showLedger()
+    {
+        String text = lastJourney.ledger;
+        if (text == null) text = "Log in to see the run ledger.";
+        javax.swing.JTextArea area = new javax.swing.JTextArea(text);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setFont(FontManager.getRunescapeSmallFont());
+        area.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        area.setForeground(Color.WHITE);
+        area.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        JScrollPane scroll = new JScrollPane(area);
+        scroll.setPreferredSize(new Dimension(380, 220));
+        Object[] options = {"Copy", "Close"};
+        int picked = JOptionPane.showOptionDialog(this, scroll, "Nomad UIM: run ledger", JOptionPane.DEFAULT_OPTION,
+            JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+        if (picked == 0 && lastJourney.ledger != null)
+        {
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(text), null);
+        }
     }
 
     private static String hex(Color c)

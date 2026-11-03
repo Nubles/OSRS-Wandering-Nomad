@@ -76,6 +76,8 @@ final class JourneyView
     /** Whether the oath can still be sworn or changed. */
     boolean oathOpen;
     List<String> oaths = Collections.emptyList();
+    /** The run ledger's text, set by the plugin, which has the run; null before login. */
+    String ledger;
     List<Row> next = Collections.emptyList();
     List<Row> all = Collections.emptyList();
 
