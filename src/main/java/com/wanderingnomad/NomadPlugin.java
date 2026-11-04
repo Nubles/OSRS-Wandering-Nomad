@@ -174,6 +174,9 @@ public class NomadPlugin extends Plugin
     private NomadPanel panel;
     private LiveShare live;
     private volatile RivalWatch rivalWatch;
+    /** A race asked for from the sidebar, waiting for the new run to start. Client thread. */
+    private String raceName;
+    private int raceSeed;
     /** Rivals whose circle touched yours at the last look, by live code. */
     private final java.util.Set<String> rivalsTouching = new java.util.HashSet<>();
     private NavigationButton navButton;
@@ -780,7 +783,7 @@ public class NomadPlugin extends Plugin
         }
         if (run == null || run.sim == null)
         {
-            int seed = seed();
+            int seed = raceName != null ? raceSeed : seed();
             sim = NomadSim.start(seed);
             surface = null;
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
@@ -789,6 +792,7 @@ public class NomadPlugin extends Plugin
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY);
             List<String> lines = new ArrayList<>();
             lines.add("A new run started with seed " + seed + ". You're in the Main circle, centred on Lumbridge.");
+            if (raceName != null) lines.add("You're racing " + raceName + " on their seed: your circles start out the same, and part ways as you each play.");
             report(lines);
             save();
         }
@@ -1069,6 +1073,8 @@ public class NomadPlugin extends Plugin
             log.warn("Nomad UIM: couldn't read the run's trials, so they start again", e);
         }
         journey = loaded == null ? new Journey() : loaded.ready();
+        if (loaded == null && raceName != null) journey.race(raceName, raceSeed);
+        raceName = null;
         watch.reset();
     }
 
@@ -1193,11 +1199,21 @@ public class NomadPlugin extends Plugin
         });
     }
 
-    private void newRunFromPanel()
+    /** {@code race}: a rival's name to start on their seed, or null for the usual seed. */
+    private void newRunFromPanel(String race)
     {
         clientThread.invokeLater(() ->
         {
             if (client.getGameState() != GameState.LOGGED_IN) return;
+            raceName = null;
+            for (com.wanderingnomad.rival.Rival r : rivals())
+            {
+                if (r.name.equals(race) && r.latest() != null)
+                {
+                    raceName = r.name;
+                    raceSeed = r.latest().sim.seed();
+                }
+            }
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY);
             sim = null;
             runLog.clear();
@@ -1329,8 +1345,14 @@ public class NomadPlugin extends Plugin
         {
             List<String> lines = new ArrayList<>();
             long now = System.currentTimeMillis();
-            for (com.wanderingnomad.rival.Rival r : rivals()) lines.add(com.wanderingnomad.rival.Rivals.line(sim, r, now));
+            List<String> names = new ArrayList<>();
+            for (com.wanderingnomad.rival.Rival r : rivals())
+            {
+                lines.add(com.wanderingnomad.rival.Rivals.line(sim, r, now));
+                if (r.latest() != null) names.add(r.name);
+            }
             view.journey.rivals = lines;
+            view.journey.rivalNames = names;
         }
         SwingUtilities.invokeLater(() -> panel.display(view));
     }

@@ -83,7 +83,7 @@ class NomadPanel extends PluginPanel
     private String shownBoons;
     private String shownCrossings;
 
-    NomadPanel(IntConsumer onCross, BiConsumer<Integer, Integer> onBoon, Runnable onNewRun, Runnable onViewOnWebsite,
+    NomadPanel(IntConsumer onCross, BiConsumer<Integer, Integer> onBoon, Consumer<String> onNewRun, Runnable onViewOnWebsite,
         Runnable onCopyRunCode, Runnable onCopyLiveLink, Consumer<String> onPalette, Consumer<String> onOath)
     {
         this.onBoon = onBoon;
@@ -180,10 +180,16 @@ class NomadPanel extends PluginPanel
         JButton newRun = new JButton("Start a new run");
         newRun.addActionListener(e ->
         {
-            int ok = JOptionPane.showConfirmDialog(this,
-                "This deletes the current run on this account and starts a new one. Continue?",
-                "Nomad UIM", JOptionPane.OK_CANCEL_OPTION);
-            if (ok == JOptionPane.OK_OPTION) onNewRun.run();
+            List<String> names = lastJourney.rivalNames;
+            JComboBox<String> race = new JComboBox<>();
+            race.addItem("No race");
+            for (String n : names) race.addItem("Race " + n + " on their seed");
+            Object message = names.isEmpty() ? "This deletes the current run on this account and starts a new one. Continue?"
+                : new Object[]{"This deletes the current run on this account and starts a new one. Continue?", race};
+            int ok = JOptionPane.showConfirmDialog(this, message, "Nomad UIM", JOptionPane.OK_CANCEL_OPTION);
+            if (ok != JOptionPane.OK_OPTION) return;
+            int picked = race.getSelectedIndex();
+            onNewRun.accept(picked > 0 ? names.get(picked - 1) : null);
         });
         buttons.add(newRun);
         fix(buttons, 4 * 26 + 12);

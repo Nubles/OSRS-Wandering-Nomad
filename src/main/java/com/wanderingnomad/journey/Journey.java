@@ -38,6 +38,9 @@ public final class Journey
     Omen omen;
     int nextOmen;
     int omensDealt;
+    /** The rival this run races, by name and seed, if it was started on theirs; null if not. */
+    String race;
+    int raceSeed;
     /** Renown this run has earned: trials, omens and a kept oath. */
     int earned;
 
@@ -50,6 +53,17 @@ public final class Journey
         if (done == null) done = new LinkedHashSet<>();
         if (carried == null) carried = new HashSet<>();
         return this;
+    }
+
+    public void race(String name, int seed)
+    {
+        race = name;
+        raceSeed = seed;
+    }
+
+    public String race()
+    {
+        return race;
     }
 
     public void earn(int renown)

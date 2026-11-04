@@ -48,6 +48,7 @@ What works:
 - **Run ledger:** the sidebar's Run ledger button shows the run's story so far (time played, rank and renown earned this run, tiles walked, waystones, forks, storms, voyages, harbours, regions, landmarks, omens, the oath and the latest trials) with a Copy button for Discord or a video description.
 - **Footprint:** every 64-tile map region (the game's own regions; Lumbridge Castle is 12850) you walk in while inside your circle lights up faintly on the world map, so the run's whole journey shows at a glance. The Atlas chapter counts them: 25, 100 and 300 regions.
 - **Rivals:** turn on **Follow rivals** and paste up to three friends' live links (as `Name=link`). Their circles show on your world map as dotted rings in their colour, with a dot where they last stood, and the sidebar tells how far apart you are. When a rival's circle touches yours you get a banner; stand inside their circle while they stand inside yours for the **Rendezvous** trial (meet three for **Caravan**). It only reads the relay, never writes, and a rival's run never changes yours.
+- **Race a rival:** when you start a new run with rivals followed, you can pick one to race on their seed. Your circles start out exactly like theirs and part ways as you each play; the run ledger notes the race.
 
 ### The living edge
 

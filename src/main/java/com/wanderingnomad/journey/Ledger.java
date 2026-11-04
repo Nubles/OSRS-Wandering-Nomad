@@ -24,7 +24,7 @@ public final class Ledger
     {
         List<String> out = new ArrayList<>();
         Rank rank = r.rank();
-        out.add("Nomad UIM run ledger, seed " + sim.seed());
+        out.add("Nomad UIM run ledger, seed " + sim.seed() + (j.race() != null ? ", racing " + j.race() + " on their seed" : ""));
         out.add("Played " + time(sim.minutes()) + " | " + rank.title + ", " + String.format("%,d", r.renown())
             + " renown (" + String.format("%,d", j.earned()) + " this run)");
         out.add("Walked " + String.format("%,d", j.value(Trials.WALKED)) + " tiles inside | longest streak inside "

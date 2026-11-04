@@ -80,6 +80,8 @@ final class JourneyView
     String ledger;
     /** One line per rival followed, set by the plugin; empty when Rivals is off. */
     List<String> rivals = Collections.emptyList();
+    /** Rivals whose run has been read, so a new run can race one of them on their seed. */
+    List<String> rivalNames = Collections.emptyList();
     List<Row> next = Collections.emptyList();
     List<Row> all = Collections.emptyList();
 

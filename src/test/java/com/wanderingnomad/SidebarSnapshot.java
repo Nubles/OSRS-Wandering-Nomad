@@ -24,7 +24,7 @@ public class SidebarSnapshot
         {
             try
             {
-                NomadPanel panel = new NomadPanel(i -> { }, (i, s) -> { }, () -> { }, () -> { }, () -> { }, () -> { }, name -> { }, name -> { });
+                NomadPanel panel = new NomadPanel(i -> { }, (i, s) -> { }, name -> { }, () -> { }, () -> { }, () -> { }, name -> { }, name -> { });
                 NomadSim sim = NomadSim.start(483574);
                 for (int m = 0; m < 30; m++) sim.step(new Tile(3222, 3218));
                 sim.summon(NomadSim.COMMON);
