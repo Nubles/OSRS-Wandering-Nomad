@@ -78,6 +78,8 @@ final class JourneyView
     List<String> oaths = Collections.emptyList();
     /** The run ledger's text, set by the plugin, which has the run; null before login. */
     String ledger;
+    /** One line per rival followed, set by the plugin; empty when Rivals is off. */
+    List<String> rivals = Collections.emptyList();
     List<Row> next = Collections.emptyList();
     List<Row> all = Collections.emptyList();
 

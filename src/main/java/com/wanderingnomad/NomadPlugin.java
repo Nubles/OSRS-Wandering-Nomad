@@ -173,6 +173,9 @@ public class NomadPlugin extends Plugin
 
     private NomadPanel panel;
     private LiveShare live;
+    private volatile RivalWatch rivalWatch;
+    /** Rivals whose circle touched yours at the last look, by live code. */
+    private final java.util.Set<String> rivalsTouching = new java.util.HashSet<>();
     private NavigationButton navButton;
 
     private NomadSim sim;
@@ -213,6 +216,7 @@ public class NomadPlugin extends Plugin
     protected void startUp()
     {
         live = new LiveShare(okHttpClient);
+        rivalWatch = new RivalWatch(okHttpClient, gson);
         trials = Trials.all(Skill.values().length);
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
             this::copyRunCode, this::copyLiveLink, this::pickPalette, this::swearOath);
@@ -453,6 +457,13 @@ public class NomadPlugin extends Plugin
     NomadSim sim()
     {
         return sim;
+    }
+
+    /** Friends' live runs being followed; empty when Rivals is off. Any thread. */
+    List<com.wanderingnomad.rival.Rival> rivals()
+    {
+        RivalWatch w = rivalWatch;
+        return w == null ? java.util.Collections.emptyList() : w.rivals();
     }
 
     /** The last parting's faded half while it's still dissolving; null once it's gone. Any thread. */
@@ -883,9 +894,42 @@ public class NomadPlugin extends Plugin
         journey.set(Trials.CROSSINGS, stats.crossings);
         boolean inside = surface != null && !outsideNow();
         watch.tick(sim, surface, inside, journey);
+        watchRivals(inside);
         Omen before = Omens.current(journey);
         settleOmen(Omens.minute(journey, sim, surface, inside), before);
         checkTrials();
+    }
+
+    /**
+     * Rivals, every tick: reads any that are due, tells when a rival's circle first touches yours,
+     * and counts a rendezvous once per rival per run.
+     */
+    private void watchRivals(boolean inside)
+    {
+        long now = System.currentTimeMillis();
+        rivalWatch.tick(config.followRivals(), config.rivals(),
+            configManager.getRSProfileConfiguration(NomadConfig.GROUP, LIVE_CODE_KEY), now);
+        java.util.Set<String> touching = new java.util.HashSet<>();
+        for (com.wanderingnomad.rival.Rival r : rivalWatch.rivals())
+        {
+            if (r.fresh(now) && com.wanderingnomad.rival.Rivals.gap(sim, r) == 0)
+            {
+                touching.add(r.code);
+                if (!rivalsTouching.contains(r.code))
+                {
+                    show(Moments.rivalNear(r.name, new java.awt.Color(r.colour)));
+                    report(java.util.Collections.singletonList(r.name + "'s circle touches yours. Meet inside each other's circles for a Rendezvous."));
+                }
+            }
+            if (com.wanderingnomad.rival.Rivals.meeting(sim, surface, inside, r, now) && journey.addTo(Trials.RENDEZVOUS, r.code))
+            {
+                show(Moments.rendezvous(r.name, new java.awt.Color(r.colour)));
+                report(java.util.Collections.singletonList("Rendezvous with " + r.name + "! You stand in each other's circles."));
+                saveJourney();
+            }
+        }
+        rivalsTouching.clear();
+        rivalsTouching.addAll(touching);
     }
 
     /** Tells of an omen dealt, met or missed; a met one pays renown and summons a waystone. Client thread. */
@@ -1274,6 +1318,13 @@ public class NomadPlugin extends Plugin
         view.fade = fade(System.currentTimeMillis());
         view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials, sim.minutes());
         if (sim != null && journey != null && renown != null && trials != null) view.journey.ledger = Ledger.text(sim, journey, renown, trials);
+        if (sim != null)
+        {
+            List<String> lines = new ArrayList<>();
+            long now = System.currentTimeMillis();
+            for (com.wanderingnomad.rival.Rival r : rivals()) lines.add(com.wanderingnomad.rival.Rivals.line(sim, r, now));
+            view.journey.rivals = lines;
+        }
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 

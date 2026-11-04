@@ -297,4 +297,30 @@ public interface NomadConfig extends Config
     {
         return false;
     }
+
+    @ConfigItem(
+        keyName = "followRivals",
+        name = "Follow rivals",
+        description = "Reads friends' live runs from the Nomad UIM relay (a third-party server) every 2 minutes, so their "
+            + "circles show on your world map and in the sidebar. Meet one inside each other's circles for the Rendezvous trial.",
+        warning = "This asks the Nomad UIM relay, a server not run by RuneLite or Jagex, for the live runs you list, "
+            + "which shares your IP address with it. Turn it on?",
+        position = 8
+    )
+    default boolean followRivals()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "rivals",
+        name = "Rivals",
+        description = "Up to 3 friends' live links, one per line or comma, as Name=link (or just the link). "
+            + "They get theirs from the sidebar's Copy live link.",
+        position = 9
+    )
+    default String rivals()
+    {
+        return "";
+    }
 }

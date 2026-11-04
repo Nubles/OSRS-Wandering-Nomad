@@ -156,6 +156,7 @@ class NomadWorldMapOverlay extends Overlay
         drawWaystones(graphics, sim, bounds, west, south, zoom);
         if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
         drawOmen(graphics, bounds, west, south, zoom);
+        drawRivals(graphics, bounds, west, south, zoom);
         drawPointers(graphics, sim, rings, bounds);
         drawHover(graphics, sim, rings, bounds);
         graphics.setFont(font);
@@ -372,6 +373,57 @@ class NomadWorldMapOverlay extends Overlay
         graphics.setColor(colour);
         graphics.draw(new Ellipse2D.Double(px - r, py - r, 2 * r, 2 * r));
         outlined(graphics, "Omen: " + o.landmark(), (float) (px + r + 4), (float) py + 4, colour, false);
+    }
+
+    private static final BasicStroke RIVAL = new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
+        new float[]{3f, 5f}, 0f);
+
+    /**
+     * Rivals: each friend's circle as a dotted ring in their colour with their name, their Main too
+     * if they're in a region circle, and a dot where they stood when they last sent.
+     */
+    private void drawRivals(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        long now = System.currentTimeMillis();
+        for (com.wanderingnomad.rival.Rival r : plugin.rivals())
+        {
+            com.wanderingnomad.rival.Rival.Snapshot s = r.latest();
+            if (s == null) continue;
+            boolean fresh = r.fresh(now);
+            Color colour = new Color(r.colour);
+            if (!fresh) colour = new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 150);
+            Circle bound = s.sim.bound();
+            Circle main = s.sim.main();
+            for (Circle c : bound == main ? java.util.Collections.singletonList(main) : java.util.Arrays.asList(main, bound))
+            {
+                double px = bounds.x + (c.x() - west) * zoom;
+                double py = bounds.y + bounds.height - (c.y() - south) * zoom;
+                double pr = Math.max(MIN_RADIUS_PX, c.radius() * zoom);
+                Ellipse2D ring = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
+                if (!ring.intersects(bounds)) continue;
+                graphics.setStroke(SHADOW);
+                graphics.setColor(new Color(0, 0, 0, 120));
+                graphics.draw(ring);
+                graphics.setStroke(RIVAL);
+                graphics.setColor(colour);
+                graphics.draw(ring);
+                if (c == bound)
+                {
+                    double top = ring.getMaxY() + 12;
+                    pill(graphics, r.name + (fresh ? "" : " (away)"), (float) ring.getCenterX(), (float) top, colour);
+                }
+            }
+            if (fresh && s.surface != null)
+            {
+                double px = bounds.x + (s.surface.x - west) * zoom;
+                double py = bounds.y + bounds.height - (s.surface.y - south) * zoom;
+                if (!bounds.contains(px, py)) continue;
+                graphics.setColor(Color.BLACK);
+                graphics.fill(new Ellipse2D.Double(px - 4, py - 4, 8, 8));
+                graphics.setColor(colour);
+                graphics.fill(new Ellipse2D.Double(px - 3, py - 3, 6, 6));
+            }
+        }
     }
 
     /** Hovering a circle shows what it's doing: size, mood, how far it is from you and whether you can cross. */

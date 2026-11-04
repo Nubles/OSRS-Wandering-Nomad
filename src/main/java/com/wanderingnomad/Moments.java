@@ -374,6 +374,18 @@ final class Moments
             OMEN, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
     }
 
+    static Banner rivalNear(String name, Color colour)
+    {
+        return new Banner(name + " is near", "Their circle touches yours.", colour, Icon.CROSSING, false,
+            SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner rendezvous(String name, Color colour)
+    {
+        return new Banner("Rendezvous with " + name, "Two Nomads, each inside the other's circle.", colour, Icon.STAR, true,
+            SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
     static Banner omenMissed(com.wanderingnomad.journey.Omen o)
     {
         return new Banner("The omen passed", o.title() + " ran out of time. Another will come.", OMEN.darker(), Icon.STAR, false,

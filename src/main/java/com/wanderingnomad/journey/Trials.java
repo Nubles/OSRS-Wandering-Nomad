@@ -42,6 +42,8 @@ public final class Trials
     public static final String OMENS = "omens";
     /** Distinct ports you've followed Main into. */
     public static final String HARBOURS = "harbours";
+    /** Distinct rivals you've met inside each other's circles. */
+    public static final String RENDEZVOUS = "rendezvous";
     /** The trials a run can swear as its oath: the long goals a whole run is built around. */
     public static final List<String> OATHS = Collections.unmodifiableList(java.util.Arrays.asList(
         "diary-all", "harbours-all", "landmarks-all", "total-max", "bosses-50", "regions-all"));
@@ -57,8 +59,9 @@ public final class Trials
     public static final String SEAFARER = "Seafarer";
     public static final String DEEDS = "Deeds";
     public static final String TREASURE = "Treasure and glory";
+    public static final String FELLOWS = "Fellow Nomads";
     public static final List<String> CHAPTERS = Collections.unmodifiableList(java.util.Arrays.asList(
-        FIRST_STEPS, LONG_ROAD, FATE, KINGDOMS, ATLAS, SEAFARER, DEEDS, TREASURE));
+        FIRST_STEPS, LONG_ROAD, FATE, KINGDOMS, ATLAS, SEAFARER, FELLOWS, DEEDS, TREASURE));
 
     private Trials()
     {
@@ -113,6 +116,9 @@ public final class Trials
         t.add(trial("omens-1", FATE, "Read the signs", "Meet an omen before its time runs out.", OMENS, 1, Tier.BRONZE));
         t.add(trial("omens-10", FATE, "Augur", "Meet 10 omens.", OMENS, 10, Tier.SILVER));
         t.add(trial("omens-50", FATE, "Oracle", "Meet 50 omens.", OMENS, 50, Tier.GOLD));
+        t.add(trial("rendezvous-1", FELLOWS, "Rendezvous", "Stand inside a rival's circle while they stand inside yours.",
+            RENDEZVOUS, 1, Tier.SILVER));
+        t.add(trial("rendezvous-3", FELLOWS, "Caravan", "Meet 3 different rivals inside each other's circles.", RENDEZVOUS, 3, Tier.GOLD));
         t.add(trial("crossings-25", FATE, "Border hopper", "Cross between circles 25 times.", CROSSINGS, 25, Tier.SILVER));
 
         t.add(trial("regions-3", KINGDOMS, "Three crowns", "Be inside 3 different region circles.", REGIONS, 3, Tier.BRONZE));

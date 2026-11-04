@@ -69,6 +69,8 @@ class NomadPanel extends PluginPanel
     private final SidebarParts.Journey journey = new SidebarParts.Journey();
     private final JComboBox<String> palette = new JComboBox<>();
     private final JComboBox<String> oath = new JComboBox<>();
+    private final JLabel rivals = note(" ");
+    private List<String> shownRivals = Collections.emptyList();
     private List<String> shownOaths = Collections.emptyList();
     private boolean fillingOaths;
     /** The palettes the box lists, so it's only refilled when a rank unlocks one. */
@@ -141,6 +143,9 @@ class NomadPanel extends PluginPanel
         });
         fix(oath, 24);
         add(oath);
+        rivals.setVisible(false);
+        rivals.setAlignmentX(LEFT_ALIGNMENT);
+        add(rivals);
         add(gap(10));
         add(heading("Moments"));
         add(gap(4));
@@ -261,6 +266,16 @@ class NomadPanel extends PluginPanel
         }
 
         lastJourney = v.journey;
+        if (!v.journey.rivals.equals(shownRivals))
+        {
+            shownRivals = v.journey.rivals;
+            StringBuilder html = new StringBuilder("<html><b style='color:#ffffff'>Rivals</b>");
+            for (String line : shownRivals) html.append("<br>").append(line.replace("&", "&amp;").replace("<", "&lt;"));
+            rivals.setText(html.append("</html>").toString());
+            rivals.setVisible(!shownRivals.isEmpty());
+            fix(rivals, 16 + 26 * shownRivals.size());
+            revalidate();
+        }
         if (!v.journey.palettes.equals(shownPalettes) || !v.journey.palette.equals(palette.getSelectedItem()))
         {
             fillingPalettes = true;
