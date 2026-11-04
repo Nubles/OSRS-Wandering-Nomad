@@ -97,6 +97,7 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setColor(new Color(0, 0, 0, Math.min(255, focus * 255 / 100)));
             graphics.fill(bounds);
         }
+        if (plugin.config().footprint()) drawFootprint(graphics, sim, bounds, west, south, zoom);
         List<Circle> circles = sim.circles();
         Forecast forecast = plugin.forecast();
         if (forecast != null && plugin.config().forecast())
@@ -373,6 +374,37 @@ class NomadWorldMapOverlay extends Overlay
         graphics.setColor(colour);
         graphics.draw(new Ellipse2D.Double(px - r, py - r, 2 * r, 2 * r));
         outlined(graphics, "Omen: " + o.landmark(), (float) (px + r + 4), (float) py + 4, colour, false);
+    }
+
+    /**
+     * The footprint: every 64-tile map region you've walked in inside your circle, filled faintly
+     * in Main's colour, so the world map shows the run's whole journey at a glance.
+     */
+    private void drawFootprint(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)
+    {
+        java.util.Set<String> squares = plugin.footprint();
+        if (squares.isEmpty()) return;
+        Color c = NomadPlugin.colour(sim.main(), 255);
+        graphics.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 46));
+        double size = 64 * zoom;
+        for (String id : squares)
+        {
+            int region;
+            try
+            {
+                region = Integer.parseInt(id);
+            }
+            catch (NumberFormatException e)
+            {
+                continue;
+            }
+            int x0 = (region >> 8) << 6;
+            int y0 = (region & 0xFF) << 6;
+            double px = bounds.x + (x0 - west) * zoom;
+            double py = bounds.y + bounds.height - (y0 + 64 - south) * zoom;
+            if (px > bounds.getMaxX() || py > bounds.getMaxY() || px + size < bounds.x || py + size < bounds.y) continue;
+            graphics.fill(new java.awt.geom.Rectangle2D.Double(px, py, size, size));
+        }
     }
 
     private static final BasicStroke RIVAL = new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,

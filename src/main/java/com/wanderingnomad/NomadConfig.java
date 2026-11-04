@@ -163,6 +163,17 @@ public interface NomadConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "footprint",
+        name = "Footprint on the world map",
+        description = "Lights up every 64-tile map region you've walked in while inside your circle this run.",
+        position = 4
+    )
+    default boolean footprint()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "statusBox",
         name = "Status box",
         description = "Show your circle, the distance to its edge and open crossings.",

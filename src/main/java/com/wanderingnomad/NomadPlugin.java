@@ -487,6 +487,13 @@ public class NomadPlugin extends Plugin
         publish();
     }
 
+    /** The map regions walked inside your circle this run, as region ids. Client thread. */
+    java.util.Set<String> footprint()
+    {
+        Journey j = journey;
+        return j == null ? java.util.Collections.emptySet() : j.items(Trials.SQUARES);
+    }
+
     /** The omen under way, or null. Any thread. */
     Omen omen()
     {

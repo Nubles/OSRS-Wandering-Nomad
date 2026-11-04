@@ -23,6 +23,12 @@ public final class JourneyWatch
     private Tile lastTile;
     private String voyageTo;
 
+    /** The game's own region id for a tile: which 64 by 64 square of the map it's in. */
+    public static int region(int x, int y)
+    {
+        return ((x >> 6) << 8) | (y >> 6);
+    }
+
     public void reset()
     {
         primed = false;
@@ -63,6 +69,7 @@ public final class JourneyWatch
         }
         if (!inside || at == null) return;
         if (yours.region() != null) j.addTo(Trials.REGIONS, yours.region().id);
+        j.addTo(Trials.SQUARES, String.valueOf(region(at.x, at.y)));
         if (at.equals(lastTile)) return;
         lastTile = at;
         for (Landmarks.Landmark l : Landmarks.ALL)

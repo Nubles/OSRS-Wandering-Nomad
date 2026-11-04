@@ -37,6 +37,21 @@ public class LedgerTest
     }
 
     @Test
+    public void theFootprintUsesTheGamesRegionIds()
+    {
+        // Lumbridge Castle's courtyard is in region 12850, as the game numbers them.
+        assertEquals(12850, JourneyWatch.region(3222, 3218));
+        NomadSim sim = NomadSim.start(1);
+        Journey j = new Journey().ready();
+        JourneyWatch w = new JourneyWatch();
+        w.tick(sim, new com.wanderingnomad.sim.Tile(3222, 3218), true, j);
+        w.tick(sim, new com.wanderingnomad.sim.Tile(3223, 3218), true, j);
+        w.tick(sim, new com.wanderingnomad.sim.Tile(3222, 3260), false, j);
+        assertEquals(1, j.value(Trials.SQUARES));
+        assertTrue(j.items(Trials.SQUARES).contains("12850"));
+    }
+
+    @Test
     public void readsTimeLikeTheSidebar()
     {
         assertEquals("45m", Ledger.time(45));

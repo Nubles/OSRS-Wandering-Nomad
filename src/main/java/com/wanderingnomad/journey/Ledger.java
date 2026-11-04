@@ -35,7 +35,8 @@ public final class Ledger
             + " | voyages followed " + j.value(Trials.VOYAGES));
         out.add("Harbours " + j.value(Trials.HARBOURS) + "/" + Geography.PORTS.size()
             + " | regions " + j.value(Trials.REGIONS) + "/" + Geography.REGIONS.size()
-            + " | landmarks " + j.value(Trials.LANDMARKS) + "/" + Landmarks.ALL.size());
+            + " | landmarks " + j.value(Trials.LANDMARKS) + "/" + Landmarks.ALL.size()
+            + " | map regions walked " + j.value(Trials.SQUARES));
         out.add("Omens met " + j.value(Trials.OMENS) + " of " + j.omensDealt()
             + (j.value(Trials.RENDEZVOUS) > 0 ? " | rivals met " + j.value(Trials.RENDEZVOUS) : ""));
         Trial oath = null;

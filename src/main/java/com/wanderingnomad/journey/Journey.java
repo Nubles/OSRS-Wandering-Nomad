@@ -99,6 +99,13 @@ public final class Journey
         return sets.computeIfAbsent(metric, k -> new HashSet<>()).add(item);
     }
 
+    /** A set metric's items, such as the footprint's regions; read-only. */
+    public Set<String> items(String metric)
+    {
+        Set<String> set = sets.get(metric);
+        return set == null ? java.util.Collections.emptySet() : java.util.Collections.unmodifiableSet(set);
+    }
+
     public boolean has(String metric, String item)
     {
         Set<String> set = sets.get(metric);

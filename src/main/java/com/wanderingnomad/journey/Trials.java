@@ -44,6 +44,8 @@ public final class Trials
     public static final String HARBOURS = "harbours";
     /** Distinct rivals you've met inside each other's circles. */
     public static final String RENDEZVOUS = "rendezvous";
+    /** The game's 64-tile map regions you've walked in while inside your circle: the run's footprint. */
+    public static final String SQUARES = "squares";
     /** The trials a run can swear as its oath: the long goals a whole run is built around. */
     public static final List<String> OATHS = Collections.unmodifiableList(java.util.Arrays.asList(
         "diary-all", "harbours-all", "landmarks-all", "total-max", "bosses-50", "regions-all"));
@@ -134,6 +136,9 @@ public final class Trials
                 diaryOf(r), r.maxTiers(), Tier.GOLD, true));
         }
 
+        t.add(trial("squares-25", ATLAS, "Footloose", "Walk inside your circle in 25 of the map's 64-tile regions.", SQUARES, 25, Tier.BRONZE));
+        t.add(trial("squares-100", ATLAS, "Wide world", "Walk inside your circle in 100 map regions.", SQUARES, 100, Tier.SILVER));
+        t.add(trial("squares-300", ATLAS, "Mapmaker", "Walk inside your circle in 300 map regions.", SQUARES, 300, Tier.GOLD));
         t.add(trial("landmarks-25", ATLAS, "Wayfinder", "Stand at 25 landmarks.", LANDMARKS, 25, Tier.SILVER));
         t.add(trial("landmarks-50", ATLAS, "Surveyor", "Stand at 50 landmarks.", LANDMARKS, 50, Tier.GOLD));
         t.add(trial("landmarks-all", ATLAS, "Atlas complete", "Stand at all " + landmarks + " landmarks.", LANDMARKS, landmarks, Tier.LEGEND));
