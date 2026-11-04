@@ -47,8 +47,13 @@ describe('the TypeScript sim matches the plugin', () => {
           else if (e.kind === 'cross') for (let i = 0; i < sim.circles.length && line == null; i++) line = sim.crossTo(i, null);
           else if (e.kind === 'diary') line = sim.setDiaryTiers(e.args[0] as string, e.args[1] as number);
           else if (e.kind === 'sailing') sim.state.sailingUnlocked = e.args[0] as boolean;
+          else if (e.kind === 'dock') {
+            sim.state.sailingLevel = e.args[0] as number;
+            sim.state.questsMissing = e.args.slice(1) as string[];
+          }
+          else if (e.kind === 'give') sim.state.boons.push(e.args[0] as string);
           else if (e.kind === 'summon') line = sim.summon(e.args[0] as string);
-          else if (e.kind === 'boon') line = sim.useBoon(e.args[0] as number, e.args[1] as number);
+          else if (e.kind === 'boon') line = sim.useBoon(e.args[0] as number, e.args[1] as number, e.args.length >= 4 ? { x: e.args[2] as number, y: e.args[3] as number } : null);
           if (line != null) log.push([minute, line]);
         }
         for (const line of sim.step(player)) log.push([minute, line]);
@@ -82,7 +87,8 @@ describe('run codes', () => {
     const c = CASES[1];
     const code = await encodeRun({ sim: c.final, surface: { x: 3200, y: 3200 } });
     expect(code.startsWith('N1.')).toBe(true);
-    expect(code.length).toBeLessThan(2500);
+    // Storms, Sailing docks and their fields grew the saved run a little; links stay far under URL limits.
+    expect(code.length).toBeLessThan(2600);
     expect((await decodeRun(code)).sim).toEqual(c.final);
   });
 

@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * Where waystones appear: a fixed list of open surface tiles at well-known places, curated once
  * and never patched. Only the tile matters; nothing here depends on quests or content. The
- * website's geography.ts lists the same places in the same order.
+ * website's landmarks.ts (web/ and world/) lists the same places in the same order.
  */
 public final class Landmarks
 {
@@ -39,13 +39,14 @@ public final class Landmarks
         new Landmark("Lumber Yard", 3302, 3490),
         new Landmark("Digsite", 3360, 3417),
         new Landmark("Paterdomus", 3405, 3488),
+        // Asgarnia, north of Falador; listed here to keep the order both engines share
         new Landmark("Ice Mountain", 3008, 3478),
         new Landmark("Black Knights' Fortress", 3010, 3506),
         // Asgarnia
         new Landmark("Falador Park", 2994, 3376),
         new Landmark("Port Sarim", 3028, 3217),
         new Landmark("Rimmington", 2957, 3214),
-        new Landmark("Crafting Guild", 2935, 3263),
+        new Landmark("Crafting Guild", 2933, 3297),
         new Landmark("Mudskipper Point", 2995, 3115),
         new Landmark("Taverley", 2895, 3443),
         new Landmark("Burthorpe", 2899, 3544),

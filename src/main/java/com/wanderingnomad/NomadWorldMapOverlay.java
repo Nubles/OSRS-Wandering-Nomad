@@ -97,6 +97,7 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setColor(new Color(0, 0, 0, Math.min(255, focus * 255 / 100)));
             graphics.fill(bounds);
         }
+        if (plugin.config().footprint()) drawFootprint(graphics, sim, bounds, west, south, zoom);
         List<Circle> circles = sim.circles();
         Forecast forecast = plugin.forecast();
         if (forecast != null && plugin.config().forecast())
@@ -155,6 +156,8 @@ class NomadWorldMapOverlay extends Overlay
         }
         drawWaystones(graphics, sim, bounds, west, south, zoom);
         if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
+        drawOmen(graphics, bounds, west, south, zoom);
+        drawRivals(graphics, bounds, west, south, zoom);
         drawPointers(graphics, sim, rings, bounds);
         drawHover(graphics, sim, rings, bounds);
         graphics.setFont(font);
@@ -354,6 +357,104 @@ class NomadWorldMapOverlay extends Overlay
         {
             String text = hovered.name + " (" + hovered.x + ", " + hovered.y + ")" + (plugin.spots().isBlocked(hovered) ? " blocked" : "");
             outlined(graphics, text, (float) hx + 8, (float) hy + 4, plugin.spots().colour(hovered), false);
+        }
+    }
+
+    /** A pilgrimage omen's landmark: a pale blue ring and its name, so you can plan the walk. */
+    private void drawOmen(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        com.wanderingnomad.journey.Omen o = plugin.omen();
+        if (o == null || !com.wanderingnomad.journey.Omen.PILGRIMAGE.equals(o.kind())) return;
+        double px = bounds.x + (o.x() - west) * zoom;
+        double py = bounds.y + bounds.height - (o.y() - south) * zoom;
+        if (!bounds.contains(px, py)) return;
+        Color colour = new Color(0x9FE9FF);
+        double r = Math.max(6, com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK * zoom);
+        graphics.setStroke(new BasicStroke(2f));
+        graphics.setColor(colour);
+        graphics.draw(new Ellipse2D.Double(px - r, py - r, 2 * r, 2 * r));
+        outlined(graphics, "Omen: " + o.landmark(), (float) (px + r + 4), (float) py + 4, colour, false);
+    }
+
+    /**
+     * The footprint: every 64-tile map region you've walked in inside your circle, filled faintly
+     * in Main's colour, so the world map shows the run's whole journey at a glance.
+     */
+    private void drawFootprint(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)
+    {
+        java.util.Set<String> squares = plugin.footprint();
+        if (squares.isEmpty()) return;
+        Color c = NomadPlugin.colour(sim.main(), 255);
+        graphics.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 46));
+        double size = 64 * zoom;
+        for (String id : squares)
+        {
+            int region;
+            try
+            {
+                region = Integer.parseInt(id);
+            }
+            catch (NumberFormatException e)
+            {
+                continue;
+            }
+            int x0 = (region >> 8) << 6;
+            int y0 = (region & 0xFF) << 6;
+            double px = bounds.x + (x0 - west) * zoom;
+            double py = bounds.y + bounds.height - (y0 + 64 - south) * zoom;
+            if (px > bounds.getMaxX() || py > bounds.getMaxY() || px + size < bounds.x || py + size < bounds.y) continue;
+            graphics.fill(new java.awt.geom.Rectangle2D.Double(px, py, size, size));
+        }
+    }
+
+    private static final BasicStroke RIVAL = new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
+        new float[]{3f, 5f}, 0f);
+
+    /**
+     * Rivals: each friend's circle as a dotted ring in their colour with their name, their Main too
+     * if they're in a region circle, and a dot where they stood when they last sent.
+     */
+    private void drawRivals(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        long now = System.currentTimeMillis();
+        for (com.wanderingnomad.rival.Rival r : plugin.rivals())
+        {
+            com.wanderingnomad.rival.Rival.Snapshot s = r.latest();
+            if (s == null) continue;
+            boolean fresh = r.fresh(now);
+            Color colour = new Color(r.colour);
+            if (!fresh) colour = new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 150);
+            Circle bound = s.sim.bound();
+            Circle main = s.sim.main();
+            for (Circle c : bound == main ? java.util.Collections.singletonList(main) : java.util.Arrays.asList(main, bound))
+            {
+                double px = bounds.x + (c.x() - west) * zoom;
+                double py = bounds.y + bounds.height - (c.y() - south) * zoom;
+                double pr = Math.max(MIN_RADIUS_PX, c.radius() * zoom);
+                Ellipse2D ring = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
+                if (!ring.intersects(bounds)) continue;
+                graphics.setStroke(SHADOW);
+                graphics.setColor(new Color(0, 0, 0, 120));
+                graphics.draw(ring);
+                graphics.setStroke(RIVAL);
+                graphics.setColor(colour);
+                graphics.draw(ring);
+                if (c == bound)
+                {
+                    double top = ring.getMaxY() + 12;
+                    pill(graphics, r.name + (fresh ? "" : " (away)"), (float) ring.getCenterX(), (float) top, colour);
+                }
+            }
+            if (fresh && s.surface != null)
+            {
+                double px = bounds.x + (s.surface.x - west) * zoom;
+                double py = bounds.y + bounds.height - (s.surface.y - south) * zoom;
+                if (!bounds.contains(px, py)) continue;
+                graphics.setColor(Color.BLACK);
+                graphics.fill(new Ellipse2D.Double(px - 4, py - 4, 8, 8));
+                graphics.setColor(colour);
+                graphics.fill(new Ellipse2D.Double(px - 3, py - 3, 6, 6));
+            }
         }
     }
 

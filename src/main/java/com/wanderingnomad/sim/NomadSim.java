@@ -98,9 +98,11 @@ public final class NomadSim
     public static final String ANCHOR = "Anchor";
     public static final String RUDDER = "Rudder";
     public static final String BRIDGE = "Bridge";
+    public static final String LANTERN = "Lantern";
+    public static final String CALM = "Calm";
     public static final String COMMON = "common";
     public static final String RARE = "rare";
-    private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR};
+    private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR, LANTERN, CALM};
     private static final String[] RARE_BOONS = {RUDDER, BRIDGE};
     public static final int BOONS_HELD = 3;
     public static final int CLAIM_REACH = 3;
@@ -113,6 +115,8 @@ public final class NomadSim
     static final int RUDDER_WAY = 150;
     static final int BRIDGE_MINUTES = 10;
     public static final int BRIDGE_REACH = 60;
+    /** Calm keeps forks and storms off Main for this long, and breaks one that's brewing or blowing. */
+    public static final int CALM_MINUTES = 180;
     /** A waystone prefers a landmark its circle should keep for at least this many minutes. */
     static final int LASTING = 30;
 
@@ -130,6 +134,20 @@ public final class NomadSim
     static final int FORK_REACH = 60;
     /** A fork that can't start now (at sea, anchored or too small) tries again this much later. */
     static final int FORK_RETRY = 30;
+    /**
+     * Storms over Main, one every 6 to 12 played hours with a 10-minute warning: a Gale drives it
+     * three times as fast for half an hour, a Squall squeezes it to three quarters of its size for
+     * half an hour before it eases back. They wait out forks and voyages.
+     */
+    public static final int STORM_EVERY_MIN = 360;
+    public static final int STORM_EVERY_MAX = 720;
+    public static final int STORM_WARN = 10;
+    public static final int STORM_MINUTES = 30;
+    static final int STORM_RETRY = 15;
+    public static final int GALE = 1;
+    public static final int SQUALL = 2;
+    static final int GALE_SPEEDUP = 3;
+    static final double SQUALL_SHRINK = 0.75;
     private static final String[] COMPASS = {"east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east"};
 
     int seed;
@@ -138,6 +156,10 @@ public final class NomadSim
     int bound;
     boolean outside;
     boolean sailingUnlocked;
+    /** The account's Sailing level, 0 if not known (then every dock counts as in reach). */
+    int sailingLevel;
+    /** Quests a dock needs that the account hasn't done, so Main never sails where you can't follow. */
+    List<String> questsMissing = new ArrayList<>();
     List<Circle> circles;
     /** Waystones waiting to be claimed, boons held, and summons still waiting for a landmark to drift into reach. */
     List<Waystone> waystones = new ArrayList<>();
@@ -147,6 +169,11 @@ public final class NomadSim
     int summons;
     /** Minutes left on Bridge. */
     int bridgeLeft;
+    /** Minutes left on Calm. */
+    int calmLeft;
+    /** Where a Lantern was lit, so the next waystone in your circle rises at the landmark nearest it; 0, 0 when unlit. */
+    int lanternX;
+    int lanternY;
     /**
      * Forks so far (each one's dice come from the seed and this), the played minute the next one
      * is due (0 until scheduled), and the minute of the last big moment, for pacing.
@@ -160,6 +187,13 @@ public final class NomadSim
     /** While forked: the other half, and the minutes since the split. */
     Circle twin;
     int forkAge;
+    /** Storms so far, the minute the next is due (0 until scheduled), its warning and time left, its kind, and Main's size before a Squall. */
+    int storms;
+    int nextStorm;
+    int stormWarn;
+    int stormLeft;
+    int stormKind;
+    double squallFrom;
 
     public static NomadSim start(int seed)
     {
@@ -186,6 +220,8 @@ public final class NomadSim
         s.bound = bound;
         s.outside = outside;
         s.sailingUnlocked = sailingUnlocked;
+        s.sailingLevel = sailingLevel;
+        if (questsMissing != null) s.questsMissing = new ArrayList<>(questsMissing);
         s.circles = new ArrayList<>(circles.size());
         for (Circle c : circles) s.circles.add(c.copy());
         for (Waystone w : waystones) s.waystones.add(w.copy());
@@ -193,11 +229,20 @@ public final class NomadSim
         s.pending.addAll(pending);
         s.summons = summons;
         s.bridgeLeft = bridgeLeft;
+        s.calmLeft = calmLeft;
+        s.lanternX = lanternX;
+        s.lanternY = lanternY;
         s.forks = forks;
         s.nextFork = nextFork;
         s.lastBig = lastBig;
         s.forkWarn = forkWarn;
         s.forkAxis = forkAxis;
+        s.storms = storms;
+        s.nextStorm = nextStorm;
+        s.stormWarn = stormWarn;
+        s.stormLeft = stormLeft;
+        s.stormKind = stormKind;
+        s.squallFrom = squallFrom;
         s.twin = twin == null ? null : twin.copy();
         s.forkAge = forkAge;
         return s;
@@ -308,6 +353,28 @@ public final class NomadSim
         sailingUnlocked = unlocked;
     }
 
+    /**
+     * What Main can sail to on your own boat: your Sailing level, and the quests a dock needs that
+     * you haven't done. A dock out of reach is never a voyage's destination.
+     */
+    public void setSailing(int level, List<String> missing)
+    {
+        sailingLevel = Math.max(0, level);
+        questsMissing = missing == null ? new ArrayList<>() : new ArrayList<>(missing);
+    }
+
+    public int sailingLevel()
+    {
+        return sailingLevel;
+    }
+
+    /** The level docks are checked against: 0 without Sailing, 99 if it's unlocked but the level isn't known. */
+    int dockLevel()
+    {
+        if (!sailingUnlocked) return 0;
+        return sailingLevel > 0 ? sailingLevel : 99;
+    }
+
     /** In a region circle that Main no longer touches. */
     public boolean stranded()
     {
@@ -376,11 +443,18 @@ public final class NomadSim
         return log.isEmpty() ? null : log.get(0);
     }
 
+    /** Spends a boon without saying where you stand, so a Lantern can't be lit. */
+    public String useBoon(int index, int side)
+    {
+        return useBoon(index, side, null);
+    }
+
     /**
      * Spends the boon at {@code index}. {@code side} is for Rudder: 1 turns left, -1 right.
+     * {@code player} is for Lantern, which has to be lit inside your circle.
      * Returns the log line, or null if nothing was spent.
      */
-    public String useBoon(int index, int side)
+    public String useBoon(int index, int side, Tile player)
     {
         if (index < 0 || index >= boons.size()) return null;
         String boon = boons.get(index);
@@ -419,11 +493,68 @@ public final class NomadSim
                 line = "Bridge: for 10 minutes you can cross to any circle within " + BRIDGE_REACH
                     + " tiles, and walking between them doesn't count as outside.";
                 break;
+            case LANTERN:
+                if (player == null || !c.contains(player.x, player.y)) return null;
+                lanternX = player.x;
+                lanternY = player.y;
+                line = "Lantern: the next waystone to rise in your circle rises at the landmark nearest where you lit it.";
+                break;
+            case CALM:
+                line = calm();
+                break;
             default:
                 return null;
         }
         boons.remove(index);
         return line;
+    }
+
+    /** Calm: no fork or storm over Main for 3 hours; a fork's warning or a storm under way breaks off now. */
+    private String calm()
+    {
+        calmLeft = CALM_MINUTES;
+        String broke = "";
+        if (forkWarn > 0)
+        {
+            forkWarn = 0;
+            nextFork = minutes + FORK_RETRY;
+            broke = " The fork that was coming won't.";
+        }
+        if (stormWarn > 0)
+        {
+            stormWarn = 0;
+            stormKind = 0;
+            nextStorm = minutes + STORM_RETRY;
+            broke = " The storm that was brewing holds off.";
+        }
+        else if (stormLeft > 0)
+        {
+            Circle m = main();
+            if (stormKind == SQUALL) m.radiusTarget = clamp(squallFrom, m.radiusMin, m.radiusMax);
+            stormLeft = 0;
+            stormKind = 0;
+            storms++;
+            nextStorm = 0;
+            broke = " The storm breaks off.";
+        }
+        return "Calm: no fork or storm comes over the Main circle for 3 hours." + broke;
+    }
+
+    /** Minutes left on Calm, 0 when not active. */
+    public int calmLeft()
+    {
+        return calmLeft;
+    }
+
+    /** Whether a Lantern is lit, and where. */
+    public boolean lanternLit()
+    {
+        return lanternX != 0 || lanternY != 0;
+    }
+
+    public Tile lantern()
+    {
+        return lanternLit() ? new Tile(lanternX, lanternY) : null;
     }
 
     /**
@@ -546,13 +677,15 @@ public final class NomadSim
             Circle toward = pulled ? main : null;
             double pull = pulled ? STRANDED_PULL : 0;
             Tile lean = yours && !out && player != null && dist(c, player) >= c.radius - LEAN_BAND ? player : null;
-            int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1);
+            int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
+                * (j == MAIN && stormLeft > 0 && stormKind == GALE ? GALE_SPEEDUP : 1);
             if (j == MAIN && twin != null) part(c, twin);
             else move(c, rng, speedup, yours, toward, pull, lean, log);
         }
         minutes++;
         tickBoons(log);
         fork(player, log);
+        storm(log);
 
         if (minutes % 5 == 0)
         {
@@ -597,6 +730,7 @@ public final class NomadSim
             }
         }
         if (bridgeLeft > 0 && --bridgeLeft == 0) log.add("The Bridge closed.");
+        if (calmLeft > 0 && --calmLeft == 0) log.add("The Calm has lifted: forks and storms can come again.");
     }
 
     /** Moves a circle's whole range, and its radius with it, by {@code tiles}. */
@@ -681,6 +815,7 @@ public final class NomadSim
             }
         }
         if (options.isEmpty()) return null;
+        List<int[]> all = options;
         // Prefer landmarks the circle won't leave for a while, so there's time for the walk.
         List<int[]> lasting = new ArrayList<>();
         for (int[] o : options)
@@ -689,9 +824,22 @@ public final class NomadSim
             if (minutesLeft(circles.get(o[1]), l.x, l.y) >= LASTING) lasting.add(o);
         }
         if (!lasting.isEmpty()) options = lasting;
+        // A lit Lantern takes the lasting landmark nearest it in your circle, else the nearest at all.
+        int[] lit = null;
+        if (lanternLit())
+        {
+            lit = nearestLantern(options);
+            if (lit == null) lit = nearestLantern(all);
+        }
         Rng rng = new Rng(seed ^ ((summons + 1) * 0x9E3779B9));
         summons++;
         int[] o = options.get((int) (rng.next() * options.size()));
+        if (lit != null)
+        {
+            o = lit;
+            lanternX = 0;
+            lanternY = 0;
+        }
         String[] pool = RARE.equals(tier) ? RARE_BOONS : COMMON_BOONS;
         Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
         Waystone w = new Waystone();
@@ -704,6 +852,25 @@ public final class NomadSim
         Circle c = circles.get(w.circle);
         return "A waystone rose at " + l.name + (w.circle == bound ? " in your circle" : " in " + c.name())
             + ", holding " + w.boon + " (" + (RARE.equals(tier) ? "rare" : "common") + ").";
+    }
+
+    /** The option in your circle nearest the lit Lantern, or null if none is in your circle. */
+    private int[] nearestLantern(List<int[]> options)
+    {
+        int[] best = null;
+        double bestD = 0;
+        for (int[] o : options)
+        {
+            if (o[1] != bound) continue;
+            Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
+            double d = Circle.dist(l.x - lanternX, l.y - lanternY);
+            if (best == null || d < bestD)
+            {
+                best = o;
+                bestD = d;
+            }
+        }
+        return best;
     }
 
     private boolean taken(Landmarks.Landmark l)
@@ -984,7 +1151,8 @@ public final class NomadSim
             }
         }
         if (port == null || rng.next() >= BOARD_CHANCE) return;
-        List<String> routes = Geography.routesFrom(port.name, sailingUnlocked);
+        List<String> routes = Geography.routesFrom(port.name, dockLevel(),
+            questsMissing == null ? java.util.Collections.<String>emptyList() : questsMissing);
         if (routes.isEmpty()) return;
         String to = routes.get((int) (rng.next() * routes.size()));
         Geography.Port dest = Geography.port(to);
@@ -1041,7 +1209,7 @@ public final class NomadSim
         // Pacing: after 4 quiet hours the next fork comes now.
         if (minutes - lastBig >= QUIET) nextFork = Math.min(nextFork, minutes);
         if (minutes < nextFork) return;
-        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS)
+        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS || stormWarn > 0 || stormLeft > 0 || calmLeft > 0)
         {
             nextFork = minutes + FORK_RETRY;
             return;
@@ -1063,6 +1231,86 @@ public final class NomadSim
         log.add("The Main circle is about to fork. In " + FORK_WARN + " minutes it splits in two, one half heading "
             + compass(forkAxis) + " and the other " + compass(forkAxis + Math.PI)
             + ". The half you're standing in when they part lives on.");
+    }
+
+    /** Brews, starts and ends storms over Main; see {@link #STORM_EVERY_MIN}. */
+    private void storm(List<String> log)
+    {
+        Circle m = main();
+        if (stormLeft > 0)
+        {
+            if (--stormLeft > 0) return;
+            if (stormKind == SQUALL) m.radiusTarget = clamp(squallFrom, m.radiusMin, m.radiusMax);
+            log.add(stormKind == GALE ? "The gale has blown itself out." : "The squall has passed. The Main circle eases back to its size.");
+            stormKind = 0;
+            storms++;
+            nextStorm = 0;
+            return;
+        }
+        if (stormWarn > 0)
+        {
+            if (--stormWarn > 0) return;
+            if (twin != null || m.voyage != null)
+            {
+                log.add("The storm blew past the Main circle.");
+                stormKind = 0;
+                nextStorm = minutes + STORM_RETRY;
+                return;
+            }
+            stormLeft = STORM_MINUTES;
+            lastBig = minutes;
+            if (stormKind == SQUALL)
+            {
+                squallFrom = m.radius;
+                m.radius = Math.max(m.radiusMin, m.radius * SQUALL_SHRINK);
+                m.radiusTarget = m.radius;
+                log.add("Squall! The Main circle shrinks to " + Math.round(m.radius) + " tiles for " + STORM_MINUTES + " minutes.");
+            }
+            else
+            {
+                log.add("Gale! The Main circle drifts three times as fast for " + STORM_MINUTES + " minutes.");
+            }
+            return;
+        }
+        if (nextStorm <= 0)
+        {
+            Rng dice = new Rng(seed ^ ((storms + 1) * 0x165667B1));
+            nextStorm = minutes + STORM_EVERY_MIN + (int) (dice.next() * (STORM_EVERY_MAX - STORM_EVERY_MIN));
+        }
+        if (minutes < nextStorm) return;
+        if (twin != null || m.voyage != null || forkWarn > 0 || calmLeft > 0)
+        {
+            nextStorm = minutes + STORM_RETRY;
+            return;
+        }
+        Rng dice = new Rng(seed ^ ((storms + 1) * 0x27D4EB2D));
+        stormKind = dice.next() < 0.5 ? GALE : SQUALL;
+        stormWarn = STORM_WARN;
+        log.add("A storm is brewing over the Main circle: a " + (stormKind == GALE ? "gale" : "squall") + " in " + STORM_WARN + " minutes.");
+    }
+
+    /** Storms that have blown over Main and passed. */
+    public int storms()
+    {
+        return storms;
+    }
+
+    /** The storm brewing or blowing: {@link #GALE}, {@link #SQUALL} or 0. */
+    public int stormKind()
+    {
+        return stormKind;
+    }
+
+    /** Minutes of warning left before the storm breaks, 0 if none is brewing. */
+    public int stormWarning()
+    {
+        return stormWarn;
+    }
+
+    /** Minutes the storm has left to blow, 0 if none is. */
+    public int stormLeft()
+    {
+        return stormLeft;
     }
 
     /** How many tiles of land lie along a heading from Main's centre, up to 60. */

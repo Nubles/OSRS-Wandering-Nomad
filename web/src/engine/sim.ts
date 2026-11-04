@@ -71,9 +71,11 @@ export const TAILWIND = 'Tailwind';
 export const ANCHOR = 'Anchor';
 export const RUDDER = 'Rudder';
 export const BRIDGE = 'Bridge';
+export const LANTERN = 'Lantern';
+export const CALM = 'Calm';
 export const COMMON = 'common';
 export const RARE = 'rare';
-const COMMON_BOONS = [EXPAND, TAILWIND, ANCHOR];
+const COMMON_BOONS = [EXPAND, TAILWIND, ANCHOR, LANTERN, CALM];
 const RARE_BOONS = [RUDDER, BRIDGE];
 export const BOONS_HELD = 3;
 export const CLAIM_REACH = 3;
@@ -85,6 +87,8 @@ const RUDDER_TURN = Math.PI / 4;
 const RUDDER_WAY = 150;
 const BRIDGE_MINUTES = 10;
 export const BRIDGE_REACH = 60;
+/** Calm keeps forks and storms off Main for this long, and breaks one that's brewing or blowing. */
+export const CALM_MINUTES = 180;
 const LASTING = 30;
 /** A fork comes a random 30 minutes to 4 played hours after the last one parted, with a 10-minute warning. */
 const FORK_EVERY_MIN = 30;
@@ -100,6 +104,16 @@ const FORK_TRIES = 12;
 const FORK_REACH = 60;
 /** A fork that can't start now (at sea, anchored or too small) tries again this much later. */
 const FORK_RETRY = 30;
+/** Storms over Main, as in NomadSim.java. */
+export const STORM_EVERY_MIN = 360;
+export const STORM_EVERY_MAX = 720;
+export const STORM_WARN = 10;
+export const STORM_MINUTES = 30;
+const STORM_RETRY = 15;
+export const GALE = 1;
+export const SQUALL = 2;
+const GALE_SPEEDUP = 3;
+const SQUALL_SHRINK = 0.75;
 const COMPASS = ['east', 'north-east', 'north', 'north-west', 'west', 'south-west', 'south', 'south-east'];
 
 export interface Temperament {
@@ -200,12 +214,20 @@ export interface SimState {
   bound: number;
   outside: boolean;
   sailingUnlocked: boolean;
+  /** The account's Sailing level, 0 if not known (then every dock counts as in reach). */
+  sailingLevel?: number;
+  /** Quests a dock needs that the account hasn't done. */
+  questsMissing?: string[];
   circles: CircleState[];
   waystones: Waystone[];
   boons: string[];
   pending: string[];
   summons: number;
   bridgeLeft: number;
+  /** Minutes left on Calm, and where a Lantern was lit (0, 0 when unlit). */
+  calmLeft: number;
+  lanternX: number;
+  lanternY: number;
   /** Forks so far, the played minute the next is due (0 until scheduled), and the minute of the last big moment. */
   forks: number;
   nextFork: number;
@@ -216,6 +238,13 @@ export interface SimState {
   /** While forked: the other half, and the minutes since the split. */
   twin?: CircleState;
   forkAge: number;
+  /** Storms so far, the next one's minute, its warning and time left, its kind, and Main's size before a Squall. */
+  storms: number;
+  nextStorm: number;
+  stormWarn: number;
+  stormLeft: number;
+  stormKind: number;
+  squallFrom: number;
 }
 
 export const contains = (c: CircleState, x: number, y: number) => dist(x - c.x, y - c.y) <= c.radius;
@@ -245,6 +274,10 @@ export class NomadSim {
     state.pending ??= [];
     state.summons ??= 0;
     state.bridgeLeft ??= 0;
+    // And runs saved before Calm and Lantern.
+    state.calmLeft ??= 0;
+    state.lanternX ??= 0;
+    state.lanternY ??= 0;
     // And runs saved before forks.
     state.forks ??= 0;
     state.nextFork ??= 0;
@@ -252,6 +285,13 @@ export class NomadSim {
     state.forkWarn ??= 0;
     state.forkAxis ??= 0;
     state.forkAge ??= 0;
+    // And runs saved before storms.
+    state.storms ??= 0;
+    state.nextStorm ??= 0;
+    state.stormWarn ??= 0;
+    state.stormLeft ??= 0;
+    state.stormKind ??= 0;
+    state.squallFrom ??= 0;
   }
 
   static start(geo: Geography, seed: number): NomadSim {
@@ -268,9 +308,10 @@ export class NomadSim {
       circles.push({ regionId: r.id, ...base(r.home.x, r.home.y, rng.next() * Math.PI * 2, REGION_START, REGION_MIN, REGION_MAX) });
     }
     return new NomadSim(geo, {
-      seed: seed | 0, rngState: rng.state, minutes: 0, bound: MAIN, outside: false, sailingUnlocked: false, circles,
-      waystones: [], boons: [], pending: [], summons: 0, bridgeLeft: 0,
+      seed: seed | 0, rngState: rng.state, minutes: 0, bound: MAIN, outside: false, sailingUnlocked: false, sailingLevel: 0, questsMissing: [], circles,
+      waystones: [], boons: [], pending: [], summons: 0, bridgeLeft: 0, calmLeft: 0, lanternX: 0, lanternY: 0,
       forks: 0, nextFork: 0, lastBig: 0, forkWarn: 0, forkAxis: 0, forkAge: 0,
+      storms: 0, nextStorm: 0, stormWarn: 0, stormLeft: 0, stormKind: 0, squallFrom: 0,
     });
   }
 
@@ -350,8 +391,8 @@ export class NomadSim {
     return log.length ? log[0] : null;
   }
 
-  /** Spends the boon at index. side is for Rudder: 1 turns left, -1 right. */
-  useBoon(index: number, side: number): string | null {
+  /** Spends the boon at index. side is for Rudder: 1 turns left, -1 right; player is for Lantern, lit inside your circle. */
+  useBoon(index: number, side: number, player: Tile | null = null): string | null {
     const s = this.state;
     if (index < 0 || index >= s.boons.length) return null;
     const boon = s.boons[index];
@@ -389,11 +430,47 @@ export class NomadSim {
         s.bridgeLeft = BRIDGE_MINUTES;
         line = `Bridge: for 10 minutes you can cross to any circle within ${BRIDGE_REACH} tiles, and walking between them doesn't count as outside.`;
         break;
+      case LANTERN:
+        if (player == null || !contains(c, player.x, player.y)) return null;
+        s.lanternX = player.x;
+        s.lanternY = player.y;
+        line = 'Lantern: the next waystone to rise in your circle rises at the landmark nearest where you lit it.';
+        break;
+      case CALM:
+        line = this.calm();
+        break;
       default:
         return null;
     }
     s.boons.splice(index, 1);
     return line;
+  }
+
+  /** Calm: no fork or storm over Main for 3 hours; a fork's warning or a storm under way breaks off now. As in NomadSim.java. */
+  private calm(): string {
+    const s = this.state;
+    s.calmLeft = CALM_MINUTES;
+    let broke = '';
+    if (s.forkWarn > 0) {
+      s.forkWarn = 0;
+      s.nextFork = s.minutes + FORK_RETRY;
+      broke = " The fork that was coming won't.";
+    }
+    if (s.stormWarn > 0) {
+      s.stormWarn = 0;
+      s.stormKind = 0;
+      s.nextStorm = s.minutes + STORM_RETRY;
+      broke = ' The storm that was brewing holds off.';
+    } else if (s.stormLeft > 0) {
+      const m = this.main;
+      if (s.stormKind === SQUALL) m.radiusTarget = clamp(s.squallFrom, m.radiusMin, m.radiusMax);
+      s.stormLeft = 0;
+      s.stormKind = 0;
+      s.storms++;
+      s.nextStorm = 0;
+      broke = ' The storm breaks off.';
+    }
+    return 'Calm: no fork or storm comes over the Main circle for 3 hours.' + broke;
   }
 
   /** Roughly how many played minutes before a waystone's circle drifts off it. An estimate. */
@@ -460,13 +537,15 @@ export class NomadSim {
       const yours = j === s.bound;
       const pulled = yours && stranded && !!c.regionId;
       const lean = yours && !out && player != null && dist(player.x - c.x, player.y - c.y) >= c.radius - LEAN_BAND ? player : null;
-      const speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1);
+      const speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
+        * (j === MAIN && s.stormLeft > 0 && s.stormKind === GALE ? GALE_SPEEDUP : 1);
       if (j === MAIN && s.twin) part(c, s.twin, this.geo);
       else this.move(c, rng, speedup, yours, pulled ? main : null, pulled ? STRANDED_PULL : 0, lean, log);
     });
     s.minutes++;
     this.tickBoons(log);
     this.fork(player, log);
+    this.storm(log);
 
     if (s.minutes % 5 === 0) {
       const yours = this.bound;
@@ -502,6 +581,7 @@ export class NomadSim {
       }
     });
     if (s.bridgeLeft > 0 && --s.bridgeLeft === 0) log.push('The Bridge closed.');
+    if (s.calmLeft > 0 && --s.calmLeft === 0) log.push('The Calm has lifted: forks and storms can come again.');
   }
 
   private waystones(player: Tile | null, log: string[]) {
@@ -559,16 +639,41 @@ export class NomadSim {
       });
     }
     if (!options.length) return null;
+    const all = options;
     const lasting = options.filter(([k, j]) => minutesLeft(this.circles[j], LANDMARKS[k].x, LANDMARKS[k].y) >= LASTING);
     if (lasting.length) options = lasting;
+    // A lit Lantern takes the lasting landmark nearest it in your circle, else the nearest at all.
+    const lit = s.lanternX !== 0 || s.lanternY !== 0 ? this.nearestLantern(options) ?? this.nearestLantern(all) : null;
     const rng = new Rng(s.seed ^ Math.imul(s.summons + 1, 0x9e3779b9 | 0));
     s.summons++;
-    const [k, j] = options[Math.floor(rng.next() * options.length)];
+    let [k, j] = options[Math.floor(rng.next() * options.length)];
+    if (lit) {
+      [k, j] = lit;
+      s.lanternX = 0;
+      s.lanternY = 0;
+    }
     const pool = tier === RARE ? RARE_BOONS : COMMON_BOONS;
     const l: Landmark = LANDMARKS[k];
     const w: Waystone = { landmark: l.name, x: l.x, y: l.y, circle: j, boon: pool[Math.floor(rng.next() * pool.length)] };
     s.waystones.push(w);
     return `A waystone rose at ${l.name}${j === s.bound ? ' in your circle' : ` in ${this.name(this.circles[j])}`}, holding ${w.boon} (${tier === RARE ? 'rare' : 'common'}).`;
+  }
+
+  /** The option in your circle nearest the lit Lantern, or null if none is in your circle. */
+  private nearestLantern(options: [number, number][]): [number, number] | null {
+    const s = this.state;
+    let best: [number, number] | null = null;
+    let bestD = 0;
+    for (const o of options) {
+      if (o[1] !== s.bound) continue;
+      const l = LANDMARKS[o[0]];
+      const d = dist(l.x - s.lanternX, l.y - s.lanternY);
+      if (best == null || d < bestD) {
+        best = o;
+        bestD = d;
+      }
+    }
+    return best;
   }
 
   private move(c: CircleState, rng: Rng, speedup: number, yours: boolean, toward: CircleState | null, pull: number, lean: Tile | null, log: string[]) {
@@ -751,7 +856,9 @@ export class NomadSim {
   private maybeBoard(c: CircleState, rng: Rng, log: string[]) {
     const port = this.geo.ports.find((p) => contains(c, p.tile.x, p.tile.y));
     if (!port || rng.next() >= BOARD_CHANCE) return;
-    const routes = this.geo.routesFrom(port.name, this.state.sailingUnlocked);
+    const s = this.state;
+    const level = !s.sailingUnlocked ? 0 : s.sailingLevel && s.sailingLevel > 0 ? s.sailingLevel : 99;
+    const routes = this.geo.routesFrom(port.name, level, s.questsMissing ?? []);
     if (routes.length === 0) return;
     const to = routes[Math.floor(rng.next() * routes.length)];
     const dest = this.geo.port(to)!;
@@ -766,6 +873,54 @@ export class NomadSim {
    * Forks: schedules the next one, brings it forward after 4 quiet hours, warns 10 minutes
    * ahead, splits Main in two, and once the halves have parted keeps the one you stand in.
    */
+  /** Brews, starts and ends storms over Main, as in NomadSim.java. */
+  private storm(log: string[]) {
+    const s = this.state;
+    const m = this.main;
+    if (s.stormLeft > 0) {
+      if (--s.stormLeft > 0) return;
+      if (s.stormKind === SQUALL) m.radiusTarget = clamp(s.squallFrom, m.radiusMin, m.radiusMax);
+      log.push(s.stormKind === GALE ? 'The gale has blown itself out.' : 'The squall has passed. The Main circle eases back to its size.');
+      s.stormKind = 0;
+      s.storms++;
+      s.nextStorm = 0;
+      return;
+    }
+    if (s.stormWarn > 0) {
+      if (--s.stormWarn > 0) return;
+      if (s.twin || m.voyage) {
+        log.push('The storm blew past the Main circle.');
+        s.stormKind = 0;
+        s.nextStorm = s.minutes + STORM_RETRY;
+        return;
+      }
+      s.stormLeft = STORM_MINUTES;
+      s.lastBig = s.minutes;
+      if (s.stormKind === SQUALL) {
+        s.squallFrom = m.radius;
+        m.radius = Math.max(m.radiusMin, m.radius * SQUALL_SHRINK);
+        m.radiusTarget = m.radius;
+        log.push(`Squall! The Main circle shrinks to ${javaRound(m.radius)} tiles for ${STORM_MINUTES} minutes.`);
+      } else {
+        log.push(`Gale! The Main circle drifts three times as fast for ${STORM_MINUTES} minutes.`);
+      }
+      return;
+    }
+    if (s.nextStorm <= 0) {
+      const dice = new Rng(s.seed ^ Math.imul(s.storms + 1, 0x165667b1));
+      s.nextStorm = s.minutes + STORM_EVERY_MIN + Math.trunc(dice.next() * (STORM_EVERY_MAX - STORM_EVERY_MIN));
+    }
+    if (s.minutes < s.nextStorm) return;
+    if (s.twin || m.voyage || s.forkWarn > 0 || s.calmLeft > 0) {
+      s.nextStorm = s.minutes + STORM_RETRY;
+      return;
+    }
+    const dice = new Rng(s.seed ^ Math.imul(s.storms + 1, 0x27d4eb2d));
+    s.stormKind = dice.next() < 0.5 ? GALE : SQUALL;
+    s.stormWarn = STORM_WARN;
+    log.push(`A storm is brewing over the Main circle: a ${s.stormKind === GALE ? 'gale' : 'squall'} in ${STORM_WARN} minutes.`);
+  }
+
   private fork(player: Tile | null, log: string[]) {
     const s = this.state;
     const m = this.main;
@@ -801,7 +956,7 @@ export class NomadSim {
     // Pacing: after 4 quiet hours the next fork comes now.
     if (s.minutes - s.lastBig >= QUIET) s.nextFork = Math.min(s.nextFork, s.minutes);
     if (s.minutes < s.nextFork) return;
-    if (m.voyage || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS) {
+    if (m.voyage || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS || s.stormWarn > 0 || s.stormLeft > 0 || s.calmLeft > 0) {
       s.nextFork = s.minutes + FORK_RETRY;
       return;
     }

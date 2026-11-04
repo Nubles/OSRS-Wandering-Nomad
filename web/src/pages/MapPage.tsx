@@ -245,7 +245,7 @@ export function MapPage({ geo, route }: Props) {
 
   const spendBoon = (i: number, side: number) => {
     if (!s) return;
-    const line = s.sim.useBoon(i, side);
+    const line = s.sim.useBoon(i, side, s.player);
     if (line) setLog((l) => [{ minute: s.sim.state.minutes, line }, ...l].slice(0, LOG_LIMIT));
     refresh();
   };

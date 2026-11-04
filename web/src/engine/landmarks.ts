@@ -22,13 +22,14 @@ export const LANDMARKS: Landmark[] = ([
   ['Lumber Yard', 3302, 3490],
   ['Digsite', 3360, 3417],
   ['Paterdomus', 3405, 3488],
+  // Asgarnia, north of Falador; listed here to keep the order both engines share
   ['Ice Mountain', 3008, 3478],
   ["Black Knights' Fortress", 3010, 3506],
   // Asgarnia
   ['Falador Park', 2994, 3376],
   ['Port Sarim', 3028, 3217],
   ['Rimmington', 2957, 3214],
-  ['Crafting Guild', 2935, 3263],
+  ['Crafting Guild', 2933, 3297],
   ['Mudskipper Point', 2995, 3115],
   ['Taverley', 2895, 3443],
   ['Burthorpe', 2899, 3544],
