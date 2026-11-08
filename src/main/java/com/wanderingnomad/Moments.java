@@ -374,6 +374,19 @@ final class Moments
             OMEN, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
     }
 
+    static Banner bestiary(String monster, int count, int renown, boolean waystone)
+    {
+        return new Banner(String.format("%,d %s", count, monster), "Bestiary milestone. +" + renown + " renown"
+            + (waystone ? ", and a waystone rises." : "."), GOLD, Icon.STAR, count >= 1_000,
+            count >= 1_000 ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.GE_COIN_TINKLE);
+    }
+
+    static Banner bestiaryTitle(String title, int count, String monster)
+    {
+        return new Banner("You are " + title, String.format("%,d %s kills inside your circle.", count, monster), GOLD, Icon.STAR, true,
+            SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
     static Banner rivalNear(String name, Color colour)
     {
         return new Banner(name + " is near", "Their circle touches yours.", colour, Icon.CROSSING, false,

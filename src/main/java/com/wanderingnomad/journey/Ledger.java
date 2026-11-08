@@ -48,6 +48,8 @@ public final class Ledger
         {
             out.add("Oath: " + oath.name + (j.isDone(oath) ? ", kept" : ", " + Math.round(j.progress(oath) * 100) + "% of the way"));
         }
+        out.add("Bestiary: " + Bestiary.reached(j, 100) + " monsters past 100 kills, " + Bestiary.reached(j, 1_000) + " past 1,000"
+            + (r.titles().isEmpty() ? "" : " | titles " + String.join(", ", r.titles())));
         out.add("Trials " + j.doneCount() + "/" + trials.size() + " done");
         List<String> latest = new ArrayList<>();
         for (String id : j.done)

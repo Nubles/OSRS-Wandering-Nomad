@@ -3,6 +3,7 @@ package com.wanderingnomad;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
+import com.wanderingnomad.journey.Bestiary;
 import com.wanderingnomad.journey.Journey;
 import com.wanderingnomad.journey.JourneyChat;
 import com.wanderingnomad.journey.JourneyWatch;
@@ -353,6 +354,8 @@ public class NomadPlugin extends Plugin
         List<String> lines = sim.step(surface);
         report(lines);
         journey.minute(!outsideNow());
+        String owed = Bestiary.due(journey, sim.minutes());
+        if (owed != null) summon(owed, "A Bestiary milestone");
         journey.set(Trials.PLAYED, sim.minutes());
         if (config.ruleGuard())
         {
@@ -437,11 +440,44 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onNpcLootReceived(NpcLootReceived ev)
     {
-        if (sim == null || !config.ruleGuard() || !outsideNow()) return;
+        if (sim == null) return;
         NPC npc = ev.getNpc();
         String name = npc == null || npc.getName() == null ? "something" : Text.removeTags(npc.getName());
+        boolean inside = surface != null && !outsideNow();
+        if (npc != null && npc.getName() != null)
+        {
+            settleBestiary(Bestiary.kill(journey, name, npc.getCombatLevel(), inside, sim.minutes()));
+        }
+        if (!config.ruleGuard() || !outsideNow()) return;
         report(java.util.Collections.singletonList(guard.kill(sim.minutes(), name, ev.getItems().size())));
         saveGuard();
+    }
+
+    /** Pays a Bestiary milestone: its renown, a waystone (now or after the hourly cap) and a title at 10,000. */
+    private void settleBestiary(Bestiary.Result r)
+    {
+        if (r == null) return;
+        Rank up = renown.add(r.renown);
+        journey.earn(r.renown);
+        String count = String.format("%,d", r.count);
+        if (r.title != null && renown.earnTitle(r.title))
+        {
+            show(Moments.bestiaryTitle(r.title, r.count, r.monster));
+            report(java.util.Collections.singletonList(count + " " + r.monster + " kills inside your circle. You are now " + r.title
+                + ", on every run. +" + r.renown + " renown."));
+        }
+        else
+        {
+            show(Moments.bestiary(r.monster, r.count, r.renown, r.waystone != null || r.waiting));
+            report(java.util.Collections.singletonList("Bestiary: " + count + " " + r.monster + " kills inside your circle. +" + r.renown
+                + " renown." + (r.waiting ? " Its waystone rises when the hour since the last one is up." : "")));
+        }
+        if (up != null) show(Moments.rankUp(up));
+        if (r.waystone != null) summon(r.waystone, count + " " + r.monster + " kills");
+        applyPalette();
+        saveRenown();
+        saveJourney();
+        publish();
     }
 
     @Subscribe

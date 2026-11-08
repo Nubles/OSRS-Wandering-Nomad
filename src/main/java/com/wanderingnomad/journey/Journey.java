@@ -41,6 +41,9 @@ public final class Journey
     /** The rival this run races, by name and seed, if it was started on theirs; null if not. */
     String race;
     int raceSeed;
+    /** The played minute the last Bestiary waystone rose, and those still waiting on the hourly cap. */
+    int bestiaryAt;
+    List<String> bestiaryOwed = new ArrayList<>();
     /** Renown this run has earned: trials, omens and a kept oath. */
     int earned;
 
@@ -52,6 +55,7 @@ public final class Journey
         if (sets == null) sets = new HashMap<>();
         if (done == null) done = new LinkedHashSet<>();
         if (carried == null) carried = new HashSet<>();
+        if (bestiaryOwed == null) bestiaryOwed = new ArrayList<>();
         return this;
     }
 

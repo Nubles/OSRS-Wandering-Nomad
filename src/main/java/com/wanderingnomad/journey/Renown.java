@@ -17,6 +17,8 @@ public final class Renown
     int runs;
     /** Oaths kept, over every run; the first unlocks the Oathbound edge colour. */
     int oathsKept;
+    /** Titles earned for 10,000 kills of one monster, such as "Goblin Bane", kept across runs. */
+    java.util.Set<String> titles = new java.util.TreeSet<>();
     public static final String OATHBOUND = "Oathbound";
     public static final int OATHBOUND_COLOUR = 0xFFF2C2;
     public static final int OATH_RENOWN = 300;
@@ -24,6 +26,7 @@ public final class Renown
     public Renown ready()
     {
         if (times == null) times = new HashMap<>();
+        if (titles == null) titles = new java.util.TreeSet<>();
         return this;
     }
 
@@ -132,6 +135,17 @@ public final class Renown
     {
         oathsKept++;
         return add(OATH_RENOWN);
+    }
+
+    /** Adds a title; true if it's new to the account. */
+    public boolean earnTitle(String title)
+    {
+        return titles.add(title);
+    }
+
+    public java.util.Set<String> titles()
+    {
+        return java.util.Collections.unmodifiableSet(titles);
     }
 
     public int oathsKept()
