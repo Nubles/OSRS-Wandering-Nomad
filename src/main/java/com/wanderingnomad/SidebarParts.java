@@ -665,7 +665,7 @@ final class SidebarParts
     static final class Journey extends Part
     {
         static final int RANK_H = 50;
-        static final int ROW_H = 36;
+        static final int ROW_H = 39;
 
         Journey()
         {
@@ -702,14 +702,15 @@ final class SidebarParts
                 int leftW = sm.stringWidth(left);
                 text(g, small, fit(sm, "Omen: " + j.omen, SIDEBAR_WIDTH - leftW - 28), 10, y + 13, omen);
                 text(g, small, left, SIDEBAR_WIDTH - 8 - leftW, y + 13, Color.WHITE);
-                bar(g, 10, y + 18, SIDEBAR_WIDTH - 20, 4, j.omenProgress, omen);
-                text(g, small, fit(sm, j.omenAsk, SIDEBAR_WIDTH - 20), 10, y + 32, MUTED);
+                bar(g, 10, y + 17, SIDEBAR_WIDTH - 20, 4, j.omenProgress, omen);
+                // The small font's caps stand about 9px tall: a baseline at +34 leaves a few pixels under the bar.
+                text(g, small, fit(sm, j.omenAsk, SIDEBAR_WIDTH - 20), 10, y + 34, MUTED);
             }
             else
             {
                 // Two lines: the whole sentence is wider than the sidebar in the RuneScape small font.
-                text(g, small, "No omen yet.", 10, y + 15, MUTED);
-                text(g, small, "One comes every few hours.", 10, y + 29, MUTED);
+                text(g, small, "No omen yet.", 10, y + 16, MUTED);
+                text(g, small, "One comes every few hours.", 10, y + 31, MUTED);
             }
             y += ROW_H + 4;
             for (JourneyView.Row r : j.next)
@@ -719,8 +720,8 @@ final class SidebarParts
                 int tierW = sm.stringWidth(tier);
                 text(g, small, fit(sm, r.name, SIDEBAR_WIDTH - tierW - 28), 10, y + 13, Color.WHITE);
                 text(g, small, tier, SIDEBAR_WIDTH - 8 - tierW, y + 13, r.colour);
-                bar(g, 10, y + 18, SIDEBAR_WIDTH - 20, 4, r.progress, r.colour);
-                text(g, small, fit(sm, r.count + " · " + r.detail, SIDEBAR_WIDTH - 20), 10, y + 32, MUTED);
+                bar(g, 10, y + 17, SIDEBAR_WIDTH - 20, 4, r.progress, r.colour);
+                text(g, small, fit(sm, r.count + " · " + r.detail, SIDEBAR_WIDTH - 20), 10, y + 34, MUTED);
                 y += ROW_H + 4;
             }
             if (j.next.isEmpty()) text(g, small, "Every trial is done. Legendary.", 10, y + 14, Moments.GOLD);
