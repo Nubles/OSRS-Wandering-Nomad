@@ -37,13 +37,26 @@ public final class RunCode
 
     public static String decode(String code)
     {
+        return decode(code, Integer.MAX_VALUE);
+    }
+
+    /**
+     * Decodes a run code that came from somewhere else, such as a rival's run off the relay,
+     * giving up past {@code maxBytes} of JSON so a bad code can't fill memory.
+     */
+    public static String decode(String code, int maxBytes)
+    {
         if (!code.startsWith(PREFIX)) throw new IllegalArgumentException("Not a Nomad UIM run code");
         byte[] gz = Base64.getUrlDecoder().decode(code.substring(PREFIX.length()));
         try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(gz)))
         {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[4096];
-            for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            for (int n; (n = in.read(buf)) > 0; )
+            {
+                out.write(buf, 0, n);
+                if (out.size() > maxBytes) throw new IllegalArgumentException("Run code too large");
+            }
             return new String(out.toByteArray(), StandardCharsets.UTF_8);
         }
         catch (IOException e)

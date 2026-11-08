@@ -3,6 +3,17 @@ package com.wanderingnomad;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
+import com.wanderingnomad.journey.Bestiary;
+import com.wanderingnomad.journey.Journey;
+import com.wanderingnomad.journey.JourneyChat;
+import com.wanderingnomad.journey.JourneyWatch;
+import com.wanderingnomad.journey.Ledger;
+import com.wanderingnomad.journey.Omen;
+import com.wanderingnomad.journey.Omens;
+import com.wanderingnomad.journey.Rank;
+import com.wanderingnomad.journey.Renown;
+import com.wanderingnomad.journey.Trial;
+import com.wanderingnomad.journey.Trials;
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Forecast;
 import com.wanderingnomad.sim.Geography;
@@ -43,6 +54,8 @@ import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.Quest;
+import net.runelite.api.QuestState;
 import net.runelite.api.Scene;
 import net.runelite.api.Skill;
 import net.runelite.api.WorldView;
@@ -94,11 +107,13 @@ public class NomadPlugin extends Plugin
     static final String LIVE_TOKEN_KEY = "liveToken";
     static final String GUARD_KEY = "guard";
     static final String MILESTONES_KEY = "milestones";
+    /** The run's trials, and the account's renown, rank and edge colour, which outlive every run. */
+    static final String JOURNEY_KEY = "journey";
+    static final String RENOWN_KEY = "renown";
     /** Ticks after a run loads before milestones are read, so the account's totals have arrived. */
     private static final int MILESTONE_DELAY = 10;
     /** "Your Zulrah kill count is: 1." and the like; the first kill of any boss summons a rare waystone. */
-    private static final Pattern KILL_COUNT = Pattern.compile(
-        "Your (?:(.+?) (?:kill|chest) count|(?:completed|subdued) (.+?) count) is: ([\\d,]+)");
+    private static final Pattern KILL_COUNT = JourneyChat.KILL_COUNT;
     /** Played minutes between Forecasts; each one imagines 40 six-hour futures off the client thread. */
     static final int FORECAST_EVERY = 15;
     /** Warn once the edge will reach you within this many played minutes. */
@@ -159,6 +174,12 @@ public class NomadPlugin extends Plugin
 
     private NomadPanel panel;
     private LiveShare live;
+    private volatile RivalWatch rivalWatch;
+    /** A race asked for from the sidebar, waiting for the new run to start. Client thread. */
+    private String raceName;
+    private int raceSeed;
+    /** Rivals whose circle touched yours at the last look, by live code. */
+    private final java.util.Set<String> rivalsTouching = new java.util.HashSet<>();
     private NavigationButton navButton;
 
     private NomadSim sim;
@@ -171,6 +192,13 @@ public class NomadPlugin extends Plugin
     private RuleGuard guard = new RuleGuard();
     private Milestones milestones = new Milestones();
     private int milestoneWait;
+    private volatile Journey journey = new Journey();
+    private Renown renown = new Renown();
+    private final JourneyWatch watch = new JourneyWatch();
+    /** Every trial, built once the game's skill count is known. */
+    private List<Trial> trials;
+    /** The Main circle's edge colour, from the account's rank; any thread reads it. */
+    static volatile int mainColour = Rank.WANDERER.colour;
     private final Map<Skill, Integer> lastXp = new EnumMap<>(Skill.class);
     /** The next 15 minutes, worked out each minute and whenever you step onto a new tile. */
     private Radar radar;
@@ -192,8 +220,10 @@ public class NomadPlugin extends Plugin
     protected void startUp()
     {
         live = new LiveShare(okHttpClient);
+        rivalWatch = new RivalWatch(okHttpClient, gson);
+        trials = Trials.all(Skill.values().length);
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
-            this::copyRunCode, this::copyLiveLink);
+            this::copyRunCode, this::copyLiveLink, this::pickPalette, this::swearOath);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
@@ -301,6 +331,7 @@ public class NomadPlugin extends Plugin
         surface = locate();
         if (before != null && surface != null) stats.walked(surface.x - before.x, surface.y - before.y);
         readMilestones();
+        watchJourney();
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
         // Moments are read after the minute's step below too; here they catch stepping over the edge.
         announce();
@@ -318,9 +349,14 @@ public class NomadPlugin extends Plugin
     private void minute()
     {
         sim.setSailingUnlocked(config.sailingUnlocked());
+        sim.setSailing(client.getRealSkillLevel(Skill.SAILING), docksQuestsMissing());
         int boundBefore = sim.boundIndex();
         List<String> lines = sim.step(surface);
         report(lines);
+        journey.minute(!outsideNow());
+        String owed = Bestiary.due(journey, sim.minutes());
+        if (owed != null) summon(owed, "A Bestiary milestone");
+        journey.set(Trials.PLAYED, sim.minutes());
         if (config.ruleGuard())
         {
             List<String> notes = guard.endMinute(sim.minutes());
@@ -353,8 +389,11 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onChatMessage(ChatMessage ev)
     {
-        if (sim == null || ev.getType() != ChatMessageType.GAMEMESSAGE) return;
-        Matcher m = KILL_COUNT.matcher(Text.removeTags(ev.getMessage()));
+        if (sim == null || (ev.getType() != ChatMessageType.GAMEMESSAGE && ev.getType() != ChatMessageType.SPAM)) return;
+        String line = Text.removeTags(ev.getMessage());
+        if (JourneyChat.read(line, journey)) checkTrials();
+        if (ev.getType() != ChatMessageType.GAMEMESSAGE) return;
+        Matcher m = KILL_COUNT.matcher(line);
         if (!m.find() || !"1".equals(m.group(3).replace(",", ""))) return;
         summon(NomadSim.RARE, "Your first " + (m.group(1) != null ? m.group(1) : m.group(2)) + " kill");
     }
@@ -365,9 +404,20 @@ public class NomadPlugin extends Plugin
         clientThread.invokeLater(() ->
         {
             if (sim == null) return;
-            String line = sim.useBoon(index, side);
-            if (line == null) return;
+            Tile at = locate();
+            String line = sim.useBoon(index, side, at);
+            if (line == null)
+            {
+                if (index < sim.boons().size() && NomadSim.LANTERN.equals(sim.boons().get(index)))
+                {
+                    report(java.util.Collections.singletonList("Light the Lantern while you stand inside your circle."));
+                    publish();
+                }
+                return;
+            }
             report(java.util.Collections.singletonList(line));
+            journey.add(Trials.BOONS, 1);
+            checkTrials();
             save();
             live.markDirty();
             look();
@@ -390,11 +440,44 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onNpcLootReceived(NpcLootReceived ev)
     {
-        if (sim == null || !config.ruleGuard() || !outsideNow()) return;
+        if (sim == null) return;
         NPC npc = ev.getNpc();
         String name = npc == null || npc.getName() == null ? "something" : Text.removeTags(npc.getName());
+        boolean inside = surface != null && !outsideNow();
+        if (npc != null && npc.getName() != null)
+        {
+            settleBestiary(Bestiary.kill(journey, name, npc.getCombatLevel(), inside, sim.minutes()));
+        }
+        if (!config.ruleGuard() || !outsideNow()) return;
         report(java.util.Collections.singletonList(guard.kill(sim.minutes(), name, ev.getItems().size())));
         saveGuard();
+    }
+
+    /** Pays a Bestiary milestone: its renown, a waystone (now or after the hourly cap) and a title at 10,000. */
+    private void settleBestiary(Bestiary.Result r)
+    {
+        if (r == null) return;
+        Rank up = renown.add(r.renown);
+        journey.earn(r.renown);
+        String count = String.format("%,d", r.count);
+        if (r.title != null && renown.earnTitle(r.title))
+        {
+            show(Moments.bestiaryTitle(r.title, r.count, r.monster));
+            report(java.util.Collections.singletonList(count + " " + r.monster + " kills inside your circle. You are now " + r.title
+                + ", on every run. +" + r.renown + " renown."));
+        }
+        else
+        {
+            show(Moments.bestiary(r.monster, r.count, r.renown, r.waystone != null || r.waiting));
+            report(java.util.Collections.singletonList("Bestiary: " + count + " " + r.monster + " kills inside your circle. +" + r.renown
+                + " renown." + (r.waiting ? " Its waystone rises when the hour since the last one is up." : "")));
+        }
+        if (up != null) show(Moments.rankUp(up));
+        if (r.waystone != null) summon(r.waystone, count + " " + r.monster + " kills");
+        applyPalette();
+        saveRenown();
+        saveJourney();
+        publish();
     }
 
     @Subscribe
@@ -413,6 +496,13 @@ public class NomadPlugin extends Plugin
     NomadSim sim()
     {
         return sim;
+    }
+
+    /** Friends' live runs being followed; empty when Rivals is off. Any thread. */
+    List<com.wanderingnomad.rival.Rival> rivals()
+    {
+        RivalWatch w = rivalWatch;
+        return w == null ? java.util.Collections.emptyList() : w.rivals();
     }
 
     /** The last parting's faded half while it's still dissolving; null once it's gone. Any thread. */
@@ -434,6 +524,20 @@ public class NomadPlugin extends Plugin
         fade = f.again(System.currentTimeMillis());
         reply("Replaying the faded half's dissolve.");
         publish();
+    }
+
+    /** The map regions walked inside your circle this run, as region ids. Client thread. */
+    java.util.Set<String> footprint()
+    {
+        Journey j = journey;
+        return j == null ? java.util.Collections.emptySet() : j.items(Trials.SQUARES);
+    }
+
+    /** The omen under way, or null. Any thread. */
+    Omen omen()
+    {
+        Journey j = journey;
+        return j == null ? null : Omens.current(j);
     }
 
     SpotCheck spots()
@@ -649,6 +753,8 @@ public class NomadPlugin extends Plugin
         bannerOverlay.clear();
         timeline.clear();
         stats = new RunStats();
+        journey = new Journey();
+        watch.reset();
     }
 
     Tile surface()
@@ -713,14 +819,16 @@ public class NomadPlugin extends Plugin
         }
         if (run == null || run.sim == null)
         {
-            int seed = seed();
+            int seed = raceName != null ? raceSeed : seed();
             sim = NomadSim.start(seed);
             surface = null;
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
+            configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY);
             List<String> lines = new ArrayList<>();
             lines.add("A new run started with seed " + seed + ". You're in the Main circle, centred on Lumbridge.");
+            if (raceName != null) lines.add("You're racing " + raceName + " on their seed: your circles start out the same, and part ways as you each play.");
             report(lines);
             save();
         }
@@ -732,6 +840,13 @@ public class NomadPlugin extends Plugin
         loadGuard();
         loadMilestones();
         loadStats();
+        loadJourney();
+        loadRenown();
+        if (run == null || run.sim == null)
+        {
+            renown.newRun();
+            saveRenown();
+        }
         ticks = 0;
         diariesRead = false;
         forecastSoon();
@@ -767,12 +882,262 @@ public class NomadPlugin extends Plugin
             milestoneWait--;
             return;
         }
+        readAccountTrials();
         boolean first = milestones.levelMark < 0;
         int earned = milestones.earned(client.getTotalLevel(), client.getVarpValue(VarPlayerID.QP));
         if (first && milestones.levelMark >= 0) saveMilestones();
         if (earned <= 0) return;
         for (int i = 0; i < earned; i++) summon(NomadSim.COMMON, "A milestone");
         saveMilestones();
+    }
+
+    /** The quests a Sailing dock needs that this account hasn't finished, so Main never sails where you can't dock. */
+    private List<String> docksQuestsMissing()
+    {
+        List<String> missing = new ArrayList<>(2);
+        if (Quest.THE_CORSAIR_CURSE.getState(client) != QuestState.FINISHED) missing.add(Geography.CORSAIR_CURSE);
+        if (Quest.THE_FREMENNIK_TRIALS.getState(client) != QuestState.FINISHED) missing.add(Geography.FREMENNIK_TRIALS);
+        return missing;
+    }
+
+    /**
+     * The account's side of the trials: total level, quest points, 99s and diary tiers. Read only
+     * once the totals have arrived after a load, so the run's start values are the real ones.
+     */
+    private void readAccountTrials()
+    {
+        int total = client.getTotalLevel();
+        if (total <= 0) return;
+        journey.set(Trials.TOTAL_LEVEL, total);
+        journey.set(Trials.QUEST_POINTS, Math.max(0, client.getVarpValue(VarPlayerID.QP)));
+        int maxed = 0;
+        for (Skill skill : Skill.values())
+        {
+            if (client.getRealSkillLevel(skill) >= 99) maxed++;
+        }
+        journey.set(Trials.MAXED, maxed);
+        int all = 0;
+        for (Region region : Geography.REGIONS)
+        {
+            int done = 0;
+            for (String diary : region.diaries)
+            {
+                for (int varbit : DiaryVarbits.TIERS.get(diary))
+                {
+                    if (DiaryVarbits.done(varbit, client.getVarbitValue(varbit))) done++;
+                }
+            }
+            if (!region.diaries.isEmpty()) journey.set(Trials.diaryOf(region), done);
+            all += done;
+        }
+        journey.set(Trials.DIARY_TIERS, all);
+    }
+
+    /** The circles' side of the trials, every tick. */
+    private void watchJourney()
+    {
+        journey.set(Trials.WALKED, stats.tilesWalked);
+        journey.set(Trials.CLAIMED, stats.claimed);
+        journey.set(Trials.CROSSINGS, stats.crossings);
+        boolean inside = surface != null && !outsideNow();
+        watch.tick(sim, surface, inside, journey);
+        watchRivals(inside);
+        Omen before = Omens.current(journey);
+        settleOmen(Omens.minute(journey, sim, surface, inside), before);
+        checkTrials();
+    }
+
+    /**
+     * Rivals, every tick: reads any that are due, tells when a rival's circle first touches yours,
+     * and counts a rendezvous once per rival per run.
+     */
+    private void watchRivals(boolean inside)
+    {
+        long now = System.currentTimeMillis();
+        rivalWatch.tick(config.followRivals(), config.rivals(),
+            configManager.getRSProfileConfiguration(NomadConfig.GROUP, LIVE_CODE_KEY), now);
+        java.util.Set<String> touching = new java.util.HashSet<>();
+        for (com.wanderingnomad.rival.Rival r : rivalWatch.rivals())
+        {
+            if (r.fresh(now) && com.wanderingnomad.rival.Rivals.gap(sim, r) == 0)
+            {
+                touching.add(r.code);
+                if (!rivalsTouching.contains(r.code))
+                {
+                    show(Moments.rivalNear(r.name, new java.awt.Color(r.colour)));
+                    report(java.util.Collections.singletonList(r.name + "'s circle touches yours. Meet inside each other's circles for a Rendezvous."));
+                }
+            }
+            if (com.wanderingnomad.rival.Rivals.meeting(sim, surface, inside, r, now) && journey.addTo(Trials.RENDEZVOUS, r.code))
+            {
+                show(Moments.rendezvous(r.name, new java.awt.Color(r.colour)));
+                report(java.util.Collections.singletonList("Rendezvous with " + r.name + "! You stand in each other's circles."));
+                saveJourney();
+            }
+        }
+        rivalsTouching.clear();
+        rivalsTouching.addAll(touching);
+    }
+
+    /** Tells of an omen dealt, met or missed; a met one pays renown and summons a waystone. Client thread. */
+    private void settleOmen(Omens.Result result, Omen before)
+    {
+        switch (result)
+        {
+            case DEALT:
+            {
+                Omen o = Omens.current(journey);
+                show(Moments.omen(o));
+                report(java.util.Collections.singletonList("An omen: " + o.title() + ". " + o.ask() + " You have "
+                    + NomadPanel.time(o.deadline() - sim.minutes()) + "."));
+                break;
+            }
+            case MET:
+            {
+                Rank up = renown.add(Omens.RENOWN);
+                journey.earn(Omens.RENOWN);
+                show(Moments.omenMet(before));
+                report(java.util.Collections.singletonList("Omen met: " + before.title() + ". +" + Omens.RENOWN + " renown."));
+                if (up != null) show(Moments.rankUp(up));
+                applyPalette();
+                saveRenown();
+                summon(NomadSim.COMMON, "A met omen");
+                break;
+            }
+            case MISSED:
+                show(Moments.omenMissed(before));
+                report(java.util.Collections.singletonList("The omen passed: " + before.title() + ". Another will come."));
+                break;
+            default:
+                return;
+        }
+        saveJourney();
+        publish();
+    }
+
+    /** Pays out every trial now done: a banner, a chat line and its renown, and a rank up if it's earned. */
+    private void checkTrials()
+    {
+        if (sim == null || trials == null) return;
+        List<Trial> got = journey.check(trials);
+        if (got.isEmpty()) return;
+        for (Trial t : got)
+        {
+            Rank up = renown.award(t);
+            journey.earn(t.tier.renown);
+            show(Moments.trial(t));
+            if (t.id.equals(journey.oath()))
+            {
+                Rank oathUp = renown.keepOath();
+                journey.earn(Renown.OATH_RENOWN);
+                up = oathUp != null ? oathUp : up;
+                show(Moments.oathKept(t));
+                report(java.util.Collections.singletonList("Oath kept: " + t.name + "! +" + Renown.OATH_RENOWN
+                    + " renown, and the " + Renown.OATHBOUND + " edge colour is yours on every run."));
+            }
+            report(java.util.Collections.singletonList("Trial complete: " + t.name + " (" + t.tier.label + ", +" + t.tier.renown
+                + " renown). " + t.detail));
+            if (up != null)
+            {
+                show(Moments.rankUp(up));
+                report(java.util.Collections.singletonList("You're now a " + up.title + ". The " + up.palette
+                    + " edge colour is unlocked in the sidebar."));
+            }
+        }
+        applyPalette();
+        saveJourney();
+        saveRenown();
+        publish();
+    }
+
+    private void applyPalette()
+    {
+        mainColour = renown.paletteColour();
+    }
+
+    /** Swears the run's oath from the sidebar, by its trial's name; "None" clears it. */
+    private void swearOath(String name)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null || trials == null) return;
+            Trial pick = null;
+            for (Trial t : trials)
+            {
+                if (Trials.OATHS.contains(t.id) && t.name.equals(name)) pick = t;
+            }
+            if (pick == null && !"None".equals(name)) return;
+            String before = journey.oath();
+            if (!journey.swear(pick, sim.minutes()))
+            {
+                report(java.util.Collections.singletonList("Your oath is sworn: it can only be changed in the hour after swearing it."));
+                publish();
+                return;
+            }
+            if (pick != null && !pick.id.equals(before))
+            {
+                report(java.util.Collections.singletonList("You swore an oath: " + pick.name + ". " + pick.detail
+                    + " Keep it for +" + Renown.OATH_RENOWN + " renown."));
+            }
+            saveJourney();
+            publish();
+        });
+    }
+
+    /** Picks an unlocked edge colour from the sidebar. */
+    private void pickPalette(String name)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (!renown.pick(name)) return;
+            applyPalette();
+            saveRenown();
+            publish();
+        });
+    }
+
+    private void loadJourney()
+    {
+        String saved = configManager.getRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY);
+        Journey loaded = null;
+        try
+        {
+            loaded = saved == null ? null : gson.fromJson(saved, Journey.class);
+        }
+        catch (JsonParseException e)
+        {
+            log.warn("Nomad UIM: couldn't read the run's trials, so they start again", e);
+        }
+        journey = loaded == null ? new Journey() : loaded.ready();
+        if (loaded == null && raceName != null) journey.race(raceName, raceSeed);
+        raceName = null;
+        watch.reset();
+    }
+
+    private void loadRenown()
+    {
+        String saved = configManager.getRSProfileConfiguration(NomadConfig.GROUP, RENOWN_KEY);
+        Renown loaded = null;
+        try
+        {
+            loaded = saved == null ? null : gson.fromJson(saved, Renown.class);
+        }
+        catch (JsonParseException e)
+        {
+            log.warn("Nomad UIM: couldn't read the account's renown, so it was left alone and starts from zero here", e);
+        }
+        renown = loaded == null ? new Renown() : loaded.ready();
+        applyPalette();
+    }
+
+    private void saveJourney()
+    {
+        if (sim != null) configManager.setRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY, gson.toJson(journey));
+    }
+
+    private void saveRenown()
+    {
+        configManager.setRSProfileConfiguration(NomadConfig.GROUP, RENOWN_KEY, gson.toJson(renown));
     }
 
     private void summon(String tier, String why)
@@ -830,6 +1195,7 @@ public class NomadPlugin extends Plugin
     {
         if (sim == null) return;
         saveStats();
+        saveJourney();
         configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(new SavedRun(sim, surface)));
     }
 
@@ -869,11 +1235,21 @@ public class NomadPlugin extends Plugin
         });
     }
 
-    private void newRunFromPanel()
+    /** {@code race}: a rival's name to start on their seed, or null for the usual seed. */
+    private void newRunFromPanel(String race)
     {
         clientThread.invokeLater(() ->
         {
             if (client.getGameState() != GameState.LOGGED_IN) return;
+            raceName = null;
+            for (com.wanderingnomad.rival.Rival r : rivals())
+            {
+                if (r.name.equals(race) && r.latest() != null)
+                {
+                    raceName = r.name;
+                    raceSeed = r.latest().sim.seed();
+                }
+            }
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY);
             sim = null;
             runLog.clear();
@@ -999,6 +1375,21 @@ public class NomadPlugin extends Plugin
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
+        view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials, sim.minutes());
+        if (sim != null && journey != null && renown != null && trials != null) view.journey.ledger = Ledger.text(sim, journey, renown, trials);
+        if (sim != null)
+        {
+            List<String> lines = new ArrayList<>();
+            long now = System.currentTimeMillis();
+            List<String> names = new ArrayList<>();
+            for (com.wanderingnomad.rival.Rival r : rivals())
+            {
+                lines.add(com.wanderingnomad.rival.Rivals.line(sim, r, now));
+                if (r.latest() != null) names.add(r.name);
+            }
+            view.journey.rivals = lines;
+            view.journey.rivalNames = names;
+        }
         SwingUtilities.invokeLater(() -> panel.display(view));
     }
 
@@ -1017,7 +1408,7 @@ public class NomadPlugin extends Plugin
 
     static Color colour(Circle c, int alpha)
     {
-        int rgb = c.colour();
+        int rgb = c.isMain() ? mainColour : c.colour();
         return new Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, alpha);
     }
 }

@@ -41,35 +41,48 @@ public final class Geography
         public final String name;
         /** A land tile at the dock, where the Main circle's centre lands after a voyage. */
         public final Tile tile;
+        /** The Sailing level its docking point needs, as the wiki's Docking points page lists it. */
+        public final int sailing;
+        /** A quest its docking point needs done, or null. */
+        public final String quest;
 
-        Port(String name, int chunkX, int chunkY)
+        Port(String name, int chunkX, int chunkY, int sailing, String quest)
         {
             this.name = name;
             this.tile = nearestLand(chunkX * 64 + 32, chunkY * 64 + 32);
+            this.sailing = sailing;
+            this.quest = quest;
         }
     }
 
-    /** Docks by map chunk, as Fate Locked's travel table lists them (data/travelLinks.ts). */
+    public static final String CORSAIR_CURSE = "The Corsair Curse";
+    public static final String FREMENNIK_TRIALS = "The Fremennik Trials";
+
+    /**
+     * Docks by map chunk, as Fate Locked's travel table lists them (data/travelLinks.ts), with
+     * each docking point's Sailing level and quest from oldschool.runescape.wiki/w/Docking_points
+     * (East Ardougne's is the wiki's "Ardougne").
+     */
     public static final List<Port> PORTS = Collections.unmodifiableList(Arrays.asList(
-        new Port("Port Sarim", 47, 50),
-        new Port("Musa Point", 46, 49),
-        new Port("Rimmington", 45, 50),
-        new Port("Brimhaven", 43, 50),
-        new Port("East Ardougne", 41, 51),
-        new Port("Catherby", 43, 53),
-        new Port("Port Khazard", 41, 49),
-        new Port("Corsair Cove", 40, 44),
-        new Port("Void Knights' Outpost", 41, 41),
-        new Port("Entrana", 44, 52),
-        new Port("Port Piscarilius", 28, 57),
-        new Port("Land's End", 23, 53),
-        new Port("Rellekka", 41, 57),
-        new Port("Waterbirth Island", 39, 58)
+        new Port("Port Sarim", 47, 50, 1, null),
+        new Port("Musa Point", 46, 49, 10, null),
+        new Port("Rimmington", 45, 50, 18, null),
+        new Port("Brimhaven", 43, 50, 25, null),
+        new Port("East Ardougne", 41, 51, 28, null),
+        new Port("Catherby", 43, 53, 20, null),
+        new Port("Port Khazard", 41, 49, 30, null),
+        new Port("Corsair Cove", 40, 44, 40, CORSAIR_CURSE),
+        new Port("Void Knights' Outpost", 41, 41, 50, null),
+        new Port("Entrana", 44, 52, 36, null),
+        new Port("Port Piscarilius", 28, 57, 15, null),
+        new Port("Land's End", 23, 53, 5, null),
+        new Port("Rellekka", 41, 57, 62, FREMENNIK_TRIALS),
+        new Port("Waterbirth Island", 39, 58, 74, FREMENNIK_TRIALS)
     ));
 
     /**
      * Boats anyone can take without a quest, each sailing between every pair of its docks: the
-     * Port Sarim ferry, Veos, the Entrana monks, Captain Barnaby, Captain Tock, the Void Knights'
+     * Port Sarim ferry, Veos, the Entrana monks, Captain Barnaby, the Void Knights'
      * squire, Jarvald, and the charter ships' quest-free ports.
      */
     private static final String[][] BOATS = {
@@ -77,7 +90,6 @@ public final class Geography
         {"Port Sarim", "Port Piscarilius", "Land's End"},
         {"Port Sarim", "Entrana"},
         {"East Ardougne", "Brimhaven", "Rimmington"},
-        {"Rimmington", "Corsair Cove"},
         {"Port Sarim", "Void Knights' Outpost"},
         {"Rellekka", "Waterbirth Island"},
         {"Port Sarim", "Musa Point", "Brimhaven", "Catherby", "Port Khazard", "Corsair Cove", "Port Piscarilius", "Land's End"},
@@ -160,14 +172,25 @@ public final class Geography
      */
     public static List<String> routesFrom(String name, boolean sailing)
     {
+        return routesFrom(name, sailing ? 99 : 0, Collections.<String>emptyList());
+    }
+
+    /**
+     * Where a boat can take Main from a port: every quest-free boat's stops, and with Sailing
+     * ({@code sailing} is the level, 0 without it) every dock your level reaches whose quest isn't
+     * in {@code questsMissing}. Sailing's docks come after the boats', in the list's order.
+     */
+    public static List<String> routesFrom(String name, int sailing, List<String> questsMissing)
+    {
         Set<String> out = new LinkedHashSet<>();
-        if (sailing)
+        if (sailing > 0)
         {
             for (Port p : PORTS)
             {
-                if (!p.name.equals(name)) out.add(p.name);
+                if (p.name.equals(name) || p.sailing > sailing) continue;
+                if (p.quest != null && questsMissing.contains(p.quest)) continue;
+                out.add(p.name);
             }
-            return new ArrayList<>(out);
         }
         for (String[] boat : BOATS)
         {

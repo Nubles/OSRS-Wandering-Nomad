@@ -249,7 +249,7 @@ public final class Circle
      * Distance as sqrt(dx² + dy²). Unlike Math.hypot, every platform rounds this the same way, so
      * the website's TypeScript twin of the sim lands on exactly the same numbers.
      */
-    static double dist(double dx, double dy)
+    public static double dist(double dx, double dy)
     {
         return Math.sqrt(dx * dx + dy * dy);
     }

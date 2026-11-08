@@ -22,6 +22,7 @@ class NomadStatusOverlay extends OverlayPanel
     private static final Color INSIDE = new Color(0x8FE0A2);
     private static final Color OUTSIDE = new Color(0xFF8A80);
     private static final Color STRANDED = new Color(0xFFCF8F);
+    static final Color STORM = new Color(0x8FB8FF);
     static final Color FORK = new Color(0xFFC46B);
     private static final Color CALM = new Color(0x6FD08C);
     private static final Color AMBER = new Color(0xFFB040);
@@ -85,6 +86,13 @@ class NomadStatusOverlay extends OverlayPanel
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Forked").right("pick a half").rightColor(FORK).build());
         }
+        if (sim.stormWarning() > 0 || sim.stormLeft() > 0)
+        {
+            String kind = sim.stormKind() == NomadSim.GALE ? "Gale" : "Squall";
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left(sim.stormWarning() > 0 ? kind + " in " + sim.stormWarning() + " min" : kind)
+                .right(sim.stormWarning() > 0 ? "over Main" : sim.stormLeft() + " min left").rightColor(STORM).build());
+        }
         Radar radar = plugin.radar();
         boolean hud = plugin.config().hudExtras();
         // A fixed width, so the box doesn't change size as names and numbers come and go.
@@ -116,6 +124,8 @@ class NomadStatusOverlay extends OverlayPanel
             if (c.tailwindLeft() > 0) chips.add(NomadSim.TAILWIND + " " + NomadPanel.time(c.tailwindLeft()));
             if (c.anchorLeft() > 0) chips.add(NomadSim.ANCHOR + " " + NomadPanel.time(c.anchorLeft()));
             if (sim.bridgeLeft() > 0) chips.add(NomadSim.BRIDGE + " " + sim.bridgeLeft() + "m");
+            if (sim.calmLeft() > 0) chips.add(NomadSim.CALM + " " + NomadPanel.time(sim.calmLeft()));
+            if (sim.lanternLit()) chips.add(NomadSim.LANTERN + " lit");
             if (!chips.isEmpty()) panelComponent.getChildren().add(chips);
         }
         panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").build());

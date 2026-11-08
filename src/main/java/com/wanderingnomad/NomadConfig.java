@@ -163,6 +163,17 @@ public interface NomadConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "footprint",
+        name = "Footprint on the world map",
+        description = "Lights up every 64-tile map region you've walked in while inside your circle this run.",
+        position = 4
+    )
+    default boolean footprint()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "statusBox",
         name = "Status box",
         description = "Show your circle, the distance to its edge and open crossings.",
@@ -296,5 +307,31 @@ public interface NomadConfig extends Config
     default boolean liveShare()
     {
         return false;
+    }
+
+    @ConfigItem(
+        keyName = "followRivals",
+        name = "Follow rivals",
+        description = "Reads friends' live runs from the Nomad UIM relay (a third-party server) every 2 minutes, so their "
+            + "circles show on your world map and in the sidebar. Meet one inside each other's circles for the Rendezvous trial.",
+        warning = "This asks the Nomad UIM relay, a server not run by RuneLite or Jagex, for the live runs you list, "
+            + "which shares your IP address with it. Turn it on?",
+        position = 8
+    )
+    default boolean followRivals()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "rivals",
+        name = "Rivals",
+        description = "Up to 3 friends' live links, one per line or comma, as Name=link (or just the link). "
+            + "They get theirs from the sidebar's Copy live link.",
+        position = 9
+    )
+    default String rivals()
+    {
+        return "";
     }
 }

@@ -103,6 +103,8 @@ final class Moments
     /** Whether a fork was coming, and whether Main was forked, at the last look. */
     private boolean forkComing;
     private boolean forked;
+    /** The storm at the last look: 0 none, 1 brewing, 2 blowing. */
+    private int storm;
     /** Main and its other half at the last look while forked, to tell which one faded when they part. */
     private Circle lastMain;
     private Circle lastTwin;
@@ -240,6 +242,7 @@ final class Moments
                     SoundEffectID.PRAYER_DEACTIVE_VWOOP));
             }
             fork(sim, out);
+            storm(sim, out);
             // Stepping back and forth near the edge re-arms these, so each one only gets a banner once a minute.
             if (stage > edgeStage && now - edgeToldAt[stage] >= QUIET_MS)
             {
@@ -269,6 +272,7 @@ final class Moments
         edgeStage = stage;
         forkComing = sim.forkWarning() > 0;
         forked = sim.twin() != null;
+        storm = stormStage(sim);
         lastMain = sim.main();
         lastTwin = sim.twin();
         return out;
@@ -302,6 +306,38 @@ final class Moments
         }
     }
 
+    private static int stormStage(NomadSim sim)
+    {
+        return sim.stormLeft() > 0 ? 2 : sim.stormWarning() > 0 ? 1 : 0;
+    }
+
+    private static final Color STORM = new Color(0x8FB8FF);
+
+    /** A storm brewing, breaking and passing over Main. */
+    private void storm(NomadSim sim, List<Banner> out)
+    {
+        int now = stormStage(sim);
+        if (now == storm) return;
+        boolean gale = sim.stormKind() == NomadSim.GALE;
+        if (now == 1)
+        {
+            out.add(new Banner("A storm is brewing", "In " + sim.stormWarning() + " min a " + (gale
+                ? "gale drives Main three times as fast" : "squall squeezes Main to three quarters") + " for half an hour.",
+                STORM, Icon.EDGE, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
+        }
+        else if (now == 2)
+        {
+            out.add(new Banner(gale ? "Gale!" : "Squall!", gale ? "Main drifts three times as fast for " + sim.stormLeft() + " minutes."
+                : "Main shrinks to " + Math.round(sim.main().radius()) + " tiles for " + sim.stormLeft() + " minutes.",
+                STORM, Icon.EDGE, true, SoundEffectID.TELEPORT_VWOOP));
+        }
+        else if (storm == 2)
+        {
+            out.add(new Banner("The storm has passed", "Main is back to its own pace and size.", STORM, Icon.EDGE, false,
+                SoundEffectID.PRAYER_DEACTIVE_VWOOP));
+        }
+    }
+
     /** The half that faded when a fork last parted, once; null if none has since the last call. */
     Circle takeFaded()
     {
@@ -315,6 +351,72 @@ final class Moments
     {
         return new Banner(rare ? "First kill!" : "Milestone reached", why + " summoned a" + (rare ? " rare" : "") + " waystone.",
             GOLD, Icon.STAR, rare, SoundEffectID.GE_COIN_TINKLE);
+    }
+
+    /** A trial done: its name, what it was, and the renown it paid. Gold and Legend trials are big moments. */
+    static Banner trial(com.wanderingnomad.journey.Trial t)
+    {
+        boolean big = t.tier == com.wanderingnomad.journey.Tier.GOLD || t.tier == com.wanderingnomad.journey.Tier.LEGEND;
+        return new Banner("Trial complete: " + t.name, t.detail + " " + t.tier.label + ", +" + t.tier.renown + " renown.",
+            new Color(t.tier.colour), Icon.STAR, big, big ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.GE_COIN_TINKLE);
+    }
+
+    private static final Color OMEN = new Color(0x9FE9FF);
+
+    static Banner omen(com.wanderingnomad.journey.Omen o)
+    {
+        return new Banner("Omen: " + o.title(), o.ask(), OMEN, Icon.STAR, false, SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+    }
+
+    static Banner omenMet(com.wanderingnomad.journey.Omen o)
+    {
+        return new Banner("Omen met: " + o.title(), "+" + com.wanderingnomad.journey.Omens.RENOWN + " renown, and a waystone rises.",
+            OMEN, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner bestiary(String monster, int count, int renown, boolean waystone)
+    {
+        return new Banner(String.format("%,d %s", count, monster), "Bestiary milestone. +" + renown + " renown"
+            + (waystone ? ", and a waystone rises." : "."), GOLD, Icon.STAR, count >= 1_000,
+            count >= 1_000 ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.GE_COIN_TINKLE);
+    }
+
+    static Banner bestiaryTitle(String title, int count, String monster)
+    {
+        return new Banner("You are " + title, String.format("%,d %s kills inside your circle.", count, monster), GOLD, Icon.STAR, true,
+            SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner rivalNear(String name, Color colour)
+    {
+        return new Banner(name + " is near", "Their circle touches yours.", colour, Icon.CROSSING, false,
+            SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner rendezvous(String name, Color colour)
+    {
+        return new Banner("Rendezvous with " + name, "Two Nomads, each inside the other's circle.", colour, Icon.STAR, true,
+            SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
+    static Banner omenMissed(com.wanderingnomad.journey.Omen o)
+    {
+        return new Banner("The omen passed", o.title() + " ran out of time. Another will come.", OMEN.darker(), Icon.STAR, false,
+            SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+    }
+
+    static Banner oathKept(com.wanderingnomad.journey.Trial t)
+    {
+        return new Banner("Oath kept: " + t.name, "+" + com.wanderingnomad.journey.Renown.OATH_RENOWN
+            + " renown, and the Oathbound edge colour on every run.", new Color(com.wanderingnomad.journey.Renown.OATHBOUND_COLOUR),
+            Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
+    /** A new Nomad rank, and the edge colour it unlocked. */
+    static Banner rankUp(com.wanderingnomad.journey.Rank r)
+    {
+        return new Banner("Rank up: " + r.title, "Unlocked the " + r.palette + " edge colour. Pick it in the sidebar's Journey section.",
+            new Color(r.colour), Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
     }
 
     /** One of every kind of banner, for trying them out with ::nomadmoments. */
@@ -333,6 +435,7 @@ final class Moments
         out.add(new Banner("Crossing closed", "Kandarin has drifted apart from yours.", other, Icon.CROSSING, false,
             SoundEffectID.CLOSE_DOOR));
         out.add(milestone("A milestone", false));
+        out.add(rankUp(com.wanderingnomad.journey.Rank.PATHFINDER));
         out.add(new Banner("Waystone risen", "Tailwind at Draynor Village, in your circle.", GOLD, Icon.WAYSTONE, false,
             SoundEffectID.PRAYER_DEPLETE_TWINKLE));
         out.add(new Banner("Rare waystone risen", "Bridge at the Grand Exchange, in your circle.", GOLD, Icon.WAYSTONE, true,
@@ -382,6 +485,7 @@ final class Moments
             if (c.anchorLeft() > 0) out.add(NomadSim.ANCHOR + "@" + j);
         }
         if (sim.bridgeLeft() > 0) out.add(NomadSim.BRIDGE + "@-1");
+        if (sim.calmLeft() > 0) out.add(NomadSim.CALM + "@-1");
         return out;
     }
 

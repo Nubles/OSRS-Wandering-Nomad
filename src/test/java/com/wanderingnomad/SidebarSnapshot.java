@@ -24,7 +24,7 @@ public class SidebarSnapshot
         {
             try
             {
-                NomadPanel panel = new NomadPanel(i -> { }, (i, s) -> { }, () -> { }, () -> { }, () -> { }, () -> { });
+                NomadPanel panel = new NomadPanel(i -> { }, (i, s) -> { }, name -> { }, () -> { }, () -> { }, () -> { }, name -> { }, name -> { });
                 NomadSim sim = NomadSim.start(483574);
                 for (int m = 0; m < 30; m++) sim.step(new Tile(3222, 3218));
                 sim.summon(NomadSim.COMMON);
@@ -43,8 +43,17 @@ public class SidebarSnapshot
                 RunStats stats = new RunStats();
                 stats.tilesWalked = 1234;
                 stats.crossings = 2;
-                panel.display(NomadPanel.View.of(sim, at, Collections.singletonList("A sample log line"), Radar.of(sim, at),
-                    null, null, stats, moments, false));
+                NomadPanel.View view = NomadPanel.View.of(sim, at, Collections.singletonList("A sample log line"), Radar.of(sim, at),
+                    null, null, stats, moments, false);
+                com.wanderingnomad.journey.Journey journey = new com.wanderingnomad.journey.Journey();
+                journey.add(com.wanderingnomad.journey.Trials.CLAIMED, 1);
+                journey.add(com.wanderingnomad.journey.Trials.WALKED, 1234);
+                journey.addTo(com.wanderingnomad.journey.Trials.LANDMARKS, "Lumbridge Castle");
+                java.util.List<com.wanderingnomad.journey.Trial> trials = com.wanderingnomad.journey.Trials.all(24);
+                com.wanderingnomad.journey.Renown renown = new com.wanderingnomad.journey.Renown();
+                for (com.wanderingnomad.journey.Trial t : journey.check(trials)) renown.award(t);
+                view.journey = JourneyView.of(journey, renown, trials);
+                panel.display(view);
                 JFrame frame = new JFrame();
                 JScrollPane scroll = new JScrollPane(panel);
                 scroll.setPreferredSize(new Dimension(NomadPanel.PANEL_WIDTH + 20, 1400));

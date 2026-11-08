@@ -21,12 +21,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
+import javax.swing.JEditorPane;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -63,14 +66,25 @@ class NomadPanel extends PluginPanel
     private final SidebarParts.Waystones waystones = new SidebarParts.Waystones();
     private final JPanel crossings = column();
     private final SidebarParts.Stats stats = new SidebarParts.Stats();
+    private final SidebarParts.Journey journey = new SidebarParts.Journey();
+    private final JComboBox<String> palette = new JComboBox<>();
+    private final JComboBox<String> oath = new JComboBox<>();
+    private final JLabel rivals = note(" ");
+    private List<String> shownRivals = Collections.emptyList();
+    private List<String> shownOaths = Collections.emptyList();
+    private boolean fillingOaths;
+    /** The palettes the box lists, so it's only refilled when a rank unlocks one. */
+    private List<String> shownPalettes = Collections.emptyList();
+    private boolean fillingPalettes;
+    private volatile JourneyView lastJourney = JourneyView.EMPTY;
     private final SidebarParts.Timeline timeline = new SidebarParts.Timeline();
     private final JTextArea logArea = new JTextArea();
     private final List<SidebarParts.Part> drawn = new ArrayList<>();
     private String shownBoons;
     private String shownCrossings;
 
-    NomadPanel(IntConsumer onCross, BiConsumer<Integer, Integer> onBoon, Runnable onNewRun, Runnable onViewOnWebsite,
-        Runnable onCopyRunCode, Runnable onCopyLiveLink)
+    NomadPanel(IntConsumer onCross, BiConsumer<Integer, Integer> onBoon, Consumer<String> onNewRun, Runnable onViewOnWebsite,
+        Runnable onCopyRunCode, Runnable onCopyLiveLink, Consumer<String> onPalette, Consumer<String> onOath)
     {
         this.onBoon = onBoon;
         this.onCross = onCross;
@@ -98,6 +112,40 @@ class NomadPanel extends PluginPanel
         add(heading("Run"));
         add(gap(4));
         add(stats);
+        add(gap(10));
+        add(heading("Journey"));
+        add(gap(4));
+        add(journey);
+        add(gap(4));
+        JPanel journeyRow = new JPanel(new GridLayout(1, 2, 4, 0));
+        journeyRow.setOpaque(false);
+        journeyRow.add(small("All trials", "Every trial of the run, chapter by chapter", this::showTrials));
+        journeyRow.add(small("Run ledger", "The run's story so far, to copy into Discord or a video", this::showLedger));
+        fix(journeyRow, 24);
+        add(journeyRow);
+        add(gap(4));
+        palette.setToolTipText("The Main circle's edge colour. Ranks unlock more.");
+        palette.setFont(FontManager.getRunescapeSmallFont());
+        palette.addActionListener(e ->
+        {
+            Object picked = palette.getSelectedItem();
+            if (!fillingPalettes && picked != null) onPalette.accept(picked.toString());
+        });
+        fix(palette, 24);
+        add(palette);
+        add(gap(4));
+        oath.setToolTipText("Swear one long goal as this run's oath. Keep it for 300 renown and the Oathbound edge colour.");
+        oath.setFont(FontManager.getRunescapeSmallFont());
+        oath.addActionListener(e ->
+        {
+            Object picked = oath.getSelectedItem();
+            if (!fillingOaths && picked != null) onOath.accept(picked.toString().replaceFirst("^Oath: ", ""));
+        });
+        fix(oath, 24);
+        add(oath);
+        rivals.setVisible(false);
+        rivals.setAlignmentX(LEFT_ALIGNMENT);
+        add(rivals);
         add(gap(10));
         add(heading("Moments"));
         add(gap(4));
@@ -132,10 +180,16 @@ class NomadPanel extends PluginPanel
         JButton newRun = new JButton("Start a new run");
         newRun.addActionListener(e ->
         {
-            int ok = JOptionPane.showConfirmDialog(this,
-                "This deletes the current run on this account and starts a new one. Continue?",
-                "Nomad UIM", JOptionPane.OK_CANCEL_OPTION);
-            if (ok == JOptionPane.OK_OPTION) onNewRun.run();
+            List<String> names = lastJourney.rivalNames;
+            JComboBox<String> race = new JComboBox<>();
+            race.addItem("No race");
+            for (String n : names) race.addItem("Race " + n + " on their seed");
+            Object message = names.isEmpty() ? "This deletes the current run on this account and starts a new one. Continue?"
+                : new Object[]{"This deletes the current run on this account and starts a new one. Continue?", race};
+            int ok = JOptionPane.showConfirmDialog(this, message, "Nomad UIM", JOptionPane.OK_CANCEL_OPTION);
+            if (ok != JOptionPane.OK_OPTION) return;
+            int picked = race.getSelectedIndex();
+            onNewRun.accept(picked > 0 ? names.get(picked - 1) : null);
         });
         buttons.add(newRun);
         fix(buttons, 4 * 26 + 12);
@@ -146,6 +200,7 @@ class NomadPanel extends PluginPanel
         drawn.add(active);
         drawn.add(waystones);
         drawn.add(stats);
+        drawn.add(journey);
         // BoxLayout lines children up by their alignment, which differs between labels (left) and
         // panels (centre); with both, rows slide sideways whenever something changes width.
         for (Component child : getComponents())
@@ -216,10 +271,124 @@ class NomadPanel extends PluginPanel
             crossings.revalidate();
         }
 
+        lastJourney = v.journey;
+        if (!v.journey.rivals.equals(shownRivals))
+        {
+            shownRivals = v.journey.rivals;
+            StringBuilder html = new StringBuilder("<html><b style='color:#ffffff'>Rivals</b>");
+            for (String line : shownRivals) html.append("<br>").append(line.replace("&", "&amp;").replace("<", "&lt;"));
+            rivals.setText(html.append("</html>").toString());
+            rivals.setVisible(!shownRivals.isEmpty());
+            fix(rivals, 16 + 26 * shownRivals.size());
+            revalidate();
+        }
+        if (!v.journey.palettes.equals(shownPalettes) || !v.journey.palette.equals(palette.getSelectedItem()))
+        {
+            fillingPalettes = true;
+            if (!v.journey.palettes.equals(shownPalettes))
+            {
+                shownPalettes = v.journey.palettes;
+                palette.removeAllItems();
+                for (String name : shownPalettes) palette.addItem(name);
+            }
+            palette.setSelectedItem(v.journey.palette);
+            fillingPalettes = false;
+        }
+
+        List<String> oathItems = new ArrayList<>();
+        oathItems.add("Oath: None");
+        for (String name : v.journey.oaths) oathItems.add("Oath: " + name);
+        String oathPick = v.journey.oath == null ? "Oath: None" : "Oath: " + v.journey.oath + (v.journey.oathKept ? " (kept)" : "");
+        if (v.journey.oathKept || !v.journey.oathOpen)
+        {
+            oathItems = Collections.singletonList(oathPick);
+        }
+        if (!oathItems.equals(shownOaths) || !oathPick.equals(oath.getSelectedItem()))
+        {
+            fillingOaths = true;
+            if (!oathItems.equals(shownOaths))
+            {
+                shownOaths = oathItems;
+                oath.removeAllItems();
+                for (String item : oathItems) oath.addItem(item);
+            }
+            oath.setSelectedItem(oathPick);
+            fillingOaths = false;
+        }
+        oath.setEnabled(v.journey.live && v.journey.oathOpen);
+
         timeline.show(v.moments);
         String log = String.join("\n", v.log);
         if (!log.equals(logArea.getText())) logArea.setText(log);
         revalidate();
+    }
+
+    /** Every trial of the run, by chapter, in a window of its own. */
+    private void showTrials()
+    {
+        JourneyView j = lastJourney;
+        StringBuilder html = new StringBuilder("<html><body style='font-family:sans-serif;font-size:10px;color:#dddddd;background:#1e1e1e'>");
+        if (!j.live) html.append("<p>Log in to see your trials.</p>");
+        else
+        {
+            html.append(String.format("<p><b style='color:%s'>%s</b> &middot; %,d renown &middot; %d of %d trials this run &middot; run %d</p>",
+                hex(j.rankColour), j.rank, j.renown, j.done, j.total, Math.max(1, j.runs)));
+        }
+        String chapter = null;
+        for (JourneyView.Row r : j.all)
+        {
+            if (!r.chapter.equals(chapter))
+            {
+                if (chapter != null) html.append("</table>");
+                chapter = r.chapter;
+                html.append("<h3 style='margin:8px 0 2px 0;color:#ffffff'>").append(chapter).append("</h3><table width='100%' cellpadding='2'>");
+            }
+            String state = r.done ? "<b style='color:#8fe0a2'>Done</b>" : r.carried ? "<span style='color:#9a9a9a'>Before this run</span>"
+                : (int) Math.round(r.progress * 100) + "%";
+            html.append("<tr><td><b style='color:").append(r.done ? "#ffffff" : "#cccccc").append("'>").append(r.name).append("</b>")
+                .append(r.times > 0 ? " <span style='color:#9a9a9a'>(done in " + r.times + (r.times == 1 ? " run" : " runs") + ")</span>" : "")
+                .append("<br><span style='color:#9a9a9a'>").append(r.detail).append(" ").append(r.done || r.carried ? "" : r.count).append("</span></td>")
+                .append("<td align='right' valign='top' style='color:").append(hex(r.colour)).append("'>").append(r.tier).append(" +").append(r.renown)
+                .append("<br>").append(state).append("</td></tr>");
+        }
+        if (chapter != null) html.append("</table>");
+        html.append("</body></html>");
+        JEditorPane pane = new JEditorPane("text/html", html.toString());
+        pane.setEditable(false);
+        pane.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        pane.setCaretPosition(0);
+        JScrollPane scroll = new JScrollPane(pane);
+        scroll.setPreferredSize(new Dimension(420, 520));
+        JOptionPane.showMessageDialog(this, scroll, "Nomad UIM: trials", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    /** The run ledger in a window of its own, with a button to copy it. */
+    private void showLedger()
+    {
+        String text = lastJourney.ledger;
+        if (text == null) text = "Log in to see the run ledger.";
+        javax.swing.JTextArea area = new javax.swing.JTextArea(text);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setFont(FontManager.getRunescapeSmallFont());
+        area.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        area.setForeground(Color.WHITE);
+        area.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        JScrollPane scroll = new JScrollPane(area);
+        scroll.setPreferredSize(new Dimension(380, 220));
+        Object[] options = {"Copy", "Close"};
+        int picked = JOptionPane.showOptionDialog(this, scroll, "Nomad UIM: run ledger", JOptionPane.DEFAULT_OPTION,
+            JOptionPane.PLAIN_MESSAGE, null, options, options[0]);
+        if (picked == 0 && lastJourney.ledger != null)
+        {
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(text), null);
+        }
+    }
+
+    private static String hex(Color c)
+    {
+        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
     }
 
     /** A boon card, with its Use button (or a Rudder's two) beside it. */
@@ -374,6 +543,10 @@ class NomadPanel extends PluginPanel
                 return "Turn your circle 45 degrees, once";
             case NomadSim.BRIDGE:
                 return "For 10 minutes, cross to any circle within 60 tiles";
+            case NomadSim.LANTERN:
+                return "Light it where you stand: the next waystone in your circle rises at the landmark nearest it";
+            case NomadSim.CALM:
+                return "No fork or storm for 3 hours, and one under way breaks off";
             default:
                 return boon;
         }
@@ -583,6 +756,7 @@ class NomadPanel extends PluginPanel
         String guardShort = "Off";
         boolean guardClean = true;
         String diaryShort = "-";
+        JourneyView journey = JourneyView.EMPTY;
 
         List<Moment> moments = Collections.emptyList();
         List<String> log = Collections.emptyList();
@@ -644,6 +818,14 @@ class NomadPanel extends PluginPanel
             {
                 v.forkLine = "Forked: stand in the half you want";
             }
+            else if (sim.stormWarning() > 0)
+            {
+                v.forkLine = (sim.stormKind() == NomadSim.GALE ? "Gale" : "Squall") + " over Main in " + sim.stormWarning() + " min";
+            }
+            else if (sim.stormLeft() > 0)
+            {
+                v.forkLine = (sim.stormKind() == NomadSim.GALE ? "Gale: Main 3x fast" : "Squall: Main shrunk") + ", " + sim.stormLeft() + " min left";
+            }
             // Yours last, so it draws on top.
             v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));
             for (Waystone w : sim.waystones())
@@ -666,6 +848,7 @@ class NomadPanel extends PluginPanel
             if (c.tailwindLeft() > 0) v.active.add(new ActiveBoon(NomadSim.TAILWIND, c.tailwindLeft(), TAILWIND_MINUTES));
             if (c.anchorLeft() > 0) v.active.add(new ActiveBoon(NomadSim.ANCHOR, c.anchorLeft(), ANCHOR_MINUTES));
             if (sim.bridgeLeft() > 0) v.active.add(new ActiveBoon(NomadSim.BRIDGE, sim.bridgeLeft(), BRIDGE_MINUTES));
+            if (sim.calmLeft() > 0) v.active.add(new ActiveBoon(NomadSim.CALM, sim.calmLeft(), NomadSim.CALM_MINUTES));
 
             for (Waystone w : sim.waystones())
             {

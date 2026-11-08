@@ -21,6 +21,7 @@ import java.awt.geom.Area;
 import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -95,8 +96,23 @@ class NomadSceneOverlay extends Overlay
 
     private final Client client;
     private final NomadPlugin plugin;
-    /** The outside shade is drawn here first; reused, and only remade when the canvas changes size. */
+    /** The outside shade as drawn this frame, with outlines erased; only remade when the canvas changes size. */
     private BufferedImage shadeImage;
+    /** The shade's patches filled and nothing erased, kept while {@link #shadeKey} holds. */
+    private BufferedImage filledImage;
+    /** What the patches were last worked out from; null when they must be worked out again. */
+    private double[] shadeKey;
+    private List<Polygon> patches = new ArrayList<>();
+    private List<Polygon> flipped = new ArrayList<>();
+    private int shadeTiles;
+    private int shadeUnplaced;
+    private int shadeTooBig;
+    /** The screen area the patches cover, and the areas of each image that may hold shade. */
+    private Rectangle shadeBounds;
+    private Rectangle filledDirty;
+    private Rectangle shadeDirty;
+    /** Boxes erased from the shade this frame, put back from the clean copy before the next. */
+    private final List<Rectangle> erased = new ArrayList<>();
     /** When the shade's debug counts were last logged. */
     private long debugLogged;
 
@@ -154,6 +170,7 @@ class NomadSceneOverlay extends Overlay
         {
             drawCompass(graphics, view, sim, at);
             drawWaystoneArrow(graphics, view, sim, at);
+            drawPilgrimage(graphics, view, sim, at);
         }
         return null;
     }
@@ -391,13 +408,175 @@ class NomadSceneOverlay extends Overlay
      */
     private void drawOutside(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at, int percent)
     {
+        int w = client.getCanvasWidth();
+        int h = client.getCanvasHeight();
+        if (w <= 0 || h <= 0) return;
+        if (shadeImage == null || shadeImage.getWidth() != w || shadeImage.getHeight() != h)
+        {
+            shadeImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            filledImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            shadeKey = null;
+            filledDirty = null;
+            shadeDirty = null;
+        }
+        Rectangle canvas = new Rectangle(0, 0, w, h);
+        double[] key = shadeKey(view, sim, at, percent, w, h);
+        if (!Arrays.equals(key, shadeKey))
+        {
+            findPatches(view, sim, at);
+            // The patches' outline on screen: only this much of the shade is ever painted, cleared or drawn.
+            Rectangle bounds = null;
+            for (Polygon p : patches) bounds = bounds == null ? p.getBounds() : bounds.union(p.getBounds());
+            shadeBounds = bounds == null ? null : bounds.intersection(canvas);
+            if (shadeBounds != null && shadeBounds.isEmpty()) shadeBounds = null;
+            // The patches are filled once into a clean copy that's kept until the camera, your tile or a
+            // circle moves; each frame only the outlines erased last time are put back from it.
+            paint(filledImage, union(filledDirty, shadeBounds), new Color(0, 0, 0, Math.min(255, percent * 255 / 100)));
+            filledDirty = shadeBounds;
+            copy(filledImage, shadeImage, union(shadeDirty, shadeBounds));
+            shadeDirty = shadeBounds;
+            shadeKey = key;
+            erased.clear();
+        }
+        else
+        {
+            for (Rectangle r : erased) copy(filledImage, shadeImage, r);
+            erased.clear();
+        }
+        boolean debug = plugin.config().debugShade();
+        if (debug)
+        {
+            long now = System.currentTimeMillis();
+            if (now - debugLogged > 2000)
+            {
+                debugLogged = now;
+                log.info("Nomad shade: {} outside tiles near you, {} drawn, {} off screen or behind the camera, {} too big, {} flipped",
+                    shadeTiles, patches.size(), shadeUnplaced, shadeTooBig, flipped.size());
+            }
+        }
+        if (patches.isEmpty() || shadeBounds == null) return;
+
+        // The outlines of everything standing inside the circle near its edge are erased from the
+        // shade, so buildings, trees and people in front of the ground outside stay bright. Erasing
+        // pixels is cheap, unlike cutting shapes.
+        Graphics2D g = shadeImage.createGraphics();
+        try
+        {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+            g.setComposite(AlphaComposite.Clear);
+            eraseInside(g, view, sim, at);
+            if (plugin.config().edge3d()) for (Circle half : NomadPlugin.halves(sim)) eraseCurtain(g, view, half, at);
+        }
+        finally
+        {
+            g.dispose();
+        }
+        Rectangle b = shadeBounds;
+        graphics.drawImage(shadeImage, b.x, b.y, b.x + b.width, b.y + b.height, b.x, b.y, b.x + b.width, b.y + b.height, null);
+        if (debug)
+        {
+            // Drawn patches outlined red, flipped ones (dropped) yellow.
+            graphics.setStroke(new BasicStroke(1f));
+            graphics.setColor(new Color(255, 40, 40, 200));
+            for (Polygon p : patches) graphics.draw(p);
+            graphics.setColor(new Color(255, 230, 0, 230));
+            for (Polygon p : flipped) graphics.draw(p);
+        }
+    }
+
+    /**
+     * Everything the shade's patches are worked out from: the camera, the game view, your tile, the
+     * circles and the shade's strength. While none of it changes, the patches come out the same.
+     */
+    private double[] shadeKey(WorldView view, NomadSim sim, WorldPoint at, int percent, int w, int h)
+    {
+        List<Circle> halves = NomadPlugin.halves(sim);
+        double[] key = new double[18 + halves.size() * 3];
+        int k = 0;
+        key[k++] = client.getCameraFpX();
+        key[k++] = client.getCameraFpY();
+        key[k++] = client.getCameraFpZ();
+        key[k++] = client.getCameraFpYaw();
+        key[k++] = client.getCameraFpPitch();
+        key[k++] = client.getScale();
+        key[k++] = client.getViewportXOffset();
+        key[k++] = client.getViewportYOffset();
+        key[k++] = client.getViewportWidth();
+        key[k++] = client.getViewportHeight();
+        key[k++] = w;
+        key[k++] = h;
+        key[k++] = at.getX();
+        key[k++] = at.getY();
+        key[k++] = view.getPlane();
+        key[k++] = view.getBaseX();
+        key[k++] = view.getBaseY();
+        key[k++] = percent;
+        for (Circle c : halves)
+        {
+            key[k++] = c.x();
+            key[k++] = c.y();
+            key[k++] = c.radius();
+        }
+        return key;
+    }
+
+    /** Clears {@code area} of an image, then fills the patches into it. */
+    private void paint(BufferedImage image, Rectangle area, Color colour)
+    {
+        Graphics2D g = image.createGraphics();
+        try
+        {
+            if (area != null)
+            {
+                g.setComposite(AlphaComposite.Clear);
+                g.fill(area);
+            }
+            // Each patch is set, not blended, so where neighbours touch the shade doesn't double up.
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+            g.setComposite(AlphaComposite.Src);
+            g.setColor(colour);
+            for (Polygon patch : patches) g.fill(patch);
+        }
+        finally
+        {
+            g.dispose();
+        }
+    }
+
+    /** Copies one area of an image over the same area of another, pixels and all. */
+    private static void copy(BufferedImage from, BufferedImage to, Rectangle area)
+    {
+        if (area == null) return;
+        area = area.intersection(new Rectangle(0, 0, from.getWidth(), from.getHeight()));
+        if (area.isEmpty()) return;
+        Graphics2D g = to.createGraphics();
+        try
+        {
+            g.setComposite(AlphaComposite.Src);
+            g.drawImage(from, area.x, area.y, area.x + area.width, area.y + area.height,
+                area.x, area.y, area.x + area.width, area.y + area.height, null);
+        }
+        finally
+        {
+            g.dispose();
+        }
+    }
+
+    private static Rectangle union(Rectangle a, Rectangle b)
+    {
+        return a == null ? b : b == null ? a : a.union(b);
+    }
+
+    /** Works out the shade's patches: the part of each tile near you that's outside the circle, on screen. */
+    private void findPatches(WorldView view, NomadSim sim, WorldPoint at)
+    {
         // Seen from the camera, every patch of ground winds the same way round. One that winds the
         // other way, or comes out huge, has a corner behind the camera and was projected through it:
         // drawn, it shaded the inside of the circle, or (when all the patches were one path) cancelled
         // the shade where it overlapped. So each patch is checked against the way most of them wind.
         int maxW = client.getViewportWidth() * 2 / 5;
         int maxH = client.getViewportHeight() * 2 / 5;
-        List<Polygon> patches = new ArrayList<>();
+        patches = new ArrayList<>();
         int tiles = 0;
         int unplaced = 0;
         int tooBig = 0;
@@ -442,64 +621,17 @@ class NomadSceneOverlay extends Overlay
         int ahead = 0;
         for (Polygon p : patches) ahead += Long.signum(twiceArea(p));
         int facing = ahead >= 0 ? 1 : -1;
-        List<Polygon> flipped = new ArrayList<>();
+        List<Polygon> wrongWay = new ArrayList<>();
         patches.removeIf(p ->
         {
             boolean wrong = Long.signum(twiceArea(p)) == -facing;
-            if (wrong) flipped.add(p);
+            if (wrong) wrongWay.add(p);
             return wrong;
         });
-        boolean debug = plugin.config().debugShade();
-        if (debug)
-        {
-            long now = System.currentTimeMillis();
-            if (now - debugLogged > 2000)
-            {
-                debugLogged = now;
-                log.info("Nomad shade: {} outside tiles near you, {} drawn, {} off screen or behind the camera, {} too big, {} flipped",
-                    tiles, patches.size(), unplaced, tooBig, flipped.size());
-            }
-        }
-        if (patches.isEmpty()) return;
-
-        // The shade is painted into its own image first, then the outlines of everything standing
-        // inside the circle near its edge are erased from it, so buildings, trees and people in front
-        // of the ground outside stay bright. Erasing pixels is cheap, unlike cutting shapes.
-        int w = client.getCanvasWidth();
-        int h = client.getCanvasHeight();
-        if (w <= 0 || h <= 0) return;
-        if (shadeImage == null || shadeImage.getWidth() != w || shadeImage.getHeight() != h)
-        {
-            shadeImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        }
-        Graphics2D g = shadeImage.createGraphics();
-        try
-        {
-            g.setComposite(AlphaComposite.Clear);
-            g.fillRect(0, 0, w, h);
-            // Each patch is set, not blended, so where neighbours touch the shade doesn't double up.
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-            g.setComposite(AlphaComposite.Src);
-            g.setColor(new Color(0, 0, 0, Math.min(255, percent * 255 / 100)));
-            for (Polygon patch : patches) g.fill(patch);
-            g.setComposite(AlphaComposite.Clear);
-            eraseInside(g, view, sim, at);
-            if (plugin.config().edge3d()) for (Circle half : NomadPlugin.halves(sim)) eraseCurtain(g, view, half, at);
-        }
-        finally
-        {
-            g.dispose();
-        }
-        graphics.drawImage(shadeImage, 0, 0, null);
-        if (debug)
-        {
-            // Drawn patches outlined red, flipped ones (dropped) yellow.
-            graphics.setStroke(new BasicStroke(1f));
-            graphics.setColor(new Color(255, 40, 40, 200));
-            for (Polygon p : patches) graphics.draw(p);
-            graphics.setColor(new Color(255, 230, 0, 230));
-            for (Polygon p : flipped) graphics.draw(p);
-        }
+        flipped = wrongWay;
+        shadeTiles = tiles;
+        shadeUnplaced = unplaced;
+        shadeTooBig = tooBig;
     }
 
     /**
@@ -598,6 +730,9 @@ class NomadSceneOverlay extends Overlay
         double screen = (double) client.getViewportWidth() * client.getViewportHeight();
         if ((double) b.width * b.height > screen * MAX_ERASE) return;
         g.fill(shape);
+        // Put back from the clean copy next frame, the outline's box padded for its rounded edges.
+        b.grow(1, 1);
+        erased.add(b);
     }
 
     /**
@@ -696,6 +831,24 @@ class NomadSceneOverlay extends Overlay
         if (best == null || bestD <= NomadSim.CLAIM_REACH) return;
         String text = best.boon() + " waystone · " + Math.round(bestD) + " tiles · ~" + NomadPanel.roughly(sim.minutesLeft(best)) + " left";
         drawArrow(graphics, view, at, new double[]{best.x(), best.y()}, GOLD, GOLD, text);
+    }
+
+    /** A pilgrimage omen's landmark: its tile outlined, and an arrow to it with the time left. */
+    private void drawPilgrimage(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at)
+    {
+        com.wanderingnomad.journey.Omen o = plugin.omen();
+        if (o == null || !com.wanderingnomad.journey.Omen.PILGRIMAGE.equals(o.kind())) return;
+        Color colour = new Color(0x9FE9FF);
+        LocalPoint lp = LocalPoint.fromWorld(view, o.x(), o.y());
+        if (lp != null && view.getPlane() == 0)
+        {
+            Polygon tile = Perspective.getCanvasTileAreaPoly(client, lp, 2 * com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK + 1);
+            if (tile != null) OverlayUtil.renderPolygon(graphics, tile, colour, alpha(colour, 40), YOURS);
+        }
+        double d = Math.hypot(o.x() - at.getX(), o.y() - at.getY());
+        if (d <= com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK) return;
+        String text = "Omen: " + o.landmark() + " · " + Math.round(d) + " tiles · " + NomadPanel.time(Math.max(0, o.deadline() - sim.minutes())) + " left";
+        drawArrow(graphics, view, at, new double[]{o.x(), o.y()}, colour, colour, text);
     }
 
     /**
