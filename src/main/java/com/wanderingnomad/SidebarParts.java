@@ -707,7 +707,9 @@ final class SidebarParts
             }
             else
             {
-                text(g, small, "No omen yet. One comes every few hours.", 10, y + 22, MUTED);
+                // Two lines: the whole sentence is wider than the sidebar in the RuneScape small font.
+                text(g, small, "No omen yet.", 10, y + 15, MUTED);
+                text(g, small, "One comes every few hours.", 10, y + 29, MUTED);
             }
             y += ROW_H + 4;
             for (JourneyView.Row r : j.next)
