@@ -113,12 +113,13 @@ class EdgeWall3D
         }
         Circle twin = sim.twin();
         if (twin != null && (sim.boundIndex() == NomadSim.MAIN || sim.linked(NomadSim.MAIN) && yours.touches(twin))) out.add(twin);
+        if (sim.rift() != null && sim.boundIndex() == NomadSim.MAIN) out.add(sim.rift());
         return out;
     }
 
     private static boolean isYourTwin(NomadSim sim, Circle c)
     {
-        return c == sim.twin() && sim.boundIndex() == NomadSim.MAIN;
+        return (c == sim.twin() || c == sim.rift()) && sim.boundIndex() == NomadSim.MAIN;
     }
 
     /** Runs the wave of light along the curtain. Called every client tick; only swaps models. */

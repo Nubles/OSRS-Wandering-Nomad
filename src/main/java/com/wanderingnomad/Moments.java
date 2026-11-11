@@ -455,6 +455,16 @@ final class Moments
         out.add(fromLine("Castaway! A storm at sea blew the Main circle off course. It will wash up at Catherby instead of Port Sarim."));
         out.add(fromLine("Reunion! The lost half met the Main circle again. Main grows to 30 tiles."));
         out.add(fromLine("The Main circle boarded a boat at Port Sarim, bound for Entrana."));
+        out.add(fromLine("Lightning! A bolt struck inside the Main circle, 9 tiles east of its middle, and left a waystone holding Anchor (common) for 2 minutes."));
+        out.add(fromLine("A stampede is coming! In 5 minutes every kingdom's circle dashes for 10 minutes. The Main circle stays calm."));
+        out.add(fromLine("Monsoon over Karamja! Its circle doubles in size for an hour."));
+        out.add(fromLine("Eclipse! The Main circle and the Asgarnia circle line up and move as one for an hour. The Asgarnia circle can leave its kingdom with Main."));
+        out.add(fromLine("A rift opened! For 15 minutes the Main circle also stands at Yanille, far to the west. Teleport there and you're inside."));
+        out.add(fromLine("Flotsam is floating at sea inside the Main circle, north of its middle, holding Calm (common). Sail through it within the hour to claim it."));
+        out.add(fromLine("Exodus! After 10 hours in Misthalin, the Main circle grows restless and sets off for Kandarin."));
+        out.add(fromLine("Your circle starts to orbit the Grand Exchange."));
+        out.add(fromLine("Border kiss! Your circle touches Kandarin across the border: for 20 minutes you may cross straight into it."));
+        out.add(fromLine("The caravan sets out from Lumbridge for Varrock."));
         out.add(new Banner("Legendary waystone risen", NomadSim.CROWN + " at the Grand Exchange. It never fades.", SidebarParts.LEGEND,
             Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
         out.add(rankUp(com.wanderingnomad.journey.Rank.PATHFINDER));
@@ -548,6 +558,151 @@ final class Moments
     private static final Pattern DOCKED = Pattern.compile("^Your circle docked at (.+)\\.$");
     private static final Pattern COURSE = Pattern.compile("setting course for (.+) to board a boat");
     private static final Pattern RIPENED = Pattern.compile("^The waystone at (.+) ripened: it holds (.+) \\(rare\\) now");
+    private static final Pattern STRUCK = Pattern.compile("^Lightning! A bolt struck inside the Main circle, (\\d+) tiles (.+) of its middle, and left a waystone holding (.+) \\(common\\)");
+    private static final Pattern SURGED = Pattern.compile("^Storm surge! The storm broke over (.+) and drives");
+    private static final Pattern AURORA = Pattern.compile("^(.+) over (.+)! (.+)$");
+    private static final Pattern AURORA_END = Pattern.compile("^The (.+) over (.+) has passed\\.$");
+    private static final Pattern ECLIPSE = Pattern.compile("^Eclipse! The Main circle and the (.+) circle line up");
+    private static final Pattern RIFT = Pattern.compile("^A rift opened! For (\\d+) minutes the Main circle also stands at (.+), far to the (.+?)\\.");
+    private static final Pattern RIFT_MOVED = Pattern.compile("^The rift closed\\. You stood at (.+), so");
+    private static final Pattern FLOTSAM = Pattern.compile("^Flotsam is floating at sea inside the Main circle, (.+) of its middle, holding (.+) \\(common\\)");
+    private static final Pattern EXODUS = Pattern.compile("^Exodus! After (\\d+) hours in (.+), the Main circle grows restless and sets off for (.+)\\.$");
+    private static final Pattern ORBIT = Pattern.compile("^Your circle starts to orbit (.+)\\.$");
+    private static final Pattern FLING = Pattern.compile("^Your circle flings off (.+)!$");
+    private static final Pattern GRAVITY = Pattern.compile("^Gravity: you stand where your circle overlaps (.+?), so");
+    private static final Pattern KISS = Pattern.compile("^Border kiss! Your circle touches (.+) across the border");
+    private static final Pattern CARAVAN_IN = Pattern.compile("^The caravan reached (.+) and rests there");
+    private static final Pattern CARAVAN_OUT = Pattern.compile("^The caravan sets out from (.+) for (.+)\\.$");
+    private static final Color LIGHTNING = new Color(0xFFF27A);
+    private static final Color AURORA_GREEN = new Color(0x7DFFB2);
+    private static final Color ECLIPSE_GOLD = new Color(0xC9A227);
+    private static final Color RIFT_VIOLET = new Color(0xC08BFF);
+    private static final Color CARAVAN = new Color(0xD7A86E);
+
+    private static boolean isAurora(String name)
+    {
+        for (com.wanderingnomad.sim.Region r : com.wanderingnomad.sim.Geography.REGIONS)
+        {
+            if (NomadSim.auroraName(r.id).equals(name)) return true;
+        }
+        return false;
+    }
+
+    /** The world events' log lines as banners: lightning, surges, stampedes, auroras, eclipses, rifts and the rest. Null for any other line. */
+    static Banner worldEvent(String line)
+    {
+        Matcher m = STRUCK.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Lightning!", "A bolt left a " + m.group(3) + " waystone " + m.group(1) + " tiles " + m.group(2)
+                + " of Main's middle. It burns out in " + NomadSim.STRIKE_MINUTES + " min.", LIGHTNING, Icon.WAYSTONE, true,
+                SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        m = SURGED.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Storm surge!", "The storm broke over " + m.group(1) + " and drives Main out to sea.", SEA, Icon.EDGE, true,
+                SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        if (line.startsWith("A stampede is coming!"))
+        {
+            return new Banner("A stampede is coming", "In " + NomadSim.STAMPEDE_WARN + " min every kingdom's circle dashes for "
+                + NomadSim.STAMPEDE_MINUTES + " minutes. Main stays calm.", WARM, Icon.MOOD, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        if (line.startsWith("Stampede!"))
+        {
+            return new Banner("Stampede!", "Every kingdom's circle dashes for " + NomadSim.STAMPEDE_MINUTES + " minutes.", WARM, Icon.MOOD, true,
+                SoundEffectID.TELEPORT_VWOOP);
+        }
+        if (line.startsWith("The stampede is over"))
+        {
+            return new Banner("The stampede is over", "The kingdoms' circles slow back down.", WARM.darker(), Icon.MOOD, false,
+                SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+        }
+        m = ECLIPSE.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Eclipse!", "Main and " + m.group(1) + " line up and move as one for an hour.", ECLIPSE_GOLD, Icon.CROSSING, true,
+                SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        if (line.startsWith("The eclipse is over"))
+        {
+            return new Banner("The eclipse is over", line.endsWith("kingdom.") ? "The kingdom's circle walks home." : "The circles go their own ways.",
+                ECLIPSE_GOLD.darker(), Icon.CROSSING, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+        }
+        m = RIFT.matcher(line);
+        if (m.find())
+        {
+            return new Banner("A rift opened!", "For " + m.group(1) + " min Main also stands at " + m.group(2) + ", far " + m.group(3)
+                + ". Stand there when it closes and Main moves there.", RIFT_VIOLET, Icon.RING, true, SoundEffectID.TELEPORT_VWOOP);
+        }
+        m = RIFT_MOVED.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Through the rift", "Main is at " + m.group(1) + " now.", RIFT_VIOLET, Icon.RING, true,
+                SoundEffectID.PRAYER_ACTIVATE_PIETY);
+        }
+        if (line.startsWith("The rift closed"))
+        {
+            return new Banner("The rift closed", "Main stays where it was.", RIFT_VIOLET.darker(), Icon.RING, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+        }
+        m = FLOTSAM.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Flotsam!", m.group(2) + " floats at sea " + m.group(1) + " of Main's middle. Sail through it within the hour.",
+                SEA, Icon.WAYSTONE, false, SoundEffectID.PRAYER_DEPLETE_TWINKLE);
+        }
+        m = EXODUS.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Exodus!", "After " + m.group(1) + " hours in " + m.group(2) + ", Main sets off for " + m.group(3) + ".", WARM, Icon.MOOD, true,
+                SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        m = ORBIT.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Orbiting " + m.group(1), "Your circle circles the landmark, then flings off.", IN, Icon.MOOD, false, SoundEffectID.UI_BOOP);
+        }
+        m = FLING.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Flung off " + m.group(1) + "!", "The orbit let go: your circle dashes away.", WARM, Icon.MOOD, false, SoundEffectID.TELEPORT_VWOOP);
+        }
+        m = GRAVITY.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Gravity", "Standing in the overlap pulls your circle and " + m.group(1) + " together.", IN, Icon.CROSSING, false,
+                SoundEffectID.UI_BOOP);
+        }
+        m = KISS.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Border kiss!", "Cross straight into " + m.group(1) + " for " + NomadSim.KISS_MINUTES + " minutes.", GOLD, Icon.CROSSING, true,
+                SoundEffectID.GE_ADD_OFFER_DINGALING);
+        }
+        m = CARAVAN_IN.matcher(line);
+        if (m.find())
+        {
+            return new Banner("The caravan rests", "At " + m.group(1) + " for " + NomadSim.CARAVAN_REST + " minutes.", CARAVAN, Icon.MOOD, false, SoundEffectID.UI_BOOP);
+        }
+        m = CARAVAN_OUT.matcher(line);
+        if (m.find())
+        {
+            return new Banner("The caravan sets out", "From " + m.group(1) + " for " + m.group(2) + ".", CARAVAN, Icon.MOOD, false, SoundEffectID.UI_BOOP);
+        }
+        // Last: an aurora's line is "<Name> over <Kingdom>! ...", which only the lines above could also match.
+        m = AURORA.matcher(line);
+        if (m.find() && isAurora(m.group(1)))
+        {
+            return new Banner(m.group(1) + "!", "Over " + m.group(2) + ". " + m.group(3), AURORA_GREEN, Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+        }
+        m = AURORA_END.matcher(line);
+        if (m.find())
+        {
+            return new Banner("The " + m.group(1) + " has passed", "Over " + m.group(2) + ".", AURORA_GREEN.darker(), Icon.STAR, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+        }
+        return null;
+    }
 
     /**
      * The moments the run's own log tells best: comets, castaways, reunions, voyages, ports of
@@ -617,6 +772,6 @@ final class Moments
             return new Banner("A waystone ripened", m.group(2) + " at " + m.group(1) + " is rare now.", SidebarParts.RARE, Icon.WAYSTONE, true,
                 SoundEffectID.TOWN_CRIER_BELL_DONG);
         }
-        return null;
+        return worldEvent(line);
     }
 }

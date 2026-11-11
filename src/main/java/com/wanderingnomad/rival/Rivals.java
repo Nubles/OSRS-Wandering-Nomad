@@ -86,7 +86,7 @@ public final class Rivals
             long at = o.has("at") ? o.get("at").getAsLong() : 0;
             SavedRun saved = gson.fromJson(RunCode.decode(run, MAX_RUN_BYTES), SavedRun.class);
             if (saved == null || saved.sim == null || saved.sim.circles().isEmpty()) throw new IllegalArgumentException("empty run");
-            r.latest = new Rival.Snapshot(saved.sim, saved.surface, online, at);
+            r.latest = new Rival.Snapshot(saved.sim.ready(), saved.surface, online, at);
             r.etag = etag;
             r.problem = null;
         }

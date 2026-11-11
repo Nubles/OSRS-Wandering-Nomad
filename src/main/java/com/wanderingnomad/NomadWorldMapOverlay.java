@@ -132,6 +132,32 @@ class NomadWorldMapOverlay extends Overlay
             double pr = Math.max(MIN_RADIUS_PX, twin.radius() * zoom);
             drawCircle(graphics, twin, new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2), yours == NomadSim.MAIN, sim.linked(NomadSim.MAIN));
         }
+        // An open rift's far half is Main too, drawn like it with a label saying how long it stays open.
+        Circle rift = sim.rift();
+        if (rift != null)
+        {
+            double px = bounds.x + (rift.x() - west) * zoom;
+            double py = bounds.y + bounds.height - (rift.y() - south) * zoom;
+            double pr = Math.max(MIN_RADIUS_PX, rift.radius() * zoom);
+            Ellipse2D ring = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
+            drawCircle(graphics, rift, ring, yours == NomadSim.MAIN, sim.linked(NomadSim.MAIN));
+            Font f = graphics.getFont();
+            graphics.setFont(FontManager.getRunescapeSmallFont());
+            pill(graphics, "Rift: Main, " + sim.riftLeft() + " min", (float) px, (float) (ring.getMinY() - 4), new Color(0xC08BFF));
+            graphics.setFont(f);
+        }
+        // The sea lane Main left in its wake: a ribbon that counts as Main for a while.
+        double[] lane = sim.lane();
+        if (lane != null)
+        {
+            Path2D.Double ribbon = new Path2D.Double();
+            ribbon.moveTo(bounds.x + (lane[0] - west) * zoom, bounds.y + bounds.height - (lane[1] - south) * zoom);
+            ribbon.lineTo(bounds.x + (lane[2] - west) * zoom, bounds.y + bounds.height - (lane[3] - south) * zoom);
+            float width = (float) Math.max(3, NomadSim.LANE_HALF * 2 * zoom);
+            graphics.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            graphics.setColor(NomadPlugin.colour(sim.main(), 70));
+            graphics.draw(ribbon);
+        }
         Fade fade = plugin.fade(now);
         if (fade != null)
         {

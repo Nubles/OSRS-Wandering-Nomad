@@ -154,18 +154,20 @@ class NomadSceneOverlay extends Overlay
             Circle yours = sim.bound();
             // While Main is forked, its other half is drawn like Main: yours if Main is, a gateway if it touches yours.
             if (sim.twin() != null) circles.add(sim.twin());
+            // An open rift's far half is Main too.
+            if (sim.rift() != null) circles.add(sim.rift());
             for (int j = 0; j < circles.size(); j++)
             {
                 Circle c = circles.get(j);
-                boolean twin = j == sim.circles().size();
-                int index = twin ? NomadSim.MAIN : j;
+                boolean twin = c == sim.twin();
+                int index = j >= sim.circles().size() ? NomadSim.MAIN : j;
                 boolean mine = index == sim.boundIndex();
                 if (!mine && !(sim.linked(index) && yours.touches(c))) continue;
                 if (tiles) drawTiles(graphics, view, c, at, mine);
                 // The 3D edge is drawn by the game itself, so things in front hide it; a line drawn over the
                 // picture can't be hidden by roofs and walls, so it's only drawn when the 3D edge is off.
                 // Where the halves of a forked Main overlap, each one's edge inside the other is hidden.
-                Circle hidden = sim.twin() == null ? null : twin ? sim.main() : index == NomadSim.MAIN ? sim.twin() : null;
+                Circle hidden = sim.twin() == null ? null : twin ? sim.main() : c == sim.main() ? sim.twin() : null;
                 if (wall && !config.edge3d()) drawWall(graphics, view, c, mine ? null : yours, hidden, at, now);
             }
             drawFeet(graphics, view, sim, at);

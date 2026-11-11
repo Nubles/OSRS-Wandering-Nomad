@@ -873,9 +873,13 @@ class NomadPanel extends PluginPanel
             v.state = v.outside ? "Outside your circle" : sim.stranded() ? "Stranded: Main moved on" : "Inside";
             v.stateColour = v.outside ? SidebarParts.OUT : sim.stranded() ? new Color(0xFFCF8F) : SidebarParts.IN;
             v.edgeIn = radar == null ? -1 : radar.edgeIn;
-            v.mood = c.moodName() + (c.sailing() ? ", sailing to " + c.voyageTo()
+            v.mood = (c.orbitLeft() > 0 ? "Orbiting" : c.moodName()) + (c.sailing() ? ", sailing to " + c.voyageTo()
                 : c.portOfCall() != null ? ", bound for " + c.portOfCall()
                     + (sim.helmsmanTo() != null && c.isMain() ? " to sail for " + sim.helmsmanTo() : "") : "");
+            if (c.isCaravan())
+            {
+                v.mood = c.resting() > 0 ? "Resting at " + c.bankTown() + ", " + c.resting() + " min" : "On the road to " + c.bankTown();
+            }
             v.heading = c.heading();
             v.radius = c.radius();
             v.played = time(sim.minutes());
@@ -937,6 +941,39 @@ class NomadPanel extends PluginPanel
             else if (sim.ghost() != null)
             {
                 v.forkLine = "The lost half drifts nearby: " + time(sim.ghostLeft()) + " to meet it again";
+            }
+            else if (sim.rift() != null)
+            {
+                v.forkLine = "Rift open at " + sim.riftAt() + ": stand there as it closes, " + sim.riftLeft() + " min";
+            }
+            else if (sim.eclipse() > 0)
+            {
+                v.forkLine = "Eclipse: Main and " + sim.circles().get(sim.eclipse()).name() + " move as one, " + sim.eclipseLeft() + " min";
+            }
+            else if (sim.stampedeWarning() > 0)
+            {
+                v.forkLine = "Stampede in " + sim.stampedeWarning() + " min: every kingdom's circle dashes";
+            }
+            else if (sim.stampedeLeft() > 0)
+            {
+                v.forkLine = "Stampede: the kingdoms dash, " + sim.stampedeLeft() + " min left";
+            }
+            else if (sim.kissing() >= 0)
+            {
+                v.forkLine = "Border kiss: cross into " + sim.circles().get(sim.kissing()).name() + ", " + sim.kissLeft() + " min left";
+            }
+            else if (sim.auroraCircle() > 0)
+            {
+                Circle a = sim.circles().get(sim.auroraCircle());
+                v.forkLine = NomadSim.auroraName(a.region().id) + " over " + a.name() + ", " + sim.auroraLeft() + " min left";
+            }
+            else if (sim.lane() != null && c.isMain())
+            {
+                v.forkLine = "Sea lane: Main's wake counts as Main for a while";
+            }
+            else if (sim.homingLeft() > 0 && c.isMain())
+            {
+                v.forkLine = "Homing: Main leans back toward your last waystone, " + time(sim.homingLeft());
             }
             // Yours last, so it draws on top.
             v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));

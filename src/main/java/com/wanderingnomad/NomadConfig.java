@@ -25,6 +25,14 @@ public interface NomadConfig extends Config
     )
     String MOMENTS = "moments";
 
+    @ConfigSection(
+        name = "House rules",
+        description = "Optional rules that bend the mode a little. All are off by default; agree them before a race.",
+        position = 60,
+        closedByDefault = true
+    )
+    String HOUSE_RULES = "houseRules";
+
     @ConfigItem(
         keyName = "momentBanners",
         name = "Banners",
@@ -345,5 +353,43 @@ public interface NomadConfig extends Config
     default String rivals()
     {
         return "";
+    }
+
+    @ConfigItem(
+        keyName = "borderKiss",
+        name = "Border kiss",
+        description = "When your kingdom circle touches a neighbouring kingdom's circle across the border, you can cross "
+            + "straight into it for 20 minutes without going back through Main.",
+        section = HOUSE_RULES,
+        position = 0
+    )
+    default boolean borderKiss()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "deepTime",
+        name = "Deep time",
+        description = "While you're underground, Main drifts at half pace.",
+        section = HOUSE_RULES,
+        position = 1
+    )
+    default boolean deepTime()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "delve",
+        name = "Delve",
+        description = "Go underground from inside your circle and you count as inside for up to an hour, wherever the "
+            + "surface circle drifts. Then it waits an hour before it works again.",
+        section = HOUSE_RULES,
+        position = 2
+    )
+    default boolean delve()
+    {
+        return false;
     }
 }

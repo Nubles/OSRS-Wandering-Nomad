@@ -68,7 +68,7 @@ public final class JourneyWatch
             }
         }
         if (!inside || at == null) return;
-        if (yours.region() != null) j.addTo(Trials.REGIONS, yours.region().id);
+        if (yours.isKingdom()) j.addTo(Trials.REGIONS, yours.region().id);
         j.addTo(Trials.SQUARES, String.valueOf(region(at.x, at.y)));
         if (at.equals(lastTile)) return;
         lastTile = at;

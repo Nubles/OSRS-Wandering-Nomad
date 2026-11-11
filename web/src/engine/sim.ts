@@ -1880,15 +1880,27 @@ export class NomadSim {
     if (c.pulse > 0) c.pulse--;
     if (c.anchorLeft > 0) return;
     let to = c.port == null ? undefined : this.geo.town(c.port);
-    let waiting = false;
     if (yours && stranded) {
-      const home = this.nearestTown(this.main.x, this.main.y, c);
+      const m = this.main;
+      const home = this.nearestTown(m.x, m.y, c);
+      if (home && dist(m.x - c.x, m.y - c.y) <= dist(m.x - home.tile.x, m.y - home.tile.y) + CARAVAN_ARRIVE) {
+        // As near Main as the town nearest it, or nearer: it leaves the road and goes looking for Main.
+        c.shore = 0;
+        const d = dist(m.x - c.x, m.y - c.y);
+        if (d <= 0) return;
+        const nx = c.x + ((m.x - c.x) / d) * CARAVAN_SPEED;
+        const ny = c.y + ((m.y - c.y) / d) * CARAVAN_SPEED;
+        if (!this.geo.onLand(nx, ny)) return;
+        c.heading = Math.atan2(m.y - c.y, m.x - c.x);
+        c.x = nx;
+        c.y = ny;
+        return;
+      }
       if (home && home !== to) {
         to = home;
         c.port = home.name;
         c.shore = 0;
       }
-      waiting = !!home;
     }
     if (!to) {
       const dice = new Rng(s.seed ^ Math.imul(s.caravanLegs + 1, 0x6c8e9cf5));
@@ -1899,10 +1911,7 @@ export class NomadSim {
       c.port = next.name;
     }
     if (c.shore > 0) {
-      if (--c.shore === 0 && waiting) {
-        // Riding it away from Main: it waits at the town nearest Main until you step off.
-        c.shore = CARAVAN_REST;
-      } else if (c.shore === 0) {
+      if (--c.shore === 0) {
         const dice = new Rng(s.seed ^ Math.imul(s.caravanLegs + 1, 0x6c8e9cf5));
         s.caravanLegs++;
         const next = this.nextTown(to, c, dice);

@@ -146,6 +146,13 @@ class NomadMinimapOverlay extends Overlay
                 }
             }
         }
+        // The sea lane Main left behind it, near you.
+        double[] lane = sim.lane();
+        if (lane != null)
+        {
+            Path2D path = segmentNear(view, lane[0], lane[1], lane[2], lane[3], at, 60);
+            if (path != null) glow(graphics, path, new Color(0x6FC3E8), 0.7);
+        }
         for (int k = 0; k < halves.size(); k++)
         {
             Path2D r = rings.get(k);
@@ -295,6 +302,25 @@ class NomadMinimapOverlay extends Overlay
     }
 
     /** A world position (tile units, tile centres on whole numbers) on the minimap, even when it's off the edge of it. */
+    /** The stretch of a line from (x0, y0) to (x1, y1) within {@code reach} tiles along it of you, on the minimap, or null. */
+    private Path2D segmentNear(WorldView view, double x0, double y0, double x1, double y1, WorldPoint at, double reach)
+    {
+        double len = Math.hypot(x1 - x0, y1 - y0);
+        double ux = len < 1 ? 0 : (x1 - x0) / len;
+        double uy = len < 1 ? 0 : (y1 - y0) / len;
+        double along = (at.getX() - x0) * ux + (at.getY() - y0) * uy;
+        double t0 = Math.max(0, along - reach);
+        double t1 = Math.min(len, along + reach);
+        if (t0 > t1) return null;
+        Point a = toMinimap(view, x0 + ux * t0, y0 + uy * t0);
+        Point b = toMinimap(view, x0 + ux * t1, y0 + uy * t1);
+        if (a == null || b == null) return null;
+        Path2D path = new Path2D.Double();
+        path.moveTo(a.getX(), a.getY());
+        path.lineTo(b.getX(), b.getY());
+        return path;
+    }
+
     private Point toMinimap(WorldView view, double wx, double wy)
     {
         int lx = (int) Math.round((wx - view.getBaseX()) * Perspective.LOCAL_TILE_SIZE) + Perspective.LOCAL_HALF_TILE_SIZE;

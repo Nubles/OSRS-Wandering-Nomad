@@ -111,9 +111,11 @@ public final class Curiosities
         for (int j = 1; j < circles.size(); j++)
         {
             Circle o = circles.get(j);
+            if (!o.isKingdom()) continue;
             if (Circle.dist(m.x() - o.x(), m.y() - o.y()) <= 5) add(out, ECLIPSE);
             if (m.touches(o)) touching++;
         }
+        if (sim.eclipse() > 0) add(out, ECLIPSE);
         if (touching >= 2) add(out, CROWDED);
         if (sim.comet() != null && sim.comet().flying() && sim.stormLeft() > 0) add(out, STORM_COMET);
         if (m.radius() >= m.radiusMax() - 3 && !m.sailing()) add(out, GIANT);

@@ -26,7 +26,7 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26, 560};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26, 560, 3};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
     /** Left alone, sets course for a port, sails, and is blown off course: a castaway. */
@@ -39,8 +39,12 @@ public final class SharedVectors
     static final int CALM_SEED = 77;
     /** Comets, the Wanderer's Crown, Gathering, Helmsman, Homeward, pilgrim, ripening and legendary stones. */
     static final int WAVE_SEED = 9001;
-    /** World events: a stampede, auroras, flotsam, a rift walked into, Deep time, Gravity, a border kiss and riding the caravan. */
+    /** World events: a stampede, auroras, flotsam, a rift walked into, Deep time, Gravity and riding the caravan. */
     static final int WORLD_SEED = 560;
+    /** Border kiss: stays in Misthalin until its circle touches Asgarnia's across the border, then crosses straight over. */
+    static final int KISS_SEED = 3;
+    /** Kisses are rare: this seed's comes a little after the usual run length. */
+    static final int KISS_RUN = 1620;
 
     private SharedVectors()
     {
@@ -82,6 +86,7 @@ public final class SharedVectors
         if (seed == CALM_SEED) return calmScript(seed);
         if (seed == WAVE_SEED) return waveScript(seed);
         if (seed == WORLD_SEED) return worldScript(seed);
+        if (seed == KISS_SEED) return kissScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
         Circle m = probe.main();
@@ -255,12 +260,11 @@ public final class SharedVectors
         if (ride >= 0 && ride < 900)
         {
             events.add(event(ride, "crossto", probe(seed, events, ride).caravanIndex()));
-            for (int t = ride + 60; t < ride + 600; t += 20) events.add(event(t, "crossto", NomadSim.MAIN));
-            final int rode = ride + 60;
-            int back = firstMinute(seed, events, s -> s.minutes() >= rode && s.boundIndex() == NomadSim.MAIN);
+            int back = crossBack(seed, events, ride + 60, ride + 600);
             after = back >= 0 ? back : ride + 600;
         }
-        // Stand where Main and the circle nearest it overlap for half an hour (Gravity), cross in, and back out.
+        // Stand where Main and the kingdom nearest it overlap for half an hour (Gravity), and cross in.
+        // Stay two hours, crossing on through a border kiss if one opens, then head back to Main.
         final int searchFrom = after;
         int touch = firstMinute(seed, events, s -> s.minutes() >= searchFrom && s.boundIndex() == NomadSim.MAIN && overlap(s) != null);
         if (touch >= 0 && touch < 1200)
@@ -269,8 +273,11 @@ public final class SharedVectors
             events.add(event(touch, "player", at[0], at[1]));
             events.add(event(touch + 30, "crossto", at[2]));
             events.add(event(touch + 31, "player"));
-            for (int t = touch + 90; t < MINUTES; t += 20) events.add(event(t, "crossto", NomadSim.MAIN));
-            after = touch + 31;
+            final int stay = touch + 31;
+            int kissed = firstMinute(seed, events, s -> s.minutes() >= stay && s.kissing() >= 0 || s.minutes() >= stay + 120);
+            if (kissed >= 0 && kissed < stay + 120) events.add(event(kissed, "crossto", probe(seed, events, kissed).kissing()));
+            int back = crossBack(seed, events, stay + 120, MINUTES);
+            after = back >= 0 ? back : stay + 120;
         }
         // Deep time for two hours.
         events.add(event(after, "deep", true));
@@ -289,6 +296,43 @@ public final class SharedVectors
         }
         events.add(event(1400, "event", "stampede"));
         return events;
+    }
+
+    static JsonArray kissScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        events.add(event(0, "kiss", true));
+        // Cross into the first kingdom Main touches, and stay.
+        int in = firstMinute(seed, events, s -> s.minutes() >= 30 && s.boundIndex() == NomadSim.MAIN && kingdomTouching(s) > 0, KISS_RUN);
+        if (in < 0) return events;
+        events.add(event(in, "crossto", kingdomTouching(probe(seed, events, in))));
+        final int from = in + 1;
+        int kissed = firstMinute(seed, events, s -> s.minutes() >= from && s.kissing() >= 0, KISS_RUN);
+        if (kissed < 0) return events;
+        events.add(event(kissed, "crossto", probe(seed, events, kissed).kissing()));
+        crossBack(seed, events, kissed + 20, KISS_RUN);
+        return events;
+    }
+
+    /** The first kingdom's circle touching Main, by index, or 0. */
+    private static int kingdomTouching(NomadSim s)
+    {
+        for (int j = 1; j < s.circles().size(); j++)
+        {
+            if (s.circles().get(j).isKingdom() && s.main().touches(s.circles().get(j))) return j;
+        }
+        return 0;
+    }
+
+    /** Tries crossing back into Main every 20 minutes from {@code from} until one works: the minute after it, or -1. */
+    private static int crossBack(int seed, JsonArray events, int from, int until)
+    {
+        for (int t = from; t < until; t += 20)
+        {
+            events.add(event(t, "crossto", NomadSim.MAIN));
+            if (probe(seed, events, t + 1).boundIndex() == NomadSim.MAIN) return t + 1;
+        }
+        return -1;
     }
 
     /** Where your circle overlaps the nearest circle you could cross into, as {x, y, its index}, or null. */
@@ -345,9 +389,14 @@ public final class SharedVectors
     /** The first minute the script reaches where {@code when} holds, or -1. */
     static int firstMinute(int seed, JsonArray events, java.util.function.Predicate<NomadSim> when)
     {
+        return firstMinute(seed, events, when, MINUTES);
+    }
+
+    static int firstMinute(int seed, JsonArray events, java.util.function.Predicate<NomadSim> when, int until)
+    {
         NomadSim sim = NomadSim.start(seed);
         Tile[] player = {null};
-        for (int minute = 0; minute < MINUTES; minute++)
+        for (int minute = 0; minute < until; minute++)
         {
             apply(sim, events, minute, player);
             if (when.test(sim)) return minute;
@@ -472,7 +521,8 @@ public final class SharedVectors
         Tile[] player = {null};
         JsonArray log = new JsonArray();
         JsonArray hours = new JsonArray();
-        for (int minute = 0; minute < MINUTES; minute++)
+        int run = seed == KISS_SEED ? KISS_RUN : MINUTES;
+        for (int minute = 0; minute < run; minute++)
         {
             for (String line : apply(sim, events, minute, player)) log.add(entry(minute, line));
             List<String> lines = sim.step(player[0]);
@@ -481,7 +531,7 @@ public final class SharedVectors
         }
         JsonObject out = new JsonObject();
         out.addProperty("seed", seed);
-        out.addProperty("minutes", MINUTES);
+        out.addProperty("minutes", run);
         out.add("events", events);
         out.add("hours", hours);
         out.add("log", log);

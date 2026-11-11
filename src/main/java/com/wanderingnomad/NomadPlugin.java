@@ -187,6 +187,12 @@ public class NomadPlugin extends Plugin
     private NomadSim sim;
     private Tile surface;
     private int ticks;
+    /** Underground at the last tick, for Delve and Deep time. */
+    private boolean underground;
+    /** Delve (a house rule): minutes left counting as inside, and minutes until it works again. */
+    private int delveLeft;
+    private int delveWait;
+    static final int DELVE_MINUTES = 60;
     /**
      * Homeward: the varp the game sets when Home Teleport is cast (RuneLite's LAST_HOME_TELEPORT),
      * and how many ticks apart that and the jump to where it lands may be.
@@ -246,7 +252,7 @@ public class NomadPlugin extends Plugin
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
             panel.addTestButtons(
                 new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots",
-                    "Comet soon", "Legendary stone"},
+                    "Comet soon", "Legendary stone", "Stampede soon", "Aurora soon", "Rift soon", "Flotsam soon"},
                 new Runnable[]{
                     () -> clientThread.invokeLater(() -> test("nomadmoments")),
                     () -> clientThread.invokeLater(() -> test("nomadfork")),
@@ -259,6 +265,10 @@ public class NomadPlugin extends Plugin
                         : "Waystone spots hidden.")),
                     () -> clientThread.invokeLater(() -> test("nomadcomet")),
                     () -> clientThread.invokeLater(() -> test("nomadlegend")),
+                    () -> clientThread.invokeLater(() -> test("nomadevent", "stampede")),
+                    () -> clientThread.invokeLater(() -> test("nomadevent", "aurora")),
+                    () -> clientThread.invokeLater(() -> test("nomadevent", "rift")),
+                    () -> clientThread.invokeLater(() -> test("nomadevent", "flotsam")),
                 });
         }
         navButton = NavigationButton.builder()
@@ -349,6 +359,7 @@ public class NomadPlugin extends Plugin
         }
         Tile before = surface;
         surface = locate();
+        delve();
         if (before != null && surface != null) stats.walked(surface.x - before.x, surface.y - before.y);
         homeward(before);
         readMilestones();
@@ -405,8 +416,21 @@ public class NomadPlugin extends Plugin
     {
         sim.setSailingUnlocked(config.sailingUnlocked());
         sim.setSailing(client.getRealSkillLevel(Skill.SAILING), docksQuestsMissing());
+        sim.setBorderKiss(config.borderKiss());
+        sim.setDeep(config.deepTime() && underground);
         int boundBefore = sim.boundIndex();
-        List<String> lines = sim.step(surface);
+        // Delving, you count as inside wherever the circle goes: the rules get no tile to judge.
+        List<String> lines = sim.step(delveLeft > 0 ? null : surface);
+        if (delveLeft > 0 && --delveLeft == 0)
+        {
+            delveWait = DELVE_MINUTES;
+            lines = new ArrayList<>(lines);
+            lines.add("The delve ran out: you count where you went down again. Delve rests for an hour.");
+        }
+        else if (delveLeft == 0 && delveWait > 0)
+        {
+            delveWait--;
+        }
         report(lines);
         for (Curiosities.Curio c : curiosities.spot(sim, surface, lines)) curio(c);
         String born = Lineage.sync(journey, sim.seed(), sim.forks(), sim.minutes());
@@ -660,15 +684,62 @@ public class NomadPlugin extends Plugin
     /** Standing outside your circle right now, by the surface tile you count as on. */
     boolean outsideNow()
     {
-        return sim != null && surface != null && !sim.inYours(surface.x, surface.y);
+        return sim != null && surface != null && delveLeft <= 0 && !sim.inYours(surface.x, surface.y);
     }
 
-    /** Your circle, and while Main is forked and yours, its other half too. Never cache it: a fork swaps Main. */
+    /** Minutes left delving, 0 if not; and minutes until Delve works again. */
+    int delveLeft()
+    {
+        return delveLeft;
+    }
+
+    int delveWait()
+    {
+        return delveWait;
+    }
+
+    /**
+     * Delve (a house rule): going underground from inside your circle counts as inside for up to an
+     * hour; coming back up ends it, and it rests an hour either way. Client thread, every tick.
+     */
+    private void delve()
+    {
+        boolean was = underground;
+        underground = isUnderground();
+        if (underground == was) return;
+        if (underground && config.delve() && delveWait == 0 && delveLeft == 0 && surface != null && sim.inYours(surface.x, surface.y))
+        {
+            delveLeft = DELVE_MINUTES;
+            report(java.util.Collections.singletonList("Delve: you went down from inside your circle. For up to an hour you count as inside, wherever it drifts."));
+        }
+        else if (!underground && delveLeft > 0)
+        {
+            delveLeft = 0;
+            delveWait = DELVE_MINUTES;
+            report(java.util.Collections.singletonList("Back on the surface: the delve is over. Delve rests for an hour."));
+        }
+    }
+
+    /** In a cave or dungeon under the surface map (not an instance or a boat). */
+    private boolean isUnderground()
+    {
+        Player player = client.getLocalPlayer();
+        if (player == null) return underground;
+        WorldView view = player.getWorldView();
+        if (view == null || !view.isTopLevel()) return false;
+        Scene scene = view.getScene();
+        if (scene == null || scene.isInstance()) return false;
+        WorldPoint at = player.getWorldLocation();
+        return at != null && !Surface.isSurface(at.getX(), at.getY());
+    }
+
+    /** Your circle, and while Main is yours, its other half when forked and its far half through an open rift. Never cache it: a fork swaps Main. */
     static List<Circle> halves(NomadSim sim)
     {
         List<Circle> out = new ArrayList<>(2);
         out.add(sim.bound());
         if (sim.boundIndex() == NomadSim.MAIN && sim.twin() != null) out.add(sim.twin());
+        if (sim.boundIndex() == NomadSim.MAIN && sim.rift() != null) out.add(sim.rift());
         return out;
     }
 
@@ -819,8 +890,22 @@ public class NomadPlugin extends Plugin
                 // Testing: summons a legendary waystone, as a legendary feat would.
                 summon(NomadSim.LEGENDARY, "A test");
                 break;
+            case "nomadevent":
+            {
+                // Testing: a world event (stampede, aurora, rift or flotsam) comes at the next played minute.
+                String what = args.length > 0 ? args[0].toLowerCase() : "";
+                if (!java.util.Arrays.asList("stampede", "aurora", "rift", "flotsam").contains(what))
+                {
+                    reply("Try ::nomadevent stampede, aurora, rift or flotsam.");
+                    break;
+                }
+                sim.eventSoonForTesting(what);
+                reply("The next " + what + " comes at the next played minute" + ("flotsam".equals(what) ? ", if Main is at sea." : "."));
+                break;
+            }
             default:
-                reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>, ::nomadcomet, ::nomadlegend.");
+                reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>, ::nomadcomet, ::nomadlegend, "
+                    + "::nomadevent <stampede|aurora|rift|flotsam>.");
                 break;
         }
     }
@@ -933,6 +1018,8 @@ public class NomadPlugin extends Plugin
             int seed = raceName != null ? raceSeed : seed();
             sim = NomadSim.start(seed);
             surface = null;
+            delveLeft = 0;
+            delveWait = 0;
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
@@ -945,8 +1032,11 @@ public class NomadPlugin extends Plugin
         }
         else
         {
-            sim = run.sim;
+            // Runs saved before the caravan get one as they load.
+            sim = run.sim.ready();
             surface = run.surface;
+            delveLeft = run.delveLeft;
+            delveWait = run.delveWait;
         }
         loadGuard();
         loadMilestones();
@@ -1335,7 +1425,10 @@ public class NomadPlugin extends Plugin
         if (sim == null) return;
         saveStats();
         saveJourney();
-        configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(new SavedRun(sim, surface)));
+        SavedRun run = new SavedRun(sim, surface);
+        run.delveLeft = delveLeft;
+        run.delveWait = delveWait;
+        configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(run));
     }
 
     private int seed()
@@ -1516,6 +1609,11 @@ public class NomadPlugin extends Plugin
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
+        if (sim != null && delveLeft > 0)
+        {
+            view.state = "Delving: inside for " + delveLeft + " min";
+            view.stateColour = SidebarParts.IN;
+        }
         view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials, sim.minutes());
         if (sim != null && journey != null && renown != null && trials != null) view.journey.ledger = Ledger.text(sim, journey, renown, trials);
         if (sim != null)

@@ -277,7 +277,7 @@ public final class NomadSim
     static final int KISS_RANGE = 200;
     /** The Trade road's caravan walks 1.5 tiles a minute and rests 20 minutes at each town. */
     static final double CARAVAN_SPEED = 1.5;
-    static final int CARAVAN_REST = 20;
+    public static final int CARAVAN_REST = 20;
     static final int CARAVAN_LOOKAHEAD = 8;
     static final int CARAVAN_ARRIVE = 4;
     static final int CARAVAN_CHOICES = 3;
@@ -2779,24 +2779,38 @@ public final class NomadSim
 
     /**
      * The Trade road: the caravan walks the roads from bank town to bank town and rests at each.
-     * While you ride it away from Main, it heads for the town nearest Main instead.
+     * While you ride it away from Main, it heads for the town nearest Main instead, and from there
+     * leaves the road and walks straight for Main until they touch.
      */
     private void caravan(Circle c, boolean yours, boolean stranded, List<String> log)
     {
         if (c.pulse > 0) c.pulse--;
         if (c.anchorLeft > 0) return;
         Geography.Port to = c.port == null ? null : Geography.town(c.port);
-        boolean waiting = false;
         if (yours && stranded)
         {
-            Geography.Port home = nearestTown(main().x, main().y, c);
+            Circle m = main();
+            Geography.Port home = nearestTown(m.x, m.y, c);
+            if (home != null && Circle.dist(m.x - c.x, m.y - c.y) <= dist(m, home.tile) + CARAVAN_ARRIVE)
+            {
+                // As near Main as the town nearest it, or nearer: it leaves the road and goes looking for Main.
+                c.shore = 0;
+                double d = Circle.dist(m.x - c.x, m.y - c.y);
+                if (d <= 0) return;
+                double nx = c.x + (m.x - c.x) / d * CARAVAN_SPEED;
+                double ny = c.y + (m.y - c.y) / d * CARAVAN_SPEED;
+                if (!Geography.onLand(nx, ny)) return;
+                c.heading = StrictMath.atan2(m.y - c.y, m.x - c.x);
+                c.x = nx;
+                c.y = ny;
+                return;
+            }
             if (home != null && home != to)
             {
                 to = home;
                 c.port = home.name;
                 c.shore = 0;
             }
-            waiting = home != null;
         }
         if (to == null)
         {
@@ -2808,12 +2822,7 @@ public final class NomadSim
         }
         if (c.shore > 0)
         {
-            if (--c.shore == 0 && waiting)
-            {
-                // Riding it away from Main: it waits at the town nearest Main until you step off.
-                c.shore = CARAVAN_REST;
-            }
-            else if (c.shore == 0)
+            if (--c.shore == 0)
             {
                 Rng dice = new Rng(seed ^ ((caravanLegs + 1) * 0x6C8E9CF5));
                 caravanLegs++;
