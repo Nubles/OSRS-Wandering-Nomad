@@ -145,12 +145,15 @@ class NomadWorldMapOverlay extends Overlay
 
         Font font = graphics.getFont();
         graphics.setFont(FontManager.getRunescapeSmallFont());
+        String heir = plugin.heir();
         for (int j = 0; j < circles.size(); j++)
         {
             Circle c = circles.get(j);
             Ellipse2D ring = rings[j];
             if (!ring.intersects(bounds)) continue;
-            String name = j == yours ? c.name() + " (you)" : c.name();
+            String name = c.name();
+            if (j == NomadSim.MAIN && heir != null) name += ", " + heir;
+            if (j == yours) name += " (you)";
             Color colour = NomadPlugin.colour(c, 255);
             double top = ring.getMinY() - 4;
             if (top < bounds.y + 12) top = ring.getMaxY() + 12;

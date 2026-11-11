@@ -1855,13 +1855,19 @@ public final class NomadSim
     }
 
     /** Distance from (px, py) to the segment from (ax, ay) to (bx, by). */
-    static double segmentDist(double px, double py, double ax, double ay, double bx, double by)
+    public static double segmentDist(double px, double py, double ax, double ay, double bx, double by)
     {
         double vx = bx - ax;
         double vy = by - ay;
         double len2 = vx * vx + vy * vy;
         double t = len2 == 0 ? 0 : clamp(((px - ax) * vx + (py - ay) * vy) / len2, 0, 1);
         return Circle.dist(px - (ax + t * vx), py - (ay + t * vy));
+    }
+
+    /** Forks that have parted (or collapsed) this run: Main is in its generation forks + 1. */
+    public int forks()
+    {
+        return forks;
     }
 
     /** Storms that have blown over Main and passed. */

@@ -4,10 +4,12 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import com.wanderingnomad.journey.Bestiary;
+import com.wanderingnomad.journey.Curiosities;
 import com.wanderingnomad.journey.Journey;
 import com.wanderingnomad.journey.JourneyChat;
 import com.wanderingnomad.journey.JourneyWatch;
 import com.wanderingnomad.journey.Ledger;
+import com.wanderingnomad.journey.Lineage;
 import com.wanderingnomad.journey.Omen;
 import com.wanderingnomad.journey.Omens;
 import com.wanderingnomad.journey.Rank;
@@ -193,6 +195,8 @@ public class NomadPlugin extends Plugin
     private static final int HOME_TICKS = 30;
     /** Ticks since login, the tick Home Teleport was last cast, and the last big jump of your tile. */
     private int tickCount;
+    /** Spots the circles' rare coincidences for the curiosities log. */
+    private final Curiosities curiosities = new Curiosities();
     private int homeCastTick = Integer.MIN_VALUE / 2;
     private int jumpTick = Integer.MIN_VALUE / 2;
     private Tile jumpFrom;
@@ -404,6 +408,9 @@ public class NomadPlugin extends Plugin
         int boundBefore = sim.boundIndex();
         List<String> lines = sim.step(surface);
         report(lines);
+        for (Curiosities.Curio c : curiosities.spot(sim, surface, lines)) curio(c);
+        String born = Lineage.sync(journey, sim.seed(), sim.forks(), sim.minutes());
+        if (born != null) report(java.util.Collections.singletonList(born + " is born: the half that lived carries Main's line on."));
         journey.minute(!outsideNow());
         String owed = Bestiary.due(journey, sim.minutes());
         if (owed != null) summon(owed, "A Bestiary milestone");
@@ -549,6 +556,26 @@ public class NomadPlugin extends Plugin
         publish();
     }
 
+    /** A curiosity seen: the first time on the account it pays renown with a banner; later ones are only noted. */
+    private void curio(Curiosities.Curio c)
+    {
+        if (!renown.findCurio(c.id))
+        {
+            report(java.util.Collections.singletonList("Curiosity seen again: " + c.name + "."));
+            saveRenown();
+            return;
+        }
+        Rank up = renown.add(Curiosities.RENOWN);
+        journey.earn(Curiosities.RENOWN);
+        show(Moments.curio(c, renown.curiosFound()));
+        report(java.util.Collections.singletonList("Curiosity found: " + c.name + ". " + c.detail + " +" + Curiosities.RENOWN
+            + " renown. " + renown.curiosFound() + " of " + Curiosities.ALL.size() + " in your log."));
+        if (up != null) show(Moments.rankUp(up));
+        applyPalette();
+        saveRenown();
+        saveJourney();
+    }
+
     @Subscribe
     public void onMenuOptionClicked(MenuOptionClicked ev)
     {
@@ -612,6 +639,12 @@ public class NomadPlugin extends Plugin
     SpotCheck spots()
     {
         return spots;
+    }
+
+    /** The name of Main's current generation, such as "Gertrude III", for the map. */
+    String heir()
+    {
+        return Lineage.current(journey);
     }
 
     Radar radar()
@@ -920,6 +953,8 @@ public class NomadPlugin extends Plugin
         loadStats();
         loadJourney();
         loadRenown();
+        curiosities.reset();
+        Lineage.sync(journey, sim.seed(), sim.forks(), sim.minutes());
         if (run == null || run.sim == null)
         {
             renown.newRun();

@@ -19,6 +19,8 @@ public final class Renown
     int oathsKept;
     /** Titles earned for 10,000 kills of one monster, such as "Goblin Bane", kept across runs. */
     java.util.Set<String> titles = new java.util.TreeSet<>();
+    /** Curiosities found on the account, by id, with how many times each has been seen. */
+    Map<String, Integer> curios = new HashMap<>();
     public static final String OATHBOUND = "Oathbound";
     public static final int OATHBOUND_COLOUR = 0xFFF2C2;
     public static final int OATH_RENOWN = 300;
@@ -27,7 +29,29 @@ public final class Renown
     {
         if (times == null) times = new HashMap<>();
         if (titles == null) titles = new java.util.TreeSet<>();
+        if (curios == null) curios = new HashMap<>();
         return this;
+    }
+
+    /** Notes a curiosity seen; true the first time the account ever sees it. */
+    public boolean findCurio(String id)
+    {
+        return curios.merge(id, 1, Integer::sum) == 1;
+    }
+
+    public boolean hasCurio(String id)
+    {
+        return curios.containsKey(id);
+    }
+
+    public int curioTimes(String id)
+    {
+        return curios.getOrDefault(id, 0);
+    }
+
+    public int curiosFound()
+    {
+        return curios.size();
     }
 
     public int renown()

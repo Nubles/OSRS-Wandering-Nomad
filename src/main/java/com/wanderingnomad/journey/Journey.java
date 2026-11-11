@@ -46,6 +46,9 @@ public final class Journey
     List<String> bestiaryOwed = new ArrayList<>();
     /** Renown this run has earned: trials, omens and a kept oath. */
     int earned;
+    /** Circle lineage: the name of Main's line, and the played minute each generation was born (-1 if not known). */
+    String family;
+    List<Integer> births = new ArrayList<>();
 
     /** Gson leaves fields null when an older save lacks them. */
     public Journey ready()
@@ -56,6 +59,7 @@ public final class Journey
         if (done == null) done = new LinkedHashSet<>();
         if (carried == null) carried = new HashSet<>();
         if (bestiaryOwed == null) bestiaryOwed = new ArrayList<>();
+        if (births == null) births = new ArrayList<>();
         return this;
     }
 

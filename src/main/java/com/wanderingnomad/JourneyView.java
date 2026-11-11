@@ -1,6 +1,8 @@
 package com.wanderingnomad;
 
+import com.wanderingnomad.journey.Curiosities;
 import com.wanderingnomad.journey.Journey;
+import com.wanderingnomad.journey.Lineage;
 import com.wanderingnomad.journey.Omen;
 import com.wanderingnomad.journey.Omens;
 import com.wanderingnomad.journey.Rank;
@@ -84,6 +86,12 @@ final class JourneyView
     List<String> rivalNames = Collections.emptyList();
     List<Row> next = Collections.emptyList();
     List<Row> all = Collections.emptyList();
+    /** Main's line now, such as "Gertrude III", and its family tree, oldest first. */
+    String heir;
+    List<String> lineage = Collections.emptyList();
+    /** The curiosities log: each one's name, what it takes, and how often the account has seen it (0 if never). */
+    List<String[]> curios = Collections.emptyList();
+    int curiosFound;
 
     static JourneyView of(Journey j, Renown r, List<Trial> trials)
     {
@@ -142,6 +150,12 @@ final class JourneyView
             }
         }
         v.all = all;
+        v.heir = Lineage.current(j);
+        v.lineage = Lineage.tree(j, minutes);
+        List<String[]> curios = new ArrayList<>();
+        for (Curiosities.Curio c : Curiosities.ALL) curios.add(new String[]{c.name, c.detail, String.valueOf(r.curioTimes(c.id))});
+        v.curios = curios;
+        v.curiosFound = r.curiosFound();
         return v;
     }
 }

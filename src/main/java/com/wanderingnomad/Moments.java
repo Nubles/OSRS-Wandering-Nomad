@@ -418,6 +418,15 @@ final class Moments
             Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
     }
 
+    private static final Color CURIO = new Color(0xE6C3FF);
+
+    /** A curiosity found for the first time on the account. */
+    static Banner curio(com.wanderingnomad.journey.Curiosities.Curio c, int found)
+    {
+        return new Banner("Curiosity: " + c.name, c.detail + " " + found + " of " + com.wanderingnomad.journey.Curiosities.ALL.size()
+            + " found. +" + com.wanderingnomad.journey.Curiosities.RENOWN + " renown.", CURIO, Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
     /** A new Nomad rank, and the edge colour it unlocked. */
     static Banner rankUp(com.wanderingnomad.journey.Rank r)
     {

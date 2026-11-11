@@ -364,6 +364,25 @@ class NomadPanel extends PluginPanel
                 .append("<br>").append(state).append("</td></tr>");
         }
         if (chapter != null) html.append("</table>");
+        if (j.live && !j.lineage.isEmpty())
+        {
+            html.append("<h3 style='margin:8px 0 2px 0;color:#ffffff'>Lineage</h3><p style='margin:0'>");
+            for (String line : j.lineage) html.append(escape(line)).append("<br>");
+            html.append("</p>");
+        }
+        if (j.live)
+        {
+            html.append("<h3 style='margin:8px 0 2px 0;color:#ffffff'>Curiosities (").append(j.curiosFound).append(" of ")
+                .append(j.curios.size()).append(")</h3><table width='100%' cellpadding='2'>");
+            for (String[] c : j.curios)
+            {
+                boolean found = !"0".equals(c[2]);
+                html.append("<tr><td><b style='color:").append(found ? "#e6c3ff" : "#777777").append("'>").append(found ? escape(c[0]) : "???")
+                    .append("</b><br><span style='color:#9a9a9a'>").append(escape(c[1])).append("</span></td><td align='right' valign='top'>")
+                    .append(found ? "Seen " + c[2] + (c[2].equals("1") ? " time" : " times") : "").append("</td></tr>");
+            }
+            html.append("</table>");
+        }
         html.append("</body></html>");
         JEditorPane pane = new JEditorPane("text/html", html.toString());
         pane.setEditable(false);
@@ -372,6 +391,11 @@ class NomadPanel extends PluginPanel
         JScrollPane scroll = new JScrollPane(pane);
         scroll.setPreferredSize(new Dimension(420, 520));
         JOptionPane.showMessageDialog(this, scroll, "Nomad UIM: trials", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    private static String escape(String text)
+    {
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     /** The run ledger in a window of its own, with a button to copy it. */
