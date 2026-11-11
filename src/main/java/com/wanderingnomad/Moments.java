@@ -6,9 +6,13 @@ import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Waystone;
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.runelite.api.SoundEffectID;
 
 /**
@@ -94,7 +98,8 @@ final class Moments
     private boolean outside;
     private int bound;
     private final Set<Integer> open = new HashSet<>();
-    private final Set<String> stones = new HashSet<>();
+    /** Waystones at the last look, by landmark and circle, with the boon each held. */
+    private final Map<String, String> stones = new HashMap<>();
     private int boons;
     private String mood;
     private final Set<String> effects = new HashSet<>();
@@ -145,8 +150,8 @@ final class Moments
         List<Banner> out = new ArrayList<>();
         Circle yours = sim.bound();
         Set<Integer> openNow = openCrossings(sim);
-        Set<String> stonesNow = new HashSet<>();
-        for (Waystone w : sim.waystones()) stonesNow.add(key(w));
+        Map<String, String> stonesNow = new HashMap<>();
+        for (Waystone w : sim.waystones()) stonesNow.put(key(w), w.boon());
         Set<String> effectsNow = effects(sim);
         int stage = radar == null || radar.edgeIn < 1 ? 0 : radar.edgeIn <= 1 ? 2 : radar.edgeIn <= NomadPlugin.EDGE_WARNING ? 1 : 0;
 
@@ -211,16 +216,13 @@ final class Moments
             boolean claimed = sim.boons().size() > boons;
             for (Waystone w : sim.waystones())
             {
-                if (stones.contains(key(w))) continue;
-                boolean rare = rare(w.boon());
-                String where = w.circle() == sim.boundIndex() ? "your circle" : sim.circles().get(w.circle()).name();
-                out.add(new Banner(rare ? "Rare waystone risen" : "Waystone risen", w.boon() + " at " + w.landmark() + ", in " + where + ".",
-                    GOLD, Icon.WAYSTONE, rare, rare ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.PRAYER_DEPLETE_TWINKLE));
+                if (stones.containsKey(key(w))) continue;
+                out.add(risen(sim, w));
             }
-            for (String gone : stones)
+            for (Map.Entry<String, String> stone : stones.entrySet())
             {
-                if (stonesNow.contains(gone)) continue;
-                String boon = gone.substring(0, gone.indexOf('|'));
+                if (stonesNow.containsKey(stone.getKey())) continue;
+                String boon = stone.getValue();
                 out.add(claimed
                     ? new Banner("Waystone claimed", boon + " is yours. Spend it from the sidebar.", GOLD, Icon.WAYSTONE, true,
                         SoundEffectID.PRAYER_ACTIVATE_PIETY, Event.CLAIMED)
@@ -264,7 +266,7 @@ final class Moments
         open.clear();
         open.addAll(openNow);
         stones.clear();
-        stones.addAll(stonesNow);
+        stones.putAll(stonesNow);
         boons = sim.boons().size();
         mood = yours.moodName();
         effects.clear();
@@ -347,10 +349,14 @@ final class Moments
     }
 
     /** A milestone, told the moment it's reached; the waystone it summons gets a banner of its own when it rises. */
-    static Banner milestone(String why, boolean rare)
+    static Banner milestone(String why, String tier)
     {
-        return new Banner(rare ? "First kill!" : "Milestone reached", why + " summoned a" + (rare ? " rare" : "") + " waystone.",
-            GOLD, Icon.STAR, rare, SoundEffectID.GE_COIN_TINKLE);
+        boolean legendary = NomadSim.LEGENDARY.equals(tier);
+        boolean rare = NomadSim.RARE.equals(tier);
+        return new Banner(legendary ? "A legendary feat!" : rare ? "First kill!" : "Milestone reached",
+            why + " summoned a" + (legendary ? " legendary" : rare ? " rare" : "") + " waystone.",
+            legendary ? SidebarParts.LEGEND : GOLD, Icon.STAR, rare || legendary,
+            legendary ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.GE_COIN_TINKLE);
     }
 
     /** A trial done: its name, what it was, and the renown it paid. Gold and Legend trials are big moments. */
@@ -434,7 +440,14 @@ final class Moments
             SoundEffectID.GE_ADD_OFFER_DINGALING));
         out.add(new Banner("Crossing closed", "Kandarin has drifted apart from yours.", other, Icon.CROSSING, false,
             SoundEffectID.CLOSE_DOOR));
-        out.add(milestone("A milestone", false));
+        out.add(milestone("A milestone", NomadSim.COMMON));
+        out.add(fromLine("A comet is coming! In 20 minutes it streaks east across the map, straight through the Main circle."));
+        out.add(fromLine("You caught the comet! A rare waystone answers its call."));
+        out.add(fromLine("Castaway! A storm at sea blew the Main circle off course. It will wash up at Catherby instead of Port Sarim."));
+        out.add(fromLine("Reunion! The lost half met the Main circle again. Main grows to 30 tiles."));
+        out.add(fromLine("The Main circle boarded a boat at Port Sarim, bound for Entrana."));
+        out.add(new Banner("Legendary waystone risen", NomadSim.CROWN + " at the Grand Exchange. It never fades.", SidebarParts.LEGEND,
+            Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
         out.add(rankUp(com.wanderingnomad.journey.Rank.PATHFINDER));
         out.add(new Banner("Waystone risen", "Tailwind at Draynor Village, in your circle.", GOLD, Icon.WAYSTONE, false,
             SoundEffectID.PRAYER_DEPLETE_TWINKLE));
@@ -486,16 +499,115 @@ final class Moments
         }
         if (sim.bridgeLeft() > 0) out.add(NomadSim.BRIDGE + "@-1");
         if (sim.calmLeft() > 0) out.add(NomadSim.CALM + "@-1");
+        if (sim.gatherLeft() > 0) out.add(NomadSim.GATHERING + "@-1");
+        for (int j = 0; j < sim.circles().size(); j++)
+        {
+            if (sim.circles().get(j).crownLeft() > 0) out.add(NomadSim.CROWN + "@" + j);
+        }
         return out;
     }
 
     private static String key(Waystone w)
     {
-        return w.boon() + "|" + w.landmark() + "|" + w.circle();
+        return w.landmark() + "|" + w.circle();
     }
 
-    static boolean rare(String boon)
+    /** A waystone rising: a pilgrim stone just outside, a legendary one, or a common or rare one in a circle. */
+    private static Banner risen(NomadSim sim, Waystone w)
     {
-        return NomadSim.RUDDER.equals(boon) || NomadSim.BRIDGE.equals(boon);
+        if (w.legendary())
+        {
+            return new Banner("Legendary waystone risen", w.boon() + " at " + w.landmark() + ". It never fades.",
+                SidebarParts.LEGEND, Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        if (w.pilgrim())
+        {
+            return new Banner("Pilgrim stone risen", w.boon() + " at " + w.landmark() + ", just outside your circle. Step out to claim it within the hour.",
+                SidebarParts.RARE, Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        boolean rare = NomadSim.RARE.equals(w.tier());
+        String where = w.circle() == sim.boundIndex() ? "your circle" : sim.circles().get(w.circle()).name();
+        return new Banner(rare ? "Rare waystone risen" : "Waystone risen", w.boon() + " at " + w.landmark() + ", in " + where + ".",
+            GOLD, Icon.WAYSTONE, rare, rare ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.PRAYER_DEPLETE_TWINKLE);
+    }
+
+    private static final Color SKY = new Color(0xBFE3FF);
+    private static final Color SEA = new Color(0x6FC3E8);
+    private static final Pattern CASTAWAY = Pattern.compile("wash up at (.+) instead of");
+    private static final Pattern REUNION = Pattern.compile("grows to (\\d+) tiles");
+    private static final Pattern BOARDED = Pattern.compile("boarded a boat at (.+), bound for (.+)\\.$");
+    private static final Pattern DOCKED = Pattern.compile("^Your circle docked at (.+)\\.$");
+    private static final Pattern COURSE = Pattern.compile("setting course for (.+) to board a boat");
+    private static final Pattern RIPENED = Pattern.compile("^The waystone at (.+) ripened: it holds (.+) \\(rare\\) now");
+
+    /**
+     * The moments the run's own log tells best: comets, castaways, reunions, voyages, ports of
+     * call, ripening and Homeward. Null for any other line.
+     */
+    static Banner fromLine(String line)
+    {
+        if (line.startsWith("A comet is coming!"))
+        {
+            return new Banner("A comet is coming!", "In " + NomadSim.COMET_WARN + " min it streaks through Main. Stand in its path to catch it.",
+                SKY, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        if (line.startsWith("The comet is streaking"))
+        {
+            return new Banner("The comet streaks!", "Stand in its path as it passes for a rare waystone.", SKY, Icon.STAR, true,
+                SoundEffectID.TELEPORT_VWOOP);
+        }
+        if (line.startsWith("You caught the comet!"))
+        {
+            return new Banner("Comet caught!", "A rare waystone answers its call.", SKY, Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+        }
+        if (line.startsWith("The comet passed over"))
+        {
+            return new Banner("The comet has passed", "Another comes in about a day of play.", SKY.darker(), Icon.STAR, false,
+                SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+        }
+        Matcher m = CASTAWAY.matcher(line);
+        if (line.startsWith("Castaway!") && m.find())
+        {
+            return new Banner("Castaway!", "A storm at sea: Main washes up at " + m.group(1) + " instead.", SEA, Icon.EDGE, true,
+                SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        m = REUNION.matcher(line);
+        if (line.startsWith("Reunion!") && m.find())
+        {
+            return new Banner("Reunion!", "The fork's lost half found Main again. Main grows to " + m.group(1) + " tiles.", GOLD, Icon.FORK, true,
+                SoundEffectID.PRAYER_ACTIVATE_PIETY);
+        }
+        if (line.startsWith("The lost half of the last fork has faded"))
+        {
+            return new Banner("The lost half is gone", "It drifted too long without meeting Main again.", GOLD.darker(), Icon.FORK, false, -1);
+        }
+        if (line.startsWith("Homeward!"))
+        {
+            return new Banner("Homeward!", "Main came home with you, gathered small. Again in " + NomadSim.HOMEWARD_COOLDOWN / 60 + " hours.",
+                IN, Icon.RING, true, SoundEffectID.TELEPORT_VWOOP);
+        }
+        m = BOARDED.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Main set sail", "From " + m.group(1) + " to " + m.group(2) + ". Follow it by boat or meet it there.", SEA, Icon.CROSSING, true,
+                SoundEffectID.GE_ADD_OFFER_DINGALING);
+        }
+        m = DOCKED.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Docked at " + m.group(1), "Main is ashore again.", SEA, Icon.CROSSING, false, SoundEffectID.UI_BOOP);
+        }
+        m = COURSE.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Bound for " + m.group(1), "Main heads for the port to board a boat there.", SEA, Icon.MOOD, false, SoundEffectID.UI_BOOP);
+        }
+        m = RIPENED.matcher(line);
+        if (m.find())
+        {
+            return new Banner("A waystone ripened", m.group(2) + " at " + m.group(1) + " is rare now.", SidebarParts.RARE, Icon.WAYSTONE, true,
+                SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        return null;
     }
 }

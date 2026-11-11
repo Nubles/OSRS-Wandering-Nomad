@@ -1,5 +1,6 @@
 package com.wanderingnomad;
 
+import com.wanderingnomad.sim.NomadSim;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -33,6 +34,7 @@ final class SidebarParts
     static final Color CARD = ColorScheme.DARKER_GRAY_COLOR;
     static final Color MUTED = new Color(0x9A9A9A);
     static final Color RARE = new Color(0xC58CFF);
+    static final Color LEGEND = new Color(0xFF9A4D);
     static final Color IN = new Color(0x8FE0A2);
     static final Color OUT = new Color(0xFF8A80);
 
@@ -414,6 +416,12 @@ final class SidebarParts
     }
 
     /** One held boon as a card, or an empty slot showing how to earn one. */
+    /** A boon's colour by its tier: gold for common, violet for rare, flame for legendary. */
+    static Color tone(String tier)
+    {
+        return NomadSim.LEGENDARY.equals(tier) ? LEGEND : NomadSim.RARE.equals(tier) ? RARE : Moments.GOLD;
+    }
+
     static final class BoonCard extends Part
     {
         static final int H = 44;
@@ -445,7 +453,7 @@ final class SidebarParts
                 text(g, FontManager.getRunescapeSmallFont(), fit(sm, "25 quest points or first boss kill.", w - 16), 8, 32, MUTED);
                 return;
             }
-            Color tone = slot.rare ? RARE : Moments.GOLD;
+            Color tone = tone(slot.tier);
             card(g, 0, 0, w, H, tone);
             Path2D star = new Path2D.Float();
             for (int k = 0; k < 8; k++)
@@ -462,7 +470,7 @@ final class SidebarParts
             g.fill(star);
             Font bold = FontManager.getRunescapeBoldFont();
             text(g, bold, slot.name, 34, 18, tone);
-            text(g, FontManager.getRunescapeSmallFont(), slot.rare ? "rare" : "common", 34 + g.getFontMetrics(bold).stringWidth(slot.name) + 6, 18, MUTED);
+            text(g, FontManager.getRunescapeSmallFont(), slot.tier, 34 + g.getFontMetrics(bold).stringWidth(slot.name) + 6, 18, MUTED);
             FontMetrics sm = g.getFontMetrics(FontManager.getRunescapeSmallFont());
             text(g, FontManager.getRunescapeSmallFont(), fit(sm, slot.description, w - 40), 34, 34, Color.LIGHT_GRAY);
         }
@@ -554,7 +562,7 @@ final class SidebarParts
             {
                 card(g, 0, y, SIDEBAR_WIDTH, ROW - 4, s.yours ? Moments.GOLD : s.colour);
                 diamond(g, 14, y + 15, 7, s.yours ? Moments.GOLD : s.colour);
-                text(g, bold, s.boon, 28, y + 13, s.rare ? RARE : Moments.GOLD);
+                text(g, bold, fit(g.getFontMetrics(bold), s.boon, SIDEBAR_WIDTH - 40 - sm.stringWidth(s.left)), 28, y + 13, tone(s.tier));
                 String right = s.left;
                 text(g, small, right, SIDEBAR_WIDTH - sm.stringWidth(right) - 8, y + 13, Color.LIGHT_GRAY);
                 String where = Double.isNaN(s.angle) ? s.where : s.distance + " tiles · " + s.where;
@@ -589,7 +597,7 @@ final class SidebarParts
                 {"Crossings", String.valueOf(v.crossingsMade)}, {"Claimed", String.valueOf(v.claimed)},
                 {"Outside", v.timesOutside + (v.timesOutside == 1 ? " time" : " times")}, {"Seed", String.valueOf(v.seed)},
                 {"Guard", v.guardShort}, {"Diaries", v.diaryShort},
-                {"Quiet for", NomadPanel.time(v.quiet)}, {"", ""},
+                {"Quiet for", NomadPanel.time(v.quiet)}, {"Homeward", v.homeward},
             };
             Font small = FontManager.getRunescapeSmallFont();
             FontMetrics sm = g.getFontMetrics(small);

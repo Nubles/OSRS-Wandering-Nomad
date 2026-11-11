@@ -1,6 +1,7 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Comet;
 import com.wanderingnomad.sim.Landmarks;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
@@ -91,6 +92,11 @@ class NomadSceneOverlay extends Overlay
     private static final BasicStroke OTHER = new BasicStroke(1f);
     private static final BasicStroke ARROW = new BasicStroke(1.5f);
     private static final Color GOLD = new Color(0xFFD54F);
+    private static final Color SKY = new Color(0xBFE3FF);
+    /** The tide line only shows this many tiles either side of you. */
+    private static final int TIDE_REACH = 16;
+    /** The comet flies this high, in local units. */
+    private static final int COMET_HEIGHT = 900;
     /** A waystone's pillar, in local units: about seven tiles tall. */
     private static final int BEACON_HEIGHT = 900;
 
@@ -163,8 +169,11 @@ class NomadSceneOverlay extends Overlay
                 if (wall && !config.edge3d()) drawWall(graphics, view, c, mine ? null : yours, hidden, at, now);
             }
             drawFeet(graphics, view, sim, at);
+            if (sim.ghost() != null) drawGhost(graphics, view, sim.ghost(), at);
         }
+        if (config.tideLine()) drawTide(graphics, view, at);
         drawBeacons(graphics, view, sim, now);
+        drawComet(graphics, view, sim, at, now, config.compass());
         if (plugin.spots().on()) drawSpots(graphics, view);
         if (config.compass())
         {
@@ -829,7 +838,7 @@ class NomadSceneOverlay extends Overlay
             }
         }
         if (best == null || bestD <= NomadSim.CLAIM_REACH) return;
-        String text = best.boon() + " waystone · " + Math.round(bestD) + " tiles · ~" + NomadPanel.roughly(sim.minutesLeft(best)) + " left";
+        String text = NomadPanel.stoneName(best) + " waystone · " + Math.round(bestD) + " tiles · " + NomadPanel.stoneLeft(sim, best);
         drawArrow(graphics, view, at, new double[]{best.x(), best.y()}, GOLD, GOLD, text);
     }
 
@@ -883,7 +892,8 @@ class NomadSceneOverlay extends Overlay
             Point top = Perspective.localToCanvas(client, lp, plane, BEACON_HEIGHT);
             if (ground == null || top == null) continue;
             boolean claimable = w.circle() == sim.boundIndex();
-            Color colour = claimable ? GOLD : NomadPlugin.colour(sim.circles().get(w.circle()), 255);
+            Color colour = !claimable ? NomadPlugin.colour(sim.circles().get(w.circle()), 255)
+                : w.legendary() ? SidebarParts.LEGEND : w.pilgrim() ? SidebarParts.RARE : GOLD;
             double pulse = 0.5 + 0.5 * Math.sin(now / 400.0);
             Paint before = graphics.getPaint();
             for (int width = 14; width >= 4; width -= 5)
@@ -899,10 +909,125 @@ class NomadSceneOverlay extends Overlay
             Point label = Perspective.localToCanvas(client, lp, plane, BEACON_HEIGHT / 3);
             if (label != null)
             {
-                String text = w.boon() + " · ~" + NomadPanel.roughly(sim.minutesLeft(w)) + (claimable ? "" : " · in " + sim.circles().get(w.circle()).name());
+                String text = NomadPanel.stoneName(w) + " · " + NomadPanel.stoneLeft(sim, w) + (claimable ? "" : " · in " + sim.circles().get(w.circle()).name());
                 OverlayUtil.renderTextLocation(graphics, label, text, colour);
             }
         }
+    }
+
+    /**
+     * The fork's lost half, while it drifts on: its edge tiles near you, faint and dashed. If Main
+     * touches it again they merge.
+     */
+    private void drawGhost(Graphics2D graphics, WorldView view, Circle ghost, WorldPoint at)
+    {
+        Color colour = NomadPlugin.colour(ghost, 255);
+        BasicStroke dashed = new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{4f, 4f}, 0f);
+        for (Tile t : EdgeTiles.near(ghost, at.getX(), at.getY(), REACH))
+        {
+            LocalPoint local = LocalPoint.fromWorld(view, t.x, t.y);
+            if (local == null) continue;
+            Polygon poly = Perspective.getCanvasTilePoly(client, local);
+            if (poly != null) OverlayUtil.renderPolygon(graphics, poly, alpha(colour, 90), alpha(colour, 10), dashed);
+        }
+    }
+
+    /** The tide line: dots on the ground where your circle's edge will be in a few minutes, only near you. */
+    private void drawTide(Graphics2D graphics, WorldView view, WorldPoint at)
+    {
+        Radar radar = plugin.radar();
+        double[] tide = radar == null ? null : radar.tide;
+        if (tide == null) return;
+        double r = tide[2];
+        int n = Math.max(48, (int) Math.ceil(Math.PI * 2 * r));
+        graphics.setColor(new Color(255, 255, 255, 120));
+        for (int i = 0; i < n; i++)
+        {
+            double a = i * Math.PI * 2 / n;
+            double wx = tide[0] + Math.cos(a) * r;
+            double wy = tide[1] + Math.sin(a) * r;
+            if (Math.abs(wx - at.getX()) > TIDE_REACH || Math.abs(wy - at.getY()) > TIDE_REACH) continue;
+            LocalPoint lp = local(view, wx, wy);
+            Point p = lp == null ? null : Perspective.localToCanvas(client, lp, view.getPlane(), 0);
+            if (p != null) graphics.fillOval(p.getX() - 2, p.getY() - 2, 4, 4);
+        }
+    }
+
+    /**
+     * A comet: the band it will sweep across the ground near you, pulsing during its warning and
+     * bright once it flies, the comet itself overhead, and an arrow to its path if you're off it.
+     */
+    private void drawComet(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at, long now, boolean arrow)
+    {
+        Comet k = sim.comet();
+        if (k == null) return;
+        double ax = k.x();
+        double ay = k.y();
+        double dx = k.endX() - ax;
+        double dy = k.endY() - ay;
+        double len = Math.hypot(dx, dy);
+        if (len < 1) return;
+        double ux = dx / len;
+        double uy = dy / len;
+        int plane = view.getPlane();
+        double along = (at.getX() - ax) * ux + (at.getY() - ay) * uy;
+        double off = Math.abs(-(at.getX() - ax) * uy + (at.getY() - ay) * ux);
+        double pulse = 0.5 + 0.5 * Math.sin(now / 250.0);
+        double from = Math.max(0, along - REACH);
+        double to = Math.min(len, along + REACH);
+        if (from < to && off <= REACH + NomadSim.COMET_RADIUS)
+        {
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Path2D edge = new Path2D.Float();
+                boolean open = false;
+                for (double t = from; t <= to; t += 1)
+                {
+                    double wx = ax + ux * t - uy * side * NomadSim.COMET_RADIUS;
+                    double wy = ay + uy * t + ux * side * NomadSim.COMET_RADIUS;
+                    LocalPoint lp = local(view, wx, wy);
+                    Point p = lp == null ? null : Perspective.localToCanvas(client, lp, plane, 0);
+                    if (p == null)
+                    {
+                        open = false;
+                        continue;
+                    }
+                    if (open) edge.lineTo(p.getX(), p.getY());
+                    else edge.moveTo(p.getX(), p.getY());
+                    open = true;
+                }
+                glow(graphics, edge, SKY, k.flying() ? 1.6 : 0.6 + 0.6 * pulse);
+            }
+        }
+        if (k.flying())
+        {
+            LocalPoint head = local(view, ax, ay);
+            LocalPoint tail = local(view, ax - ux * 12, ay - uy * 12);
+            Point h = head == null ? null : Perspective.localToCanvas(client, head, plane, COMET_HEIGHT);
+            Point t = tail == null ? null : Perspective.localToCanvas(client, tail, plane, COMET_HEIGHT + 200);
+            if (h != null)
+            {
+                if (t != null)
+                {
+                    Paint before = graphics.getPaint();
+                    graphics.setPaint(new GradientPaint(h.getX(), h.getY(), alpha(SKY, 230), t.getX(), t.getY(), alpha(SKY, 0)));
+                    graphics.setStroke(new BasicStroke(9f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    graphics.drawLine(h.getX(), h.getY(), t.getX(), t.getY());
+                    graphics.setPaint(before);
+                }
+                graphics.setColor(alpha(Color.WHITE, 240));
+                graphics.fillOval(h.getX() - 7, h.getY() - 7, 14, 14);
+                graphics.setColor(alpha(SKY, 120));
+                graphics.fillOval(h.getX() - 13, h.getY() - 13, 26, 26);
+            }
+        }
+        if (!arrow || off <= NomadSim.COMET_RADIUS) return;
+        double t = Math.max(0, Math.min(len, along));
+        double[] target = {ax + ux * t, ay + uy * t};
+        double speed = len / Math.max(1, k.flightLeft());
+        int in = k.flying() ? (int) Math.round(t / speed) : k.warning() + (int) Math.round(t / speed);
+        String text = "Comet path · " + Math.round(off - NomadSim.COMET_RADIUS) + " tiles · passes in ~" + in + " min";
+        drawArrow(graphics, view, at, target, SKY, SKY, text);
     }
 
     /** An arrow on the ground from about 1.5 to 4 tiles out toward {@code target}, labelled at its tip. */

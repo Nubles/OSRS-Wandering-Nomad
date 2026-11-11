@@ -272,6 +272,18 @@ public interface NomadConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "tideLine",
+        name = "Tide line",
+        description = "Faint dots on the ground near you where your circle's edge will be in 5 minutes.",
+        section = LIVING_EDGE,
+        position = 26
+    )
+    default boolean tideLine()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "forecast",
         name = "Forecast on the world map",
         description = "Clouds showing where your circle and Main could be in 1, 3 and 6 hours.",

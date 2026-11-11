@@ -152,8 +152,15 @@ class NomadStatusOverlay extends OverlayPanel
         if (near != null)
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Waystone")
-                .right(near.boon() + " " + Math.round(Math.hypot(near.x() - at.x, near.y() - at.y)) + "t ~" + NomadPanel.roughly(sim.minutesLeft(near)))
+                .right(near.boon() + " " + Math.round(Math.hypot(near.x() - at.x, near.y() - at.y)) + "t " + NomadPanel.stoneLeft(sim, near))
                 .rightColor(new Color(0xFFD54F)).build());
+        }
+        com.wanderingnomad.sim.Comet comet = sim.comet();
+        if (comet != null)
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Comet")
+                .right(comet.flying() ? "streaking, " + comet.flightLeft() + "m" : "in " + comet.warning() + "m")
+                .rightColor(new Color(0xBFE3FF)).build());
         }
         if (!sim.boons().isEmpty())
         {

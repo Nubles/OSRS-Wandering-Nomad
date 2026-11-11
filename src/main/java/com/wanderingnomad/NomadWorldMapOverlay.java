@@ -1,7 +1,9 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Comet;
 import com.wanderingnomad.sim.Forecast;
+import com.wanderingnomad.sim.Geography;
 import com.wanderingnomad.sim.Landmarks;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
@@ -155,6 +157,7 @@ class NomadWorldMapOverlay extends Overlay
             pill(graphics, name, (float) ring.getCenterX(), (float) top, colour);
         }
         drawWaystones(graphics, sim, bounds, west, south, zoom);
+        drawWanderings(graphics, sim, bounds, west, south, zoom, now);
         if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
         drawOmen(graphics, bounds, west, south, zoom);
         drawRivals(graphics, bounds, west, south, zoom);
@@ -600,7 +603,8 @@ class NomadWorldMapOverlay extends Overlay
             double px = bounds.x + (w.x() - west) * zoom;
             double py = bounds.y + bounds.height - (w.y() - south) * zoom;
             boolean yours = w.circle() == sim.boundIndex();
-            Color colour = yours ? new Color(0xFFD54F) : NomadPlugin.colour(sim.circles().get(w.circle()), 255);
+            Color colour = !yours ? NomadPlugin.colour(sim.circles().get(w.circle()), 255)
+                : w.legendary() ? SidebarParts.LEGEND : w.pilgrim() ? SidebarParts.RARE : new Color(0xFFD54F);
             Path2D.Double diamond = new Path2D.Double();
             diamond.moveTo(px, py - 7);
             diamond.lineTo(px + 5, py);
@@ -612,11 +616,70 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setStroke(new BasicStroke(1f));
             graphics.setColor(Color.BLACK);
             graphics.draw(diamond);
-            String text = w.boon() + " ~" + NomadPanel.roughly(sim.minutesLeft(w));
+            String text = NomadPanel.stoneName(w) + " " + NomadPanel.stoneLeft(sim, w);
             graphics.setColor(Color.BLACK);
             graphics.drawString(text, (float) px + 8, (float) py + 5);
             graphics.setColor(colour);
             graphics.drawString(text, (float) px + 7, (float) py + 4);
+        }
+    }
+
+    private static final Color SKY = new Color(0xBFE3FF);
+    private static final Color SEA = new Color(0x6FC3E8);
+    private static final BasicStroke DOTTED = new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{2f, 6f}, 0f);
+    private static final BasicStroke DASHED = new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{6f, 5f}, 0f);
+
+    /**
+     * What wanders besides the circles: a fork's lost half (dashed), a comet's path and the comet
+     * itself, and dotted lines to where Main is sailing or the port it's heading for.
+     */
+    private static void drawWanderings(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom, long now)
+    {
+        Circle ghost = sim.ghost();
+        if (ghost != null)
+        {
+            double px = bounds.x + (ghost.x() - west) * zoom;
+            double py = bounds.y + bounds.height - (ghost.y() - south) * zoom;
+            double pr = Math.max(MIN_RADIUS_PX, ghost.radius() * zoom);
+            Color colour = NomadPlugin.colour(ghost, 150);
+            graphics.setStroke(DASHED);
+            graphics.setColor(colour);
+            graphics.draw(new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2));
+            outlined(graphics, "Lost half · " + NomadPanel.time(sim.ghostLeft()), (float) px, (float) (py - pr - 4), colour, true);
+        }
+        Circle main = sim.main();
+        String to = main.sailing() ? main.voyageTo() : main.portOfCall();
+        Geography.Port port = to == null ? null : Geography.port(to);
+        if (port != null)
+        {
+            double ax = bounds.x + (main.x() - west) * zoom;
+            double ay = bounds.y + bounds.height - (main.y() - south) * zoom;
+            double bx = bounds.x + (port.tile.x - west) * zoom;
+            double by = bounds.y + bounds.height - (port.tile.y - south) * zoom;
+            graphics.setStroke(DOTTED);
+            graphics.setColor(SEA);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            graphics.fill(new Ellipse2D.Double(bx - 4, by - 4, 8, 8));
+            outlined(graphics, (main.sailing() ? "Sailing to " : "Bound for ") + to, (float) bx + 7, (float) by + 4, SEA, false);
+        }
+        Comet k = sim.comet();
+        if (k != null)
+        {
+            double ax = bounds.x + (k.x() - west) * zoom;
+            double ay = bounds.y + bounds.height - (k.y() - south) * zoom;
+            double bx = bounds.x + (k.endX() - west) * zoom;
+            double by = bounds.y + bounds.height - (k.endY() - south) * zoom;
+            double pulse = 0.5 + 0.5 * Math.sin(now / 250.0);
+            float width = (float) Math.max(2, 2 * NomadSim.COMET_RADIUS * zoom);
+            graphics.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            graphics.setColor(NomadSceneOverlay.alpha(SKY, k.flying() ? 110 : (int) (40 + 50 * pulse)));
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            graphics.setStroke(THIN);
+            graphics.setColor(SKY);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            graphics.setColor(Color.WHITE);
+            graphics.fill(new Ellipse2D.Double(ax - 5, ay - 5, 10, 10));
+            outlined(graphics, k.flying() ? "Comet · " + k.flightLeft() + "m" : "Comet in " + k.warning() + "m", (float) ax + 8, (float) ay - 6, SKY, false);
         }
     }
 

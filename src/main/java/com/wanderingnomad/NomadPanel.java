@@ -31,8 +31,10 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.ScrollPaneConstants;
@@ -58,6 +60,10 @@ class NomadPanel extends PluginPanel
 
     private final IntConsumer onCross;
     private final BiConsumer<Integer, Integer> onBoon;
+    /** Spends a Helmsman (by its index) on a port. */
+    private BiConsumer<Integer, String> onHelm = (index, port) -> { };
+    /** The ports a Helmsman could send Main to, as last shown. */
+    private volatile List<String> helmPorts = Collections.emptyList();
     private final SidebarParts.Header header = new SidebarParts.Header();
     private final SidebarParts.MiniMap map = new SidebarParts.MiniMap();
     private final JLabel boonsTitle = heading("Boons");
@@ -229,8 +235,14 @@ class NomadPanel extends PluginPanel
         revalidate();
     }
 
+    void onHelm(BiConsumer<Integer, String> onHelm)
+    {
+        this.onHelm = onHelm;
+    }
+
     void display(View v)
     {
+        helmPorts = v.helmPorts;
         for (SidebarParts.Part p : drawn) p.show(v);
         boonsTitle.setText(("Boons " + v.held + "/" + NomadSim.BOONS_HELD).toUpperCase());
 
@@ -411,6 +423,12 @@ class NomadPanel extends PluginPanel
             side.add(small("Left", "Turn your circle 45 degrees left", () -> onBoon.accept(slot.index, 1)));
             side.add(small("Right", "Turn your circle 45 degrees right", () -> onBoon.accept(slot.index, -1)));
         }
+        else if (NomadSim.HELMSMAN.equals(slot.name))
+        {
+            JButton[] port = new JButton[1];
+            port[0] = small("Port", "Choose the port Main sails to next", () -> portMenu(port[0], slot.index));
+            side.add(port[0]);
+        }
         else
         {
             side.add(small("Use", slot.description, () -> onBoon.accept(slot.index, 0)));
@@ -423,6 +441,25 @@ class NomadPanel extends PluginPanel
         row.add(side, BorderLayout.EAST);
         fix(row, SidebarParts.BoonCard.H);
         return row;
+    }
+
+    /** The Helmsman's ports, as a menu under its button. */
+    private void portMenu(JComponent under, int index)
+    {
+        JPopupMenu menu = new JPopupMenu();
+        for (String port : helmPorts)
+        {
+            JMenuItem item = new JMenuItem("Sail to " + port);
+            item.addActionListener(e -> onHelm.accept(index, port));
+            menu.add(item);
+        }
+        if (helmPorts.isEmpty())
+        {
+            JMenuItem none = new JMenuItem("No port Main can sail to yet");
+            none.setEnabled(false);
+            menu.add(none);
+        }
+        menu.show(under, 0, under.getHeight());
     }
 
     /** A crossing: the circle and how far off it is, with a Cross button once you can. */
@@ -547,6 +584,12 @@ class NomadPanel extends PluginPanel
                 return "Light it where you stand: the next waystone in your circle rises at the landmark nearest it";
             case NomadSim.CALM:
                 return "No fork or storm for 3 hours, and one under way breaks off";
+            case NomadSim.CROWN:
+                return "For 1 hour your circle follows you at a walk";
+            case NomadSim.HELMSMAN:
+                return "Pick a port: Main heads for the nearest dock and sails there";
+            case NomadSim.GATHERING:
+                return "For 1 hour every kingdom's circle drifts toward Main";
             default:
                 return boon;
         }
@@ -559,7 +602,32 @@ class NomadPanel extends PluginPanel
         if (c.expandLeft() > 0) on.add("Expand " + time(c.expandLeft()));
         if (c.tailwindLeft() > 0) on.add("Tailwind " + time(c.tailwindLeft()));
         if (c.anchorLeft() > 0) on.add("Anchor " + time(c.anchorLeft()));
+        if (c.crownLeft() > 0) on.add("Crown " + time(c.crownLeft()));
         return on.isEmpty() ? "" : "<br>" + String.join(" · ", on);
+    }
+
+    /** A boon's tier: common, rare or legendary. */
+    static String tier(String boon)
+    {
+        return NomadSim.legendaryBoon(boon) ? NomadSim.LEGENDARY : NomadSim.rareBoon(boon) ? NomadSim.RARE : NomadSim.COMMON;
+    }
+
+    /** A waystone's boon, with "Pilgrim" or "Legendary" before it when it's one of those. */
+    static String stoneName(Waystone w)
+    {
+        return w.legendary() ? "Legendary " + w.boon() : w.pilgrim() ? "Pilgrim " + w.boon() : w.boon();
+    }
+
+    /**
+     * How long a waystone has, in a few words: "~45m" until its circle drifts off it, "38m to
+     * claim" for a pilgrim stone, "never fades" for a legendary one, and when a common one ripens.
+     */
+    static String stoneLeft(NomadSim sim, Waystone w)
+    {
+        int left = sim.minutesLeft(w);
+        String out = left < 0 ? "never fades" : w.pilgrim() ? left + "m to claim" : "~" + roughly(left);
+        if (w.ripensIn() > 0) out += " · rare in " + w.ripensIn() + "m";
+        return out;
     }
 
     static String roughly(int minutes)
@@ -644,14 +712,14 @@ class NomadPanel extends PluginPanel
         final int index;
         final String name;
         final String description;
-        final boolean rare;
+        final String tier;
 
         BoonSlot(int index, String name)
         {
             this.index = index;
             this.name = name;
             this.description = describe(name);
-            this.rare = Moments.rare(name);
+            this.tier = tier(name);
         }
     }
 
@@ -672,7 +740,7 @@ class NomadPanel extends PluginPanel
     static final class StoneRow
     {
         String boon;
-        boolean rare;
+        String tier;
         boolean yours;
         Color colour;
         long distance;
@@ -742,6 +810,11 @@ class NomadPanel extends PluginPanel
         /** The last parting's faded half while it's dissolving, or null. */
         Fade fade;
 
+        /** When Home Teleport can next carry Main: "Ready" or the time left. */
+        String homeward = "Ready";
+        /** Ports a Helmsman could send Main to. */
+        List<String> helmPorts = Collections.emptyList();
+
         int held;
         final List<BoonSlot> boons = new ArrayList<>();
         final List<ActiveBoon> active = new ArrayList<>();
@@ -776,7 +849,9 @@ class NomadPanel extends PluginPanel
             v.state = v.outside ? "Outside your circle" : sim.stranded() ? "Stranded: Main moved on" : "Inside";
             v.stateColour = v.outside ? SidebarParts.OUT : sim.stranded() ? new Color(0xFFCF8F) : SidebarParts.IN;
             v.edgeIn = radar == null ? -1 : radar.edgeIn;
-            v.mood = c.moodName() + (c.sailing() ? ", sailing to " + c.voyageTo() : "");
+            v.mood = c.moodName() + (c.sailing() ? ", sailing to " + c.voyageTo()
+                : c.portOfCall() != null ? ", bound for " + c.portOfCall()
+                    + (sim.helmsmanTo() != null && c.isMain() ? " to sail for " + sim.helmsmanTo() : "") : "");
             v.heading = c.heading();
             v.radius = c.radius();
             v.played = time(sim.minutes());
@@ -809,10 +884,19 @@ class NomadPanel extends PluginPanel
             v.forkWarning = sim.forkWarning();
             v.forkAxis = sim.forkAxis();
             v.quiet = sim.quietMinutes();
-            if (sim.forkWarning() > 0)
+            com.wanderingnomad.sim.Comet comet = sim.comet();
+            if (comet != null && comet.flying())
+            {
+                v.forkLine = "Comet streaking " + NomadSim.compass(comet.heading()) + ": stand in its path, " + comet.flightLeft() + " min";
+            }
+            else if (sim.forkWarning() > 0)
             {
                 v.forkLine = "Fork in " + sim.forkWarning() + " min: " + NomadSim.compass(sim.forkAxis()) + " / "
                     + NomadSim.compass(sim.forkAxis() + Math.PI);
+            }
+            else if (comet != null)
+            {
+                v.forkLine = "Comet in " + comet.warning() + " min, heading " + NomadSim.compass(comet.heading()) + " through Main";
             }
             else if (sim.twin() != null)
             {
@@ -825,6 +909,10 @@ class NomadPanel extends PluginPanel
             else if (sim.stormLeft() > 0)
             {
                 v.forkLine = (sim.stormKind() == NomadSim.GALE ? "Gale: Main 3x fast" : "Squall: Main shrunk") + ", " + sim.stormLeft() + " min left";
+            }
+            else if (sim.ghost() != null)
+            {
+                v.forkLine = "The lost half drifts nearby: " + time(sim.ghostLeft()) + " to meet it again";
             }
             // Yours last, so it draws on top.
             v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));
@@ -849,16 +937,20 @@ class NomadPanel extends PluginPanel
             if (c.anchorLeft() > 0) v.active.add(new ActiveBoon(NomadSim.ANCHOR, c.anchorLeft(), ANCHOR_MINUTES));
             if (sim.bridgeLeft() > 0) v.active.add(new ActiveBoon(NomadSim.BRIDGE, sim.bridgeLeft(), BRIDGE_MINUTES));
             if (sim.calmLeft() > 0) v.active.add(new ActiveBoon(NomadSim.CALM, sim.calmLeft(), NomadSim.CALM_MINUTES));
+            if (c.crownLeft() > 0) v.active.add(new ActiveBoon(NomadSim.CROWN, c.crownLeft(), NomadSim.CROWN_MINUTES));
+            if (sim.gatherLeft() > 0) v.active.add(new ActiveBoon(NomadSim.GATHERING, sim.gatherLeft(), NomadSim.GATHER_MINUTES));
+            v.homeward = sim.homewardLeft() > 0 ? time(sim.homewardLeft()) : "Ready";
+            if (sim.boons().contains(NomadSim.HELMSMAN)) v.helmPorts = sim.helmsmanPorts();
 
             for (Waystone w : sim.waystones())
             {
                 StoneRow s = new StoneRow();
-                s.boon = w.boon();
-                s.rare = Moments.rare(w.boon());
+                s.boon = stoneName(w);
+                s.tier = w.tier();
                 s.yours = w.circle() == sim.boundIndex();
                 s.colour = NomadPlugin.colour(sim.circles().get(w.circle()), 255);
                 s.where = w.landmark() + (s.yours ? "" : ", in " + sim.circles().get(w.circle()).name());
-                s.left = "~" + roughly(sim.minutesLeft(w));
+                s.left = stoneLeft(sim, w);
                 if (at != null)
                 {
                     s.distance = Math.round(Math.hypot(w.x() - at.x, w.y() - at.y));

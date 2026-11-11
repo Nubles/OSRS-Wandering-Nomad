@@ -706,6 +706,7 @@ public final class NomadSim
             nextFork = minutes + FORK_RETRY;
         }
         m.voyage = null;
+        m.port = null;
         m.x = to.x;
         m.y = to.y;
         m.radius = clamp(HOMEWARD_RADIUS, m.radiusMin, m.radiusMax);
@@ -782,9 +783,27 @@ public final class NomadSim
      * Roughly how many played minutes before a waystone's circle drifts off it, if it keeps its
      * heading and pace. Waystones show this so you know what the walk is for; it's an estimate.
      */
+    /**
+     * Played minutes until a waystone fades: a pilgrim stone after its hour, any other when its
+     * circle drifts off it. -1 for a legendary stone, which never fades.
+     */
     public int minutesLeft(Waystone w)
     {
+        if (w.legendary()) return -1;
+        if (w.pilgrim) return Math.max(0, PILGRIM_MINUTES - w.age);
         return minutesLeft(circles.get(w.circle), w.x, w.y);
+    }
+
+    /** Whether a boon is one of the legendary ones. */
+    public static boolean legendaryBoon(String boon)
+    {
+        return java.util.Arrays.asList(LEGENDARY_BOONS).contains(boon);
+    }
+
+    /** Whether a boon is one of the rare ones. */
+    public static boolean rareBoon(String boon)
+    {
+        return java.util.Arrays.asList(RARE_BOONS).contains(boon);
     }
 
     private static int minutesLeft(Circle c, int x, int y)

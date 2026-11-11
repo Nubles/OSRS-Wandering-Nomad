@@ -488,8 +488,11 @@ export function MapPage({ geo, route }: Props) {
                 <li key={`${w.x},${w.y}`}>
                   <span className="dot" style={{ background: w.circle === sim.state.bound ? '#ffd54f' : hex(sim.colour(sim.circles[w.circle])) }} />
                   <span className="grow name">
-                    {w.boon} at {w.landmark}
-                    <span className="muted small"> · {w.circle === sim.state.bound ? 'your circle' : sim.name(sim.circles[w.circle])} · ~{roughly(sim.minutesLeft(w))} left</span>
+                    {w.tier === 'legendary' ? 'Legendary ' : w.pilgrim ? 'Pilgrim ' : ''}{w.boon} at {w.landmark}
+                    <span className="muted small">
+                      {' · '}{w.pilgrim ? 'just outside your circle' : w.circle === sim.state.bound ? 'your circle' : sim.name(sim.circles[w.circle])}
+                      {' · '}{stoneLeft(sim.minutesLeft(w), w.pilgrim)}
+                    </span>
                   </span>
                 </li>
               ))}
@@ -634,6 +637,12 @@ function randomSeed(): number {
 }
 
 /** Minutes as a rough time, such as "1h 05m", rounded up to 5 minutes. */
+/** How long a waystone has: "never fades" for a legendary one, minutes to claim a pilgrim stone, else roughly. */
+function stoneLeft(left: number, pilgrim: boolean): string {
+  if (left < 0) return 'never fades';
+  return pilgrim ? `${left}m to claim` : `~${roughly(left)} left`;
+}
+
 function roughly(minutes: number): string {
   if (minutes >= 600) return '10h+';
   const m = Math.max(5, Math.ceil(minutes / 5) * 5);

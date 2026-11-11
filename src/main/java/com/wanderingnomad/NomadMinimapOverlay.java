@@ -1,6 +1,7 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Comet;
 import com.wanderingnomad.sim.Landmarks;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Waystone;
@@ -119,6 +120,30 @@ class NomadMinimapOverlay extends Overlay
             {
                 double radius = Math.hypot(rim.getX() - centre2.getX(), rim.getY() - centre2.getY());
                 NomadWorldMapOverlay.drawFade(graphics, fade, centre2.getX(), centre2.getY(), radius, now);
+            }
+        }
+        // The fork's lost half, faint, and a comet's path, clipped to the stretch near you.
+        if (sim.ghost() != null) glow(graphics, arcs(view, sim.ghost()), NomadPlugin.colour(sim.ghost(), 255), 0.35);
+        Comet k0 = sim.comet();
+        if (k0 != null)
+        {
+            double len = Math.hypot(k0.endX() - k0.x(), k0.endY() - k0.y());
+            if (len >= 1)
+            {
+                double ux = (k0.endX() - k0.x()) / len;
+                double uy = (k0.endY() - k0.y()) / len;
+                double along = (at.getX() - k0.x()) * ux + (at.getY() - k0.y()) * uy;
+                double t0 = Math.max(0, along - 120);
+                double t1 = Math.min(len, along + 120);
+                Point a = t0 < t1 ? toMinimap(view, k0.x() + ux * t0, k0.y() + uy * t0) : null;
+                Point b = t0 < t1 ? toMinimap(view, k0.x() + ux * t1, k0.y() + uy * t1) : null;
+                if (a != null && b != null)
+                {
+                    Path2D path = new Path2D.Double();
+                    path.moveTo(a.getX(), a.getY());
+                    path.lineTo(b.getX(), b.getY());
+                    glow(graphics, path, new Color(0xBFE3FF), k0.flying() ? 1 : 0.5);
+                }
             }
         }
         for (int k = 0; k < halves.size(); k++)

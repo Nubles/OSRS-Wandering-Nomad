@@ -599,6 +599,7 @@ export class NomadSim {
       s.nextFork = s.minutes + FORK_RETRY;
     }
     delete m.voyage;
+    delete m.port;
     m.x = to.x;
     m.y = to.y;
     m.radius = clamp(HOMEWARD_RADIUS, m.radiusMin, m.radiusMax);
@@ -647,6 +648,8 @@ export class NomadSim {
 
   /** Roughly how many played minutes before a waystone's circle drifts off it. An estimate. */
   minutesLeft(w: Waystone): number {
+    if (w.tier === LEGENDARY) return -1;
+    if (w.pilgrim) return Math.max(0, PILGRIM_MINUTES - (w.age ?? 0));
     return minutesLeft(this.circles[w.circle], w.x, w.y);
   }
 

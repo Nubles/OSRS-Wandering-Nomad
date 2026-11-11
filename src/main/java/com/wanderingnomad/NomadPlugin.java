@@ -185,6 +185,18 @@ public class NomadPlugin extends Plugin
     private NomadSim sim;
     private Tile surface;
     private int ticks;
+    /**
+     * Homeward: the varp the game sets when Home Teleport is cast (RuneLite's LAST_HOME_TELEPORT),
+     * and how many ticks apart that and the jump to where it lands may be.
+     */
+    private static final int LAST_HOME_TELEPORT = 892;
+    private static final int HOME_TICKS = 30;
+    /** Ticks since login, the tick Home Teleport was last cast, and the last big jump of your tile. */
+    private int tickCount;
+    private int homeCastTick = Integer.MIN_VALUE / 2;
+    private int jumpTick = Integer.MIN_VALUE / 2;
+    private Tile jumpFrom;
+    private Tile jumpTo;
     private boolean diariesRead;
     private boolean loadPending;
     private final Deque<String> runLog = new ArrayDeque<>();
@@ -224,11 +236,13 @@ public class NomadPlugin extends Plugin
         trials = Trials.all(Skill.values().length);
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
             this::copyRunCode, this::copyLiveLink, this::pickPalette, this::swearOath);
+        panel.onHelm(this::helmFromPanel);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
             panel.addTestButtons(
-                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots"},
+                new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots",
+                    "Comet soon", "Legendary stone"},
                 new Runnable[]{
                     () -> clientThread.invokeLater(() -> test("nomadmoments")),
                     () -> clientThread.invokeLater(() -> test("nomadfork")),
@@ -239,6 +253,8 @@ public class NomadPlugin extends Plugin
                     () -> clientThread.invokeLater(() -> reply(spots.toggle()
                         ? "Waystone spots shown: diamonds on the world map, outlines in the game world and on the minimap. Green is open, red is blocked, blue not checked yet."
                         : "Waystone spots hidden.")),
+                    () -> clientThread.invokeLater(() -> test("nomadcomet")),
+                    () -> clientThread.invokeLater(() -> test("nomadlegend")),
                 });
         }
         navButton = NavigationButton.builder()
@@ -330,6 +346,7 @@ public class NomadPlugin extends Plugin
         Tile before = surface;
         surface = locate();
         if (before != null && surface != null) stats.walked(surface.x - before.x, surface.y - before.y);
+        homeward(before);
         readMilestones();
         watchJourney();
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
@@ -343,6 +360,40 @@ public class NomadPlugin extends Plugin
         }
         ticks = 0;
         minute();
+    }
+
+    /**
+     * Homeward: a jump of your tile within a few ticks of Home Teleport being cast carries Main
+     * along, if you cast it from inside Main and it's not still gathering itself. Client thread.
+     */
+    private void homeward(Tile before)
+    {
+        tickCount++;
+        if (before != null && surface != null && Math.hypot(surface.x - before.x, surface.y - before.y) > 30)
+        {
+            jumpFrom = before;
+            jumpTo = surface;
+            jumpTick = tickCount;
+        }
+        if (jumpFrom == null) return;
+        if (Math.abs(jumpTick - homeCastTick) > HOME_TICKS)
+        {
+            // A jump with no Home Teleport near it, such as another teleport: forget it once it's old.
+            if (tickCount - jumpTick > HOME_TICKS) jumpFrom = null;
+            return;
+        }
+        Tile from = jumpFrom;
+        Tile to = jumpTo;
+        jumpFrom = null;
+        homeCastTick = Integer.MIN_VALUE / 2;
+        String line = sim.homeward(from, to);
+        if (line == null) return;
+        report(java.util.Collections.singletonList(line));
+        save();
+        live.markDirty();
+        look();
+        forecast = null;
+        forecastSoon();
     }
 
     /** Plays one minute of the run and everything that follows from it. Client thread. */
@@ -380,6 +431,7 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onVarbitChanged(VarbitChanged ev)
     {
+        if (ev.getVarpId() == LAST_HOME_TELEPORT && sim != null) homeCastTick = tickCount;
         if (sim != null && diariesRead && DiaryVarbits.isDiaryVarbit(ev.getVarbitId()))
         {
             readDiaries();
@@ -415,16 +467,33 @@ public class NomadPlugin extends Plugin
                 }
                 return;
             }
-            report(java.util.Collections.singletonList(line));
-            journey.add(Trials.BOONS, 1);
-            checkTrials();
-            save();
-            live.markDirty();
-            look();
-            forecast = null;
-            forecastSoon();
-            publish();
+            boonSpent(line);
         });
+    }
+
+    /** Spends a Helmsman from the sidebar on the port picked from its menu. */
+    private void helmFromPanel(int index, String port)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null) return;
+            String line = sim.useHelmsman(index, port);
+            if (line != null) boonSpent(line);
+        });
+    }
+
+    /** Everything that follows a boon being spent. Client thread. */
+    private void boonSpent(String line)
+    {
+        report(java.util.Collections.singletonList(line));
+        journey.add(Trials.BOONS, 1);
+        checkTrials();
+        save();
+        live.markDirty();
+        look();
+        forecast = null;
+        forecastSoon();
+        publish();
     }
 
     @Subscribe
@@ -708,8 +777,17 @@ public class NomadPlugin extends Plugin
                 for (int i = 0; i < minutes; i++) minute();
                 reply("Played " + minutes + (minutes == 1 ? " minute." : " minutes."));
                 break;
+            case "nomadcomet":
+                // Testing: a comet is announced at the next played minute.
+                sim.cometSoonForTesting();
+                reply(sim.comet() != null ? "A comet is already on its way." : "A comet is announced at the next played minute.");
+                break;
+            case "nomadlegend":
+                // Testing: summons a legendary waystone, as a legendary feat would.
+                summon(NomadSim.LEGENDARY, "A test");
+                break;
             default:
-                reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>.");
+                reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>, ::nomadcomet, ::nomadlegend.");
                 break;
         }
     }
@@ -883,12 +961,38 @@ public class NomadPlugin extends Plugin
             return;
         }
         readAccountTrials();
-        boolean first = milestones.levelMark < 0;
+        boolean first = milestones.levelMark < 0 || milestones.nines < 0;
         int earned = milestones.earned(client.getTotalLevel(), client.getVarpValue(VarPlayerID.QP));
-        if (first && milestones.levelMark >= 0) saveMilestones();
+        List<String> feats = milestones.legendary(maxed(), eliteDiaries(), client.getTotalLevel());
+        if (first && milestones.levelMark >= 0 && milestones.nines >= 0) saveMilestones();
+        for (String why : feats) summon(NomadSim.LEGENDARY, why);
+        if (!feats.isEmpty()) saveMilestones();
         if (earned <= 0) return;
         for (int i = 0; i < earned; i++) summon(NomadSim.COMMON, "A milestone");
         saveMilestones();
+    }
+
+    /** How many skills are at 99. */
+    private int maxed()
+    {
+        int maxed = 0;
+        for (Skill skill : Skill.values())
+        {
+            if (client.getRealSkillLevel(skill) >= 99) maxed++;
+        }
+        return maxed;
+    }
+
+    /** How many Elite diaries are done. */
+    private int eliteDiaries()
+    {
+        int done = 0;
+        for (int[] tiers : DiaryVarbits.TIERS.values())
+        {
+            int elite = tiers[tiers.length - 1];
+            if (DiaryVarbits.done(elite, client.getVarbitValue(elite))) done++;
+        }
+        return done;
     }
 
     /** The quests a Sailing dock needs that this account hasn't finished, so Main never sails where you can't dock. */
@@ -1142,7 +1246,7 @@ public class NomadPlugin extends Plugin
 
     private void summon(String tier, String why)
     {
-        show(Moments.milestone(why, NomadSim.RARE.equals(tier)));
+        show(Moments.milestone(why, tier));
         String line = sim.summon(tier);
         report(java.util.Collections.singletonList(line != null ? why + " summoned a waystone. " + line
             : why + " summoned a waystone. It rises once a landmark drifts into reach."));
@@ -1348,6 +1452,8 @@ public class NomadPlugin extends Plugin
             runLog.addFirst(NomadPanel.time(sim == null ? 0 : sim.minutes()) + "  " + line);
             while (runLog.size() > LOG_LINES) runLog.removeLast();
             if (config.chatLog()) chat(line);
+            Moments.Banner b = Moments.fromLine(line);
+            if (b != null) show(b);
         }
     }
 
