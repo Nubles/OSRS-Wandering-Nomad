@@ -3,21 +3,28 @@ package com.wanderingnomad;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
+import com.wanderingnomad.journey.Acts;
+import com.wanderingnomad.journey.Ancestors;
 import com.wanderingnomad.journey.Bestiary;
 import com.wanderingnomad.journey.Curiosities;
+import com.wanderingnomad.journey.Epilogue;
+import com.wanderingnomad.journey.Epithets;
 import com.wanderingnomad.journey.Holidays;
 import com.wanderingnomad.journey.Journey;
 import com.wanderingnomad.journey.JourneyChat;
 import com.wanderingnomad.journey.JourneyWatch;
 import com.wanderingnomad.journey.Ledger;
+import com.wanderingnomad.journey.Legacy;
 import com.wanderingnomad.journey.Lineage;
 import com.wanderingnomad.journey.Omen;
 import com.wanderingnomad.journey.Omens;
+import com.wanderingnomad.journey.Prophecy;
 import com.wanderingnomad.journey.Rank;
 import com.wanderingnomad.journey.Renown;
 import com.wanderingnomad.journey.RoadStones;
 import com.wanderingnomad.journey.Trial;
 import com.wanderingnomad.journey.Trials;
+import com.wanderingnomad.journey.Wagers;
 import com.wanderingnomad.journey.WorldChat;
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Clues;
@@ -254,6 +261,29 @@ public class NomadPlugin extends Plugin
     private int loadingTick = Integer.MIN_VALUE / 2;
     /** Port of call: on a boat's deck at the last tick. */
     private boolean aboard;
+    /** Ancestor ghosts drifting on the maps, built off the client thread; null until built, or with none. Any thread reads it. */
+    private volatile Ancestors ancestors;
+    /** The run was laid down: its circles stand still and its epilogue is written. */
+    private boolean retired;
+    /** Played minutes outside in a row, and how many make a scar on your edge. */
+    private int outsideRun;
+    static final int SCAR_MINUTES = 10;
+    /** Edgewalker: XP was gained within {@link #EDGE_TILES} of your edge this minute. */
+    private boolean edgeXp;
+    static final int EDGE_TILES = 2;
+    /** Waystones claimed at the last look, and the nearest stone beside you then: its spot and minutes left (-1 if none). */
+    private int claimedSeen = -1;
+    private int stoneLeft = -1;
+    private Tile stoneAt;
+    /** Outside at the last tick, for the shrunk comeback, and the circle size under which getting back in counts. */
+    private boolean wasOutside;
+    static final int BRINK_TILES = 15;
+    /** The ancestor ghosts have been asked for this run (they're built once, off the client thread). */
+    private boolean ghostsAsked;
+    /** Main's fork count at the last path sample. */
+    private int forksSampled;
+    /** The run's epithet so far, as the epilogue would name it. */
+    private String epithet;
     private boolean loadPending;
     private final Deque<String> runLog = new ArrayDeque<>();
 
@@ -296,13 +326,14 @@ public class NomadPlugin extends Plugin
         panel.onLode(this::lodeFromPanel);
         panel.onShatter(this::shatterFromPanel);
         panel.onEncore(this::encoreFromPanel);
+        panel.onLegacy(this::retireFromPanel, this::wagerFromPanel, this::sealFromPanel);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
             panel.addTestButtons(
                 new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots",
                     "Comet soon", "Legendary stone", "Stampede soon", "Aurora soon", "Rift soon", "Flotsam soon", "Give a new boon",
-                    "Hop soon", "Log pop", "Superior here", "Star here"},
+                    "Hop soon", "Log pop", "Superior here", "Star here", "Next act", "Test epilogue"},
                 new Runnable[]{
                     () -> clientThread.invokeLater(() -> test("nomadmoments")),
                     () -> clientThread.invokeLater(() -> test("nomadfork")),
@@ -324,6 +355,8 @@ public class NomadPlugin extends Plugin
                     () -> clientThread.invokeLater(() -> test("nomadpop")),
                     () -> clientThread.invokeLater(() -> test("nomadsuperior")),
                     () -> clientThread.invokeLater(() -> test("nomadstar")),
+                    () -> clientThread.invokeLater(() -> test("nomadact")),
+                    () -> clientThread.invokeLater(() -> test("nomadepilogue")),
                 });
         }
         navButton = NavigationButton.builder()
@@ -415,6 +448,12 @@ public class NomadPlugin extends Plugin
         }
         Tile before = surface;
         surface = locate();
+        if (retired)
+        {
+            // A laid-down run stands still: nothing moves or counts until a new run starts.
+            publish();
+            return;
+        }
         delve();
         if (before != null && surface != null) stats.walked(surface.x - before.x, surface.y - before.y);
         homeward(before);
@@ -628,6 +667,7 @@ public class NomadPlugin extends Plugin
         String born = Lineage.sync(journey, sim.seed(), sim.forks(), sim.minutes());
         if (born != null) report(java.util.Collections.singletonList(born + " is born: the half that lived carries Main's line on."));
         journey.minute(!outsideNow());
+        legacyMinute();
         for (RoadStones.Due due : RoadStones.due(journey)) summon(due.tier, due.why);
         if (config.holidayWeather() && Holidays.easterStoneDue(journey, LocalDate.now())) summon(NomadSim.COMMON, "An Easter weekend day");
         String owed = Bestiary.due(journey, sim.minutes());
@@ -696,6 +736,7 @@ public class NomadPlugin extends Plugin
                 if (inside) line = sim.superior(surface);
                 break;
             case DEATH:
+                scar("death", "You died at " + NomadPanel.time(sim.minutes()) + ".");
                 if (config.hardcore() && !fallen)
                 {
                     fallen = true;
@@ -933,6 +974,7 @@ public class NomadPlugin extends Plugin
         Integer before = lastXp.put(skill, ev.getXp());
         // The first value per skill arrives at login; only later rises are gains.
         if (before != null && ev.getXp() > before && skill == Skill.FIREMAKING) rite(Waystone.FIRE);
+        if (before != null && ev.getXp() > before && nearEdge()) edgeXp = true;
         if (before == null || sim == null || !config.ruleGuard() || !outsideNow()) return;
         guard.xp(skill.getName(), ev.getXp() - before);
     }
@@ -1377,6 +1419,23 @@ public class NomadPlugin extends Plugin
                 save();
                 break;
             }
+            case "nomadact":
+                // Testing: counts a followed voyage, so the next act opens at the next minute if no voyage has yet.
+                journey.add(Trials.VOYAGES, 1);
+                reply("Counted a voyage followed: if it's the run's first, the next act opens at the next minute.");
+                saveJourney();
+                break;
+            case "nomadepilogue":
+            {
+                // Testing: writes this run's epilogue as if it had ended, keeps playing it, and raises its ghost.
+                Legacy.Run run = writeEpilogue();
+                reply("Wrote a test epilogue for " + run.title() + ": it's on the Legacy shelf, and its ghost (played from this run's seed) "
+                    + "drifts on the maps.");
+                buildAncestors();
+                publish();
+                SwingUtilities.invokeLater(() -> panel.showRun(run));
+                break;
+            }
             case "nomadgive":
             {
                 // Testing: hands you one of the newer boons (or the one named), in turn.
@@ -1388,7 +1447,7 @@ public class NomadPlugin extends Plugin
             }
             default:
                 reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>, ::nomadcomet, ::nomadlegend, "
-                    + "::nomadevent <stampede|aurora|rift|flotsam>, ::nomadgive [boon], ::nomadhop, ::nomadpop, ::nomadsuperior, ::nomadstar.");
+                    + "::nomadevent <stampede|aurora|rift|flotsam>, ::nomadgive [boon], ::nomadhop, ::nomadpop, ::nomadsuperior, ::nomadstar, ::nomadact, ::nomadepilogue.");
                 break;
         }
     }
@@ -1441,6 +1500,14 @@ public class NomadPlugin extends Plugin
         starSize = 0;
         starGoneTick = -1;
         aboard = false;
+        ancestors = null;
+        ghostsAsked = false;
+        outsideRun = 0;
+        edgeXp = false;
+        claimedSeen = -1;
+        stoneLeft = -1;
+        stoneAt = null;
+        wasOutside = false;
     }
 
     Tile surface()
@@ -1512,6 +1579,8 @@ public class NomadPlugin extends Plugin
             delveWait = 0;
             fallen = false;
             plots = new Plots();
+            retired = false;
+            epithet = null;
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
@@ -1531,6 +1600,8 @@ public class NomadPlugin extends Plugin
             delveWait = run.delveWait;
             fallen = run.fallen;
             plots = new Plots(run.plots);
+            retired = run.retired;
+            epithet = run.epithet;
         }
         tideLeft = sim.tide() != null ? TIDE_MINUTES : 0;
         networksMask = -1;
@@ -1545,7 +1616,11 @@ public class NomadPlugin extends Plugin
         {
             renown.newRun();
             saveRenown();
+            ancestralStart();
         }
+        forksSampled = sim.forks();
+        buildAncestors();
+        applyPalette();
         ticks = 0;
         diariesRead = false;
         forecastSoon();
@@ -1665,7 +1740,18 @@ public class NomadPlugin extends Plugin
         journey.set(Trials.CLAIMED, stats.claimed);
         journey.set(Trials.CROSSINGS, stats.crossings);
         boolean inside = surface != null && !outsideNow();
+        int photoFinishes = journey.value(Trials.COMEBACK_FORK);
+        List<Journey.Scar> scars = journey.scars();
+        Journey.Scar lastScar = scars.isEmpty() ? null : scars.get(scars.size() - 1);
         watch.tick(sim, surface, inside, journey);
+        scars = journey.scars();
+        if (!scars.isEmpty() && scars.get(scars.size() - 1) != lastScar)
+        {
+            // A fork parted while you stood outside: the watch marks your edge.
+            show(Moments.scar(scars.get(scars.size() - 1).line()));
+            report(java.util.Collections.singletonList("A scar on your edge: " + scars.get(scars.size() - 1).line()));
+        }
+        legacyTick(inside, photoFinishes);
         watchRivals(inside);
         Omen before = Omens.current(journey);
         settleOmen(Omens.minute(journey, sim, surface, inside), before);
@@ -1740,6 +1826,284 @@ public class NomadPlugin extends Plugin
         publish();
     }
 
+    /**
+     * Legacy, every played minute: samples Main's path for the sigil, opens acts, watches the
+     * prophecies, scars a long time outside, counts the Edgewalker's minute, looks for monsters
+     * not yet killed and plays the ancestor ghosts on. Client thread.
+     */
+    private void legacyMinute()
+    {
+        int now = sim.minutes();
+        boolean inside = surface != null && !outsideNow();
+        Circle m = sim.main();
+        boolean forked = sim.forks() > forksSampled;
+        if (now % Journey.PATH_EVERY == 0) forksSampled = sim.forks();
+        journey.sample(now, m.x(), m.y(), m.sailing(), forked, inside ? Integer.valueOf(surface.x) : null,
+            inside ? Integer.valueOf(surface.y) : null);
+        Region over = surface == null ? null : Geography.regionAt(surface.x, surface.y);
+        Acts.minute(journey, over == null ? null : over.id, now);
+        Acts.Opening act = Acts.check(journey, now);
+        if (act != null)
+        {
+            show(Moments.act(act));
+            sim.uninvitedGuest();
+            report(java.util.Collections.singletonList(act.title() + " begins. " + act.line()));
+            if (journey.acts().size() >= 3 && renown.unlockHeraldry())
+            {
+                show(Moments.heraldry());
+                report(java.util.Collections.singletonList("Heraldry unlocked: pick it as the edge colour, and Main wears the colours of "
+                    + "the kingdom each act is lived in."));
+                saveRenown();
+            }
+        }
+        Prophecy.watch(journey, sim);
+        Prophecy.Reveal reveal = Prophecy.reveal(journey, now);
+        if (reveal != null)
+        {
+            int pay = reveal.right * Prophecy.RENOWN;
+            Rank up = pay > 0 ? renown.add(pay) : null;
+            journey.earn(pay);
+            show(Moments.prophecy(reveal.right));
+            List<String> said = new ArrayList<>();
+            said.add("The prophecies are revealed: " + reveal.right + " of 3 came true" + (pay > 0 ? ", +" + pay + " renown." : "."));
+            said.addAll(reveal.lines);
+            report(said);
+            if (up != null) show(Moments.rankUp(up));
+            saveRenown();
+        }
+        outsideRun = outsideNow() ? outsideRun + 1 : 0;
+        if (outsideRun == SCAR_MINUTES) scar("outside", SCAR_MINUTES + " minutes outside, at " + NomadPanel.time(now) + ".");
+        if (edgeXp) journey.add(Trials.EDGE_XP, 1);
+        edgeXp = false;
+        journey.strangerNear = inside && strangerNear();
+        Ancestors a = ancestors;
+        if (a != null) a.minute(now);
+        else if (!ghostsAsked) buildAncestors();
+        epithet = Epithets.of(Epilogue.stats(journey, stats.timesOutside, fallen), now);
+        applyPalette();
+    }
+
+    /**
+     * Legacy, every tick: a photo finish or a comeback from the brink, a claimed waystone's cairn,
+     * a wager settled and an ancestor's ghost stood in. Client thread.
+     */
+    private void legacyTick(boolean inside, int photoFinishes)
+    {
+        if (journey.value(Trials.COMEBACK_FORK) > photoFinishes)
+        {
+            show(Moments.comeback("Photo finish!", "You stepped into the half you kept in the fork's last seconds."));
+            report(java.util.Collections.singletonList("Photo finish! You stepped into the half you kept just before the fork parted."));
+        }
+        boolean out = outsideNow();
+        if (wasOutside && !out && surface != null && !sheltered() && sim.bound().radius() < BRINK_TILES)
+        {
+            int tiles = (int) Math.round(sim.bound().radius());
+            journey.comeback(Trials.COMEBACK_SHRUNK, "got back inside while your circle was down to " + tiles + " tiles", (BRINK_TILES - tiles) * 4);
+            show(Moments.comeback("Back from the brink!", "Inside again, with your circle down to " + tiles + " tiles."));
+            report(java.util.Collections.singletonList("Back from the brink! You got back inside while your circle was down to " + tiles + " tiles."));
+        }
+        wasOutside = out;
+        if (claimedSeen < 0) claimedSeen = stats.claimed;
+        if (stats.claimed > claimedSeen)
+        {
+            Tile spot = stoneAt != null ? stoneAt : surface;
+            if (spot != null) journey.cairn(spot.x, spot.y);
+            if (stoneLeft >= 0 && stoneLeft <= 1)
+            {
+                journey.comeback(Trials.COMEBACK_STONE, "claimed a waystone in its last minute", 50);
+                show(Moments.comeback("Last breath!", "You claimed a waystone in its last minute."));
+                report(java.util.Collections.singletonList("Last breath! You claimed a waystone in its last minute."));
+            }
+            if (sim.stormLeft() > 0 && sim.stormKind() == NomadSim.GALE) journey.add(Trials.GALE_CLAIMS, 1);
+            claimedSeen = stats.claimed;
+        }
+        stoneLeft = -1;
+        stoneAt = null;
+        if (surface != null)
+        {
+            for (Waystone w : sim.waystones())
+            {
+                if (Math.abs(w.x() - surface.x) > 3 || Math.abs(w.y() - surface.y) > 3) continue;
+                int left = sim.minutesLeft(w);
+                if (left >= 0 && (stoneLeft < 0 || left < stoneLeft))
+                {
+                    stoneLeft = left;
+                    stoneAt = new Tile(w.x(), w.y());
+                }
+                else if (stoneAt == null)
+                {
+                    stoneAt = new Tile(w.x(), w.y());
+                }
+            }
+        }
+        if (journey.wager() != 0)
+        {
+            String half = NomadSim.compass(Wagers.called(journey));
+            Wagers.Result r = Wagers.settle(journey, sim, inside);
+            if (r == Wagers.Result.WON)
+            {
+                Rank up = renown.add(Wagers.RENOWN);
+                journey.earn(Wagers.RENOWN);
+                show(Moments.wager(true, half));
+                report(java.util.Collections.singletonList("Wager won: you called the " + half + " half, and kept it. +" + Wagers.RENOWN + " renown."));
+                if (up != null) show(Moments.rankUp(up));
+                applyPalette();
+                saveRenown();
+            }
+            else if (r == Wagers.Result.LOST)
+            {
+                show(Moments.wager(false, half));
+                report(java.util.Collections.singletonList("Wager lost: you called the " + half + " half, but didn't keep it."));
+            }
+        }
+        Ancestors a = ancestors;
+        Ancestors.Ghost g = a == null || !inside || surface == null ? null : a.at(surface.x, surface.y);
+        if (g != null && journey.addTo(Trials.ANCESTORS, String.valueOf(g.run.ended)))
+        {
+            show(Moments.ancestor(g.run.title(), new Color(g.run.colour)));
+            report(java.util.Collections.singletonList("An ancestor's footsteps: you stand in the ghost of " + g.run.title() + "'s Main circle."));
+        }
+    }
+
+    /** A mark on your edge, the way you stand from your circle's middle. Client thread. */
+    private void scar(String kind, String line)
+    {
+        Tile at = surface;
+        if (at == null || sim == null) return;
+        Circle c = sim.bound();
+        journey.scar(Math.atan2(at.y - c.y(), at.x - c.x()), kind, line, sim.minutes());
+        show(Moments.scar(line));
+        report(java.util.Collections.singletonList("A scar on your edge: " + line));
+    }
+
+    /** Standing inside your circle within a couple of tiles of its edge. Client thread. */
+    private boolean nearEdge()
+    {
+        if (sim == null || surface == null || outsideNow()) return false;
+        Circle c = sim.bound();
+        return c.radius() - Math.hypot(surface.x - c.x(), surface.y - c.y()) <= EDGE_TILES;
+    }
+
+    /** A monster (combat level 2 or more) you haven't killed this run within a few tiles of you. Client thread. */
+    private boolean strangerNear()
+    {
+        Player p = client.getLocalPlayer();
+        WorldView view = client.getTopLevelWorldView();
+        if (p == null || view == null || p.getWorldLocation() == null) return false;
+        WorldPoint me = p.getWorldLocation();
+        for (NPC npc : view.npcs())
+        {
+            if (npc == null || npc.getName() == null || npc.getCombatLevel() < Bestiary.WAYSTONE_LEVEL) continue;
+            WorldPoint at = npc.getWorldLocation();
+            if (at == null || at.distanceTo(me) > STRANGER_TILES) continue;
+            if (Bestiary.count(journey, Text.removeTags(npc.getName()).trim()) == 0) return true;
+        }
+        return false;
+    }
+
+    static final int STRANGER_TILES = 12;
+
+    /** Builds the ancestor ghosts off the client thread, played on to this run's minute. Client thread. */
+    private void buildAncestors()
+    {
+        ancestors = null;
+        List<Legacy.Run> runs = new ArrayList<>(renown.legacy());
+        if (runs.isEmpty() || !config.ancestorGhosts() || sim == null) return;
+        ghostsAsked = true;
+        int at = sim.minutes();
+        int gen = generation;
+        executor.execute(() ->
+        {
+            Ancestors built = Ancestors.of(runs, at);
+            clientThread.invokeLater(() ->
+            {
+                if (gen != generation || sim == null) return;
+                built.minute(sim.minutes());
+                ancestors = built;
+            });
+        });
+    }
+
+    /** The ancestor ghosts, or null. Any thread. */
+    Ancestors ancestors()
+    {
+        return config.ancestorGhosts() ? ancestors : null;
+    }
+
+    /** The run's journey, for the maps' legacy marks. Any thread. */
+    Journey journey()
+    {
+        return journey;
+    }
+
+    /** The colours of the rings of lineage, newest first. Any thread. */
+    List<Integer> lineageBands()
+    {
+        Renown r = renown;
+        return r == null ? java.util.Collections.emptyList() : Legacy.bands(r.legacy());
+    }
+
+    /** Writes the run's epilogue and keeps it on the account. Client thread. */
+    private Legacy.Run writeEpilogue()
+    {
+        String name = Epithets.of(Epilogue.stats(journey, stats.timesOutside, fallen), sim.minutes());
+        Legacy.Run run = Epilogue.write(journey, sim, Math.max(1, renown.runs()), name, mainColour, trials == null ? 0 : trials.size());
+        renown.retire(run);
+        saveRenown();
+        return run;
+    }
+
+    /** Lays the run down from the sidebar: its circles stop, and its epilogue is written and shown. */
+    private void retireFromPanel()
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null || retired) return;
+            Legacy.Run run = writeEpilogue();
+            retired = true;
+            save();
+            show(Moments.epilogue(run.title()));
+            report(java.util.Collections.singletonList("The staff is laid down: " + run.title() + ". The epilogue is kept under Legacy in the "
+                + "sidebar; start a new run when you're ready."));
+            live.markDirty();
+            publish();
+            SwingUtilities.invokeLater(() -> panel.showRun(run));
+        });
+    }
+
+    /** Calls a fork wager from the sidebar: {@code withAxis} for the half heading the fork's way. */
+    private void wagerFromPanel(boolean withAxis)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null || retired || !Wagers.call(journey, sim, withAxis)) return;
+            report(java.util.Collections.singletonList("You wager on the " + NomadSim.compass(Wagers.called(journey))
+                + " half. Stand in it when the fork parts for +" + Wagers.RENOWN + " renown."));
+            saveJourney();
+            publish();
+        });
+    }
+
+    /** Seals the three prophecies from the sidebar. */
+    private void sealFromPanel(String[] picks)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null || picks == null || picks.length != 3) return;
+            if (!Prophecy.seal(journey, picks[0], picks[1], picks[2], sim.minutes()))
+            {
+                report(java.util.Collections.singletonList("Prophecies can only be sealed once, in a run's first hour."));
+                publish();
+                return;
+            }
+            report(java.util.Collections.singletonList("Prophecies sealed: " + picks[0] + "'s diary first, Main's first port "
+                + picks[1] + ", and at 100 hours Main " + (Prophecy.AT_SEA.equals(picks[2]) ? "at sea" : "in " + picks[2])
+                + ". They're revealed at 100 hours, for " + Prophecy.RENOWN + " renown each that comes true."));
+            saveJourney();
+            publish();
+        });
+    }
+
     /** Pays out every trial now done: a banner, a chat line and its renown, and a rank up if it's earned. */
     private void checkTrials()
     {
@@ -1777,7 +2141,17 @@ public class NomadPlugin extends Plugin
 
     private void applyPalette()
     {
-        mainColour = renown.paletteColour();
+        Region crest = crest();
+        mainColour = crest != null ? crest.colour : renown.paletteColour();
+    }
+
+    /** Heraldry's kingdom this act, or null when Heraldry isn't the edge colour or no kingdom holds the act yet. Any thread. */
+    Region crest()
+    {
+        Renown r = renown;
+        Journey j = journey;
+        String id = r == null || j == null || !r.heraldryOn() ? null : Acts.dominant(j);
+        return id == null ? null : Geography.region(id);
     }
 
     /** Swears the run's oath from the sidebar, by its trial's name; "None" clears it. */
@@ -1926,6 +2300,8 @@ public class NomadPlugin extends Plugin
         run.delveWait = delveWait;
         run.fallen = fallen;
         run.plots = plots.save();
+        run.retired = retired;
+        run.epithet = epithet;
         configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(run));
     }
 
@@ -1965,6 +2341,18 @@ public class NomadPlugin extends Plugin
         });
     }
 
+    static final int EPILOGUE_MINUTES = 60;
+
+    /** Ancestral start (a setting): a fresh run's Main begins where the last run's Main ended. Not for races. Client thread. */
+    private void ancestralStart()
+    {
+        Legacy.Run last = renown.lastRun();
+        if (!config.ancestralStart() || last == null || journey.race() != null) return;
+        if (!sim.startMainAt(new Tile(last.endX, last.endY))) return;
+        report(java.util.Collections.singletonList("Ancestral start: Main begins where " + last.title() + "'s Main ended."));
+        save();
+    }
+
     /** {@code race}: a rival's name to start on their seed, or null for the usual seed. */
     private void newRunFromPanel(String race)
     {
@@ -1980,6 +2368,8 @@ public class NomadPlugin extends Plugin
                     raceSeed = r.latest().sim.seed();
                 }
             }
+            // A run of an hour or more that wasn't laid down still leaves its epilogue.
+            if (sim != null && !retired && sim.minutes() >= EPILOGUE_MINUTES) writeEpilogue();
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY);
             sim = null;
             runLog.clear();
@@ -2052,7 +2442,10 @@ public class NomadPlugin extends Plugin
 
     private String runCode()
     {
-        return RunCode.encode(gson.toJson(new SavedRun(sim, surface)));
+        SavedRun run = new SavedRun(sim, surface);
+        run.epithet = epithet;
+        run.retired = retired;
+        return RunCode.encode(gson.toJson(run));
     }
 
     /** Encodes the run on the client thread, then hands the code to Swing. */
@@ -2078,6 +2471,7 @@ public class NomadPlugin extends Plugin
             runLog.addFirst(NomadPanel.time(sim == null ? 0 : sim.minutes()) + "  " + line);
             while (runLog.size() > LOG_LINES) runLog.removeLast();
             if (config.chatLog()) chat(line);
+            if (sim != null) Epilogue.countLine(journey, line);
             Moments.Banner b = Moments.fromLine(line);
             if (b != null) show(b);
         }
@@ -2107,7 +2501,12 @@ public class NomadPlugin extends Plugin
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
-        if (sim != null && delveLeft > 0)
+        if (sim != null && retired)
+        {
+            view.state = "Laid down: the run has ended";
+            view.stateColour = Moments.LEGACY;
+        }
+        else if (sim != null && delveLeft > 0)
         {
             view.state = "Delving: inside for " + delveLeft + " min";
             view.stateColour = SidebarParts.IN;
@@ -2138,6 +2537,18 @@ public class NomadPlugin extends Plugin
         }
         view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials, sim.minutes());
         if (sim != null && journey != null && renown != null && trials != null) view.journey.ledger = Ledger.text(sim, journey, renown, trials);
+        if (sim != null && journey != null)
+        {
+            view.journey.retired = retired;
+            String heir = Lineage.current(journey);
+            view.journey.title = epithet == null ? null : (heir == null ? "Main" : heir) + " " + epithet;
+            if (!retired && Wagers.open(journey, sim))
+            {
+                view.journey.wagerWith = NomadSim.compass(sim.forkAxis());
+                view.journey.wagerAgainst = NomadSim.compass(sim.forkAxis() + Math.PI);
+            }
+            if (journey.wager() != 0) view.journey.wagered = NomadSim.compass(Wagers.called(journey));
+        }
         if (sim != null)
         {
             List<String> lines = new ArrayList<>();

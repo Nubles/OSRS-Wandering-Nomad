@@ -439,6 +439,64 @@ final class Moments
             new Color(r.colour), Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
     }
 
+    /** Legacy's own colour: old parchment. */
+    static final Color LEGACY = new Color(0xE8D9A8);
+
+    /** A new act opens: its number, how the last one is remembered and what opened this one. */
+    static Banner act(com.wanderingnomad.journey.Acts.Opening o)
+    {
+        return new Banner(o.title(), o.line(), LEGACY, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner heraldry()
+    {
+        return new Banner("Heraldry unlocked", "A third act! Your edge can wear the colours of the kingdom each act is lived in.",
+            LEGACY, Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
+    /** A fork wager settled: the half you called lived, or it didn't. */
+    static Banner wager(boolean won, String half)
+    {
+        return won ? new Banner("Wager won!", "You called the " + half + " half, and it lived. +" + com.wanderingnomad.journey.Wagers.RENOWN
+                + " renown.", GOLD, Icon.FORK, true, SoundEffectID.GE_COIN_TINKLE)
+            : new Banner("Wager lost", "You called the " + half + " half, but you didn't keep it.", GOLD.darker(), Icon.FORK, false,
+                SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+    }
+
+    /** The prophecies revealed at 100 hours. */
+    static Banner prophecy(int right)
+    {
+        return new Banner("The prophecies, revealed", right + " of 3 came true" + (right > 0 ? ". +"
+            + right * com.wanderingnomad.journey.Prophecy.RENOWN + " renown." : "."), LEGACY, Icon.STAR, right > 0,
+            right > 0 ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+    }
+
+    /** Standing in an ancestor's ghost ring from inside your circle. */
+    static Banner ancestor(String title, Color colour)
+    {
+        return new Banner("An ancestor's footsteps", "You stand in the ghost of " + title + ".", colour, Icon.RING, true,
+            SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+    }
+
+    /** A comeback, in the words the run log keeps. */
+    static Banner comeback(String title, String words)
+    {
+        return new Banner(title, words, WARM, Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
+    /** A mark left on your edge. */
+    static Banner scar(String line)
+    {
+        return new Banner("A scar on your edge", line, OUT, Icon.EDGE, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+    }
+
+    /** The run laid down: its title, as the epilogue names it. */
+    static Banner epilogue(String title)
+    {
+        return new Banner("The staff is laid down", title + ". The epilogue is written.", LEGACY, Icon.STAR, true,
+            SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
     /** One of every kind of banner, for trying them out with ::nomadmoments. */
     static List<Banner> samples(NomadSim sim)
     {
@@ -503,6 +561,16 @@ final class Moments
         out.add(new Banner("Legendary waystone risen", NomadSim.CROWN + " at the Grand Exchange. It never fades.", SidebarParts.LEGEND,
             Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
         out.add(rankUp(com.wanderingnomad.journey.Rank.PATHFINDER));
+        out.add(new Banner("Act II", "Act I was the Misthalin act. Following Main across the sea opens the next, and Main picks a fresh mood.",
+            LEGACY, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
+        out.add(heraldry());
+        out.add(wager(true, "north-east"));
+        out.add(wager(false, "south-west"));
+        out.add(prophecy(2));
+        out.add(ancestor("Generation 3, Gertrude III the Seaborn", c.darker()));
+        out.add(comeback("Photo finish!", "You stepped into the half you kept 4 seconds before the fork parted."));
+        out.add(scar("Ten minutes outside, at 12h 40m."));
+        out.add(epilogue("Generation 4, Gertrude IV the Wayward"));
         out.add(new Banner("Waystone risen", "Tailwind at Draynor Village, in your circle.", GOLD, Icon.WAYSTONE, false,
             SoundEffectID.PRAYER_DEPLETE_TWINKLE));
         out.add(new Banner("Rare waystone risen", "Bridge at the Grand Exchange, in your circle.", GOLD, Icon.WAYSTONE, true,

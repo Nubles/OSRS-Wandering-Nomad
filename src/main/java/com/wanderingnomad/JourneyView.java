@@ -1,10 +1,13 @@
 package com.wanderingnomad;
 
+import com.wanderingnomad.journey.Acts;
 import com.wanderingnomad.journey.Curiosities;
 import com.wanderingnomad.journey.Journey;
+import com.wanderingnomad.journey.Legacy;
 import com.wanderingnomad.journey.Lineage;
 import com.wanderingnomad.journey.Omen;
 import com.wanderingnomad.journey.Omens;
+import com.wanderingnomad.journey.Prophecy;
 import com.wanderingnomad.journey.Rank;
 import com.wanderingnomad.journey.Renown;
 import com.wanderingnomad.journey.Trial;
@@ -40,8 +43,9 @@ final class JourneyView
         Row(Trial t, Journey j, Renown r)
         {
             chapter = t.chapter;
-            name = t.name;
-            detail = t.detail;
+            boolean hidden = t.riddle != null && !j.isDone(t);
+            name = hidden ? "???" : t.name;
+            detail = hidden ? t.riddle : t.detail;
             tier = t.tier.label;
             colour = new Color(t.tier.colour);
             progress = j.progress(t);
@@ -92,6 +96,20 @@ final class JourneyView
     /** The curiosities log: each one's name, what it takes, and how often the account has seen it (0 if never). */
     List<String[]> curios = Collections.emptyList();
     int curiosFound;
+    /** Legacy: the act under way, the run's title so far (set by the plugin), the account's run number, and whether it's laid down. */
+    String act;
+    String title;
+    int generation = 1;
+    boolean retired;
+    /** Prophecy oath: whether they can be sealed now, and each sealed one with what has come true so far (empty if none). */
+    boolean prophecyOpen;
+    List<String> prophecies = Collections.emptyList();
+    /** Wager oath, set by the plugin: the two halves' compass names while a call can be made (null otherwise), and the half called. */
+    String wagerWith;
+    String wagerAgainst;
+    String wagered;
+    /** Ended runs on the account, newest first. */
+    List<Legacy.Run> legacy = Collections.emptyList();
 
     static JourneyView of(Journey j, Renown r, List<Trial> trials)
     {
@@ -135,8 +153,7 @@ final class JourneyView
             v.omen = o.title();
             v.omenAsk = o.ask();
             v.omenLeft = Math.max(0, o.deadline() - minutes);
-            int now = Omen.WANDERLUST.equals(o.kind()) ? j.value(Trials.WALKED) : Omens.trophies(j);
-            v.omenProgress = o.progress(now, minutes);
+            v.omenProgress = o.progress(Omens.counted(j, o), minutes);
         }
         List<Row> next = new ArrayList<>();
         for (Trial t : j.next(trials, NEXT)) next.add(new Row(t, j, r));
@@ -156,6 +173,24 @@ final class JourneyView
         for (Curiosities.Curio c : Curiosities.ALL) curios.add(new String[]{c.name, c.detail, String.valueOf(r.curioTimes(c.id))});
         v.curios = curios;
         v.curiosFound = r.curiosFound();
+        v.act = Acts.current(j);
+        v.generation = Math.max(1, r.runs());
+        List<Legacy.Run> legacy = new ArrayList<>(r.legacy());
+        Collections.reverse(legacy);
+        v.legacy = legacy;
+        v.prophecyOpen = Prophecy.canSeal(j, minutes);
+        String[] sealed = j.prophecy();
+        if (sealed != null)
+        {
+            List<String> lines = new ArrayList<>();
+            for (int i = 0; i < 3; i++)
+            {
+                String came = j.truth()[i];
+                lines.add(Prophecy.ASKS[i] + ": " + sealed[i] + (came == null ? " (not yet known)" : sealed[i].equals(came) ? " (so it was)"
+                    : " (it was " + came + ")"));
+            }
+            v.prophecies = lines;
+        }
         return v;
     }
 }

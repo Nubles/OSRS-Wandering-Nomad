@@ -21,6 +21,11 @@ public final class Renown
     java.util.Set<String> titles = new java.util.TreeSet<>();
     /** Curiosities found on the account, by id, with how many times each has been seen. */
     Map<String, Integer> curios = new HashMap<>();
+    /** Ended runs, oldest first, the latest {@link Legacy#KEPT}. */
+    java.util.List<Legacy.Run> legacy = new java.util.ArrayList<>();
+    /** Heraldry: unlocked the first time any run reaches its third act. */
+    boolean heraldry;
+    public static final String HERALDRY = "Heraldry";
     public static final String OATHBOUND = "Oathbound";
     public static final int OATHBOUND_COLOUR = 0xFFF2C2;
     public static final int OATH_RENOWN = 300;
@@ -30,6 +35,7 @@ public final class Renown
         if (times == null) times = new HashMap<>();
         if (titles == null) titles = new java.util.TreeSet<>();
         if (curios == null) curios = new HashMap<>();
+        if (legacy == null) legacy = new java.util.ArrayList<>();
         return this;
     }
 
@@ -115,10 +121,44 @@ public final class Renown
         return picked != null && picked.ordinal() <= rank.ordinal() ? picked : rank;
     }
 
-    /** The edge colour's name in use, Oathbound included. */
+    /** The edge colour's name in use, Oathbound and Heraldry included. */
     public String paletteName()
     {
+        if (HERALDRY.equals(palette) && heraldry) return HERALDRY;
         return OATHBOUND.equals(palette) && oathsKept > 0 ? OATHBOUND : palette().palette;
+    }
+
+    /** Heraldry: the edge takes the colour and crest of the kingdom this act is lived in. */
+    public boolean heraldryOn()
+    {
+        return HERALDRY.equals(palette) && heraldry;
+    }
+
+    /** Unlocks Heraldry; true the first time. */
+    public boolean unlockHeraldry()
+    {
+        if (heraldry) return false;
+        heraldry = true;
+        return true;
+    }
+
+    /** Keeps an ended run, dropping the oldest past {@link Legacy#KEPT}. */
+    public void retire(Legacy.Run run)
+    {
+        legacy.add(run);
+        while (legacy.size() > Legacy.KEPT) legacy.remove(0);
+    }
+
+    /** Ended runs, oldest first. */
+    public java.util.List<Legacy.Run> legacy()
+    {
+        return java.util.Collections.unmodifiableList(legacy);
+    }
+
+    /** The latest ended run, or null. */
+    public Legacy.Run lastRun()
+    {
+        return legacy.isEmpty() ? null : legacy.get(legacy.size() - 1);
     }
 
     /** The edge colour in use, as 0xRRGGBB. */
@@ -136,12 +176,19 @@ public final class Renown
             if (r.ordinal() <= rank().ordinal()) out.add(r.palette);
         }
         if (oathsKept > 0) out.add(OATHBOUND);
+        if (heraldry) out.add(HERALDRY);
         return out;
     }
 
     /** Picks an unlocked colour by name; false if it's locked or unknown. */
     public boolean pick(String name)
     {
+        if (HERALDRY.equalsIgnoreCase(name))
+        {
+            if (!heraldry) return false;
+            palette = HERALDRY;
+            return true;
+        }
         if (OATHBOUND.equalsIgnoreCase(name))
         {
             if (oathsKept <= 0) return false;

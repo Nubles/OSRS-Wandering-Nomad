@@ -50,6 +50,115 @@ public final class Journey
     String family;
     List<Integer> births = new ArrayList<>();
 
+    /** Played minutes between samples of Main's path and of where you stood. */
+    public static final int PATH_EVERY = 10;
+    static final int PATH_MAX = 1500;
+    static final int STEPS_MAX = 800;
+    static final int CAIRNS_MAX = 300;
+    static final int SCARS_MAX = 40;
+    /** Path flags: Main at sea, and a fork parted since the last sample. The act is kept above them. */
+    public static final int AT_SEA = 1;
+    public static final int FORKED = 2;
+    public static final int ACT_SHIFT = 4;
+    /** Main's path, a sample every {@link #PATH_EVERY} played minutes: x, y, flags. For the run's sigil. */
+    List<int[]> path = new ArrayList<>();
+    /** Where you stood inside your circle, a sample every {@link #PATH_EVERY} played minutes: x, y, minute. For the Echo omen. */
+    List<int[]> steps = new ArrayList<>();
+    /** The run's acts, oldest first; empty until the first look. */
+    List<Act> acts = new ArrayList<>();
+    /** Played minutes inside each kingdom's circle (by region id) this act. */
+    Map<String, Integer> actKingdoms = new HashMap<>();
+    /** Prophecy oath: the three sealed picks (first diary kingdom, first port, where Main is at 100 hours), what came true, and whether it's revealed. */
+    String[] prophecy;
+    String[] truth = new String[3];
+    boolean revealed;
+    /** The first port you followed Main into. */
+    String firstHarbour;
+    /** Wager oath: the half called (1 the fork's own heading, -1 the other, 0 none), Main's middle and the fork count when called, and the heading. */
+    int wager;
+    double wagerX;
+    double wagerY;
+    double wagerAxis;
+    int wagerForks;
+    /** The closest call of the run, in words, and how close it was (higher is closer). */
+    String closestCall;
+    int closestScore;
+    /** Marks on this run's edge: a death, a missed fork, a long time outside. */
+    List<Scar> scars = new ArrayList<>();
+    /** Where each claimed waystone stood. */
+    List<int[]> cairns = new ArrayList<>();
+    /** Set by the plugin: a monster species not yet killed this run is near you. Never saved. */
+    public transient boolean strangerNear;
+
+    /** One act of the run: the played minute it began, what opened it, and the kingdom it was lived in most (once it ends). */
+    public static final class Act
+    {
+        int start;
+        String opened;
+        String kingdom;
+
+        Act()
+        {
+        }
+
+        Act(int start, String opened)
+        {
+            this.start = start;
+            this.opened = opened;
+        }
+
+        public int start()
+        {
+            return start;
+        }
+
+        public String opened()
+        {
+            return opened;
+        }
+
+        public String kingdom()
+        {
+            return kingdom;
+        }
+    }
+
+    /** A mark on the edge: which way from the circle's middle, what made it, the ledger's line and when. */
+    public static final class Scar
+    {
+        double angle;
+        String kind;
+        String line;
+        int minute;
+
+        Scar()
+        {
+        }
+
+        Scar(double angle, String kind, String line, int minute)
+        {
+            this.angle = angle;
+            this.kind = kind;
+            this.line = line;
+            this.minute = minute;
+        }
+
+        public double angle()
+        {
+            return angle;
+        }
+
+        public String kind()
+        {
+            return kind;
+        }
+
+        public String line()
+        {
+            return line;
+        }
+    }
+
     /** Gson leaves fields null when an older save lacks them. */
     public Journey ready()
     {
@@ -60,7 +169,124 @@ public final class Journey
         if (carried == null) carried = new HashSet<>();
         if (bestiaryOwed == null) bestiaryOwed = new ArrayList<>();
         if (births == null) births = new ArrayList<>();
+        if (path == null) path = new ArrayList<>();
+        if (steps == null) steps = new ArrayList<>();
+        if (acts == null) acts = new ArrayList<>();
+        if (actKingdoms == null) actKingdoms = new HashMap<>();
+        if (truth == null || truth.length != 3) truth = new String[3];
+        if (scars == null) scars = new ArrayList<>();
+        if (cairns == null) cairns = new ArrayList<>();
         return this;
+    }
+
+    /** Samples Main's path and where you stand, once every {@link #PATH_EVERY} played minutes. */
+    public void sample(int minute, double mainX, double mainY, boolean atSea, boolean forked, Integer youX, Integer youY)
+    {
+        if (minute % PATH_EVERY != 0) return;
+        int flags = (atSea ? AT_SEA : 0) | (forked ? FORKED : 0) | (Math.max(0, acts.size() - 1) << ACT_SHIFT);
+        path.add(new int[]{(int) Math.round(mainX), (int) Math.round(mainY), flags});
+        // Long runs keep every other old sample, so the path stays small.
+        if (path.size() > PATH_MAX) thin(path);
+        if (youX != null && youY != null)
+        {
+            steps.add(new int[]{youX, youY, minute});
+            if (steps.size() > STEPS_MAX) thin(steps);
+        }
+    }
+
+    private static void thin(List<int[]> list)
+    {
+        List<int[]> kept = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++)
+        {
+            int[] p = list.get(i);
+            if (i % 2 == 0 || i >= list.size() / 2) kept.add(p);
+            // A dropped sample's fork mark carries onto the one kept before it.
+            else if (p.length > 2 && !kept.isEmpty()) kept.get(kept.size() - 1)[2] |= p[2] & FORKED;
+        }
+        list.clear();
+        list.addAll(kept);
+    }
+
+    public List<int[]> path()
+    {
+        return java.util.Collections.unmodifiableList(path);
+    }
+
+    public List<int[]> steps()
+    {
+        return java.util.Collections.unmodifiableList(steps);
+    }
+
+    public List<Act> acts()
+    {
+        return java.util.Collections.unmodifiableList(acts);
+    }
+
+    /** A claimed waystone's spot, for the map's cairns. */
+    public void cairn(int x, int y)
+    {
+        cairns.add(new int[]{x, y});
+        if (cairns.size() > CAIRNS_MAX) cairns.remove(0);
+    }
+
+    public List<int[]> cairns()
+    {
+        return java.util.Collections.unmodifiableList(cairns);
+    }
+
+    /** A mark on the edge, the way you stood from your circle's middle. */
+    public void scar(double angle, String kind, String line, int minute)
+    {
+        scars.add(new Scar(angle, kind, line, minute));
+        if (scars.size() > SCARS_MAX) scars.remove(0);
+    }
+
+    public List<Scar> scars()
+    {
+        return java.util.Collections.unmodifiableList(scars);
+    }
+
+    /** A comeback: counts it, and keeps it as the closest call if it beats the last. */
+    public void comeback(String metric, String words, int score)
+    {
+        add(metric, 1);
+        add(Trials.COMEBACKS, 1);
+        if (closestCall == null || score > closestScore)
+        {
+            closestCall = words;
+            closestScore = score;
+        }
+    }
+
+    public String closestCall()
+    {
+        return closestCall;
+    }
+
+    public String[] prophecy()
+    {
+        return prophecy == null ? null : prophecy.clone();
+    }
+
+    public String[] truth()
+    {
+        return truth.clone();
+    }
+
+    public boolean revealed()
+    {
+        return revealed;
+    }
+
+    public int wager()
+    {
+        return wager;
+    }
+
+    public double wagerAxis()
+    {
+        return wagerAxis;
     }
 
     public void race(String name, int seed)

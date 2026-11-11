@@ -679,7 +679,7 @@ final class SidebarParts
 
         Journey()
         {
-            super(RANK_H + 6 + (JourneyView.NEXT + 1) * (ROW_H + 4));
+            super(RANK_H + 6 + (JourneyView.NEXT + 2) * (ROW_H + 4));
         }
 
         @Override
@@ -704,6 +704,18 @@ final class SidebarParts
             text(g, small, fit(sm, under, SIDEBAR_WIDTH - 24), 12, 44, MUTED);
 
             int y = RANK_H + 6;
+            // Legacy: the act under way and the run's name so far.
+            Color legacy = Moments.LEGACY;
+            card(g, 0, y, SIDEBAR_WIDTH, ROW_H, j.retired ? legacy.darker() : legacy);
+            String gen = "Gen " + j.generation;
+            int genW = sm.stringWidth(gen);
+            text(g, small, fit(sm, j.act == null ? "Act I" : j.act, SIDEBAR_WIDTH - genW - 28), 10, y + 13, legacy);
+            text(g, small, gen, SIDEBAR_WIDTH - 8 - genW, y + 13, Color.WHITE);
+            String story = j.retired ? "Laid down. Start a new run when you're ready."
+                : j.wagered != null ? "Wagered on the " + j.wagered + " half"
+                : j.title != null ? j.title : "Your run's name comes as you play.";
+            text(g, small, fit(sm, story, SIDEBAR_WIDTH - 20), 10, y + 31, j.wagered != null && !j.retired ? Moments.GOLD : MUTED);
+            y += ROW_H + 4;
             Color omen = new Color(0x9FE9FF);
             card(g, 0, y, SIDEBAR_WIDTH, ROW_H, j.omen != null ? omen : null);
             if (j.omen != null)

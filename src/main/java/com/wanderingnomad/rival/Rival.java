@@ -27,13 +27,16 @@ public final class Rival
         public final boolean online;
         /** When they published it, in epoch milliseconds. */
         public final long at;
+        /** Their run's epithet so far, such as "the Seaborn", or null. */
+        public final String epithet;
 
-        Snapshot(NomadSim sim, Tile surface, boolean online, long at)
+        Snapshot(NomadSim sim, Tile surface, boolean online, long at, String epithet)
         {
             this.sim = sim;
             this.surface = surface;
             this.online = online;
             this.at = at;
+            this.epithet = epithet;
         }
     }
 

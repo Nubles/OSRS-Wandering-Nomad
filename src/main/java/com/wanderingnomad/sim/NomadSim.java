@@ -525,6 +525,22 @@ public final class NomadSim
     }
 
     /**
+     * Ancestral start (a setting): a new run's Main starts where the last run's Main ended, if that
+     * tile is on land. Only before the run has played a minute. Java only: the website loads the
+     * run as it was saved.
+     */
+    public boolean startMainAt(Tile t)
+    {
+        if (t == null || minutes > 0 || !Geography.onLand(t.x, t.y)) return false;
+        Circle m = main();
+        m.x = t.x;
+        m.y = t.y;
+        m.wx = m.wy = 0;
+        m.moodLeft = 0;
+        return true;
+    }
+
+    /**
      * Brings a run saved by an older plugin up to date: runs saved before the Trade road gain its
      * caravan. Call it after loading a run from JSON.
      */

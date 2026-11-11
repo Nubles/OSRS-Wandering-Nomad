@@ -46,6 +46,27 @@ public final class Trials
     public static final String RENDEZVOUS = "rendezvous";
     /** The game's 64-tile map regions you've walked in while inside your circle: the run's footprint. */
     public static final String SQUARES = "squares";
+    /** Comebacks: back inside after Main shrank below 15 tiles, into a fork's half in its last 30 seconds, a stone claimed with a minute left. */
+    public static final String COMEBACK_SHRUNK = "comeback:shrunk";
+    public static final String COMEBACK_FORK = "comeback:fork";
+    public static final String COMEBACK_STONE = "comeback:stone";
+    public static final String COMEBACKS = "comebacks";
+    /** Weathered: storms over Main this run, stones claimed in a Gale, forks parted in a Squall, kingdoms a storm broke over. */
+    public static final String STORMS = "storms";
+    public static final String GALE_CLAIMS = "storm:galeclaim";
+    public static final String SQUALL_FORKS = "storm:squallfork";
+    public static final String STORM_KINGDOMS = "storm:kingdoms";
+    /** Ancestor ghosts whose ring you've stood in, by seed; wagers won; prophecies that came true. */
+    public static final String ANCESTORS = "ancestors";
+    public static final String WAGERS = "wagers";
+    public static final String PROPHECIES = "prophecies";
+    /** Secret trials' metrics. */
+    public static final String SECRET_STILL = "secret:still";
+    public static final String SECRET_TRIPLE = "secret:triple";
+    public static final String SECRET_EYE = "secret:eye";
+    public static final String SECRET_SEED = "secret:seed";
+    /** Minutes with XP gained within 2 tiles of the edge, inside (the Edgewalker omen), and monster species killed inside. */
+    public static final String EDGE_XP = "edgexp";
     /** The trials a run can swear as its oath: the long goals a whole run is built around. */
     public static final List<String> OATHS = Collections.unmodifiableList(java.util.Arrays.asList(
         "diary-all", "harbours-all", "landmarks-all", "total-max", "bosses-50", "regions-all"));
@@ -62,11 +83,20 @@ public final class Trials
     public static final String DEEDS = "Deeds";
     public static final String TREASURE = "Treasure and glory";
     public static final String FELLOWS = "Fellow Nomads";
+    public static final String COMEBACK = "Comebacks";
+    public static final String WEATHERED = "Weathered";
+    public static final String SECRETS = "Secrets";
     public static final List<String> CHAPTERS = Collections.unmodifiableList(java.util.Arrays.asList(
-        FIRST_STEPS, LONG_ROAD, FATE, KINGDOMS, ATLAS, SEAFARER, FELLOWS, DEEDS, TREASURE));
+        FIRST_STEPS, LONG_ROAD, FATE, KINGDOMS, ATLAS, SEAFARER, COMEBACK, WEATHERED, FELLOWS, DEEDS, TREASURE, SECRETS));
 
     private Trials()
     {
+    }
+
+    /** The landmark a run's seed keeps for its secret trial. */
+    public static Landmarks.Landmark seedLandmark(int seed)
+    {
+        return Landmarks.ALL.get(Math.floorMod(seed * 31 + 7, Landmarks.ALL.size()));
     }
 
     /** One region's diary tiers, as a metric. */
@@ -182,6 +212,37 @@ public final class Trials
         t.add(trial("pet", TREASURE, "A friend on the road", "Get a pet.", PETS, 1, Tier.GOLD));
         t.add(trial("collection-50", TREASURE, "Collector", "Add 50 new items to your collection log (needs the game's collection log chat message on).",
             COLLECTION, 50, Tier.SILVER));
+        t.add(trial("comeback-shrunk", COMEBACK, "Back from the brink", "Get back inside your circle while it's under 15 tiles from middle to edge.",
+            COMEBACK_SHRUNK, 1, Tier.SILVER));
+        t.add(trial("comeback-fork", COMEBACK, "Photo finish", "Step into the half you keep in the last 30 seconds before a fork parts.",
+            COMEBACK_FORK, 1, Tier.SILVER));
+        t.add(trial("comeback-stone", COMEBACK, "Last breath", "Claim a waystone with under a minute left before it fades.", COMEBACK_STONE, 1,
+            Tier.SILVER));
+        t.add(trial("comebacks-10", COMEBACK, "Unbowed", "Make 10 comebacks of any kind.", COMEBACKS, 10, Tier.GOLD));
+
+        t.add(trial("storms-10", WEATHERED, "Weathered", "See 10 storms over Main.", STORMS, 10, Tier.BRONZE));
+        t.add(trial("storms-25", WEATHERED, "Storm-worn", "See 25 storms over Main.", STORMS, 25, Tier.SILVER));
+        t.add(trial("storms-50", WEATHERED, "Eye of every storm", "See 50 storms over Main.", STORMS, 50, Tier.GOLD));
+        t.add(trial("storm-gale-claim", WEATHERED, "Gale-taken", "Claim a waystone while a Gale drives Main.", GALE_CLAIMS, 1, Tier.SILVER));
+        t.add(trial("storm-squall-fork", WEATHERED, "Split by the squall", "Be inside when a fork parts during a Squall.", SQUALL_FORKS, 1,
+            Tier.SILVER));
+        t.add(trial("storm-kingdoms", WEATHERED, "Every sky", "See a storm break over Main in all " + regions + " kingdoms.", STORM_KINGDOMS,
+            regions, Tier.LEGEND));
+
+        t.add(trial("ancestor-1", FATE, "Ancestor's footsteps", "Stand inside the ghost of one of your past runs' Main circles.", ANCESTORS, 1,
+            Tier.SILVER));
+        t.add(trial("wager-3", FATE, "Called it", "Win 3 fork wagers: call the half you'll keep before it parts.", WAGERS, 3, Tier.SILVER));
+        t.add(trial("prophecy-3", FATE, "Seer", "Have all three of the run's prophecies come true.", PROPHECIES, 3, Tier.LEGEND));
+
+        t.add(secret("secret-still", "The still point", "Stand within a tile of your circle's middle for 10 played minutes in a row.",
+            SECRET_STILL, 10, "Where the circle turns, be still."));
+        t.add(secret("secret-triple", "Where three roads meet", "Stand where three circles overlap.", SECRET_TRIPLE, 1,
+            "Three rings, one tile."));
+        t.add(secret("secret-eye", "The eye of the storm", "Stand within 3 tiles of Main's middle while a storm rages over it.", SECRET_EYE, 1,
+            "Calm at the heart of the gale."));
+        t.add(secret("secret-seed", "The seed remembers", "Stand at the landmark your run's seed keeps, inside your circle.", SECRET_SEED, 1,
+            "Your seed remembers a place. Its number knows the way."));
+
         t.add(trial("collection-250", TREASURE, "Hoarder of nothing", "Add 250 new items to your collection log.", COLLECTION, 250, Tier.GOLD));
         return Collections.unmodifiableList(t);
     }
@@ -205,6 +266,11 @@ public final class Trials
     private static Trial trial(String id, String chapter, String name, String detail, String metric, int target, Tier tier)
     {
         return new Trial(id, chapter, name, detail, metric, target, tier, false);
+    }
+
+    private static Trial secret(String id, String name, String detail, String metric, int target, String riddle)
+    {
+        return new Trial(id, SECRETS, name, detail, metric, target, Tier.GOLD, false, riddle);
     }
 
     private static Trial account(String id, String name, String detail, String metric, int target, Tier tier)

@@ -844,22 +844,58 @@ class NomadSceneOverlay extends Overlay
         drawArrow(graphics, view, at, new double[]{best.x(), best.y()}, GOLD, GOLD, text);
     }
 
-    /** A pilgrimage omen's landmark: its tile outlined, and an arrow to it with the time left. */
+    /**
+     * An omen with a place to stand (a pilgrimage's landmark, an echo's old tile, the drifting
+     * wisp): the area outlined, and an arrow to it with the time left.
+     */
     private void drawPilgrimage(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at)
     {
         com.wanderingnomad.journey.Omen o = plugin.omen();
-        if (o == null || !com.wanderingnomad.journey.Omen.PILGRIMAGE.equals(o.kind())) return;
+        double[] target = omenTarget(o, sim);
+        if (target == null) return;
+        int reach = omenReach(o);
+        String name = com.wanderingnomad.journey.Omen.WISP.equals(o.kind()) ? "the wisp"
+            : com.wanderingnomad.journey.Omen.ECHO.equals(o.kind()) ? "your echo" : o.landmark();
         Color colour = new Color(0x9FE9FF);
-        LocalPoint lp = LocalPoint.fromWorld(view, o.x(), o.y());
+        LocalPoint lp = LocalPoint.fromWorld(view, (int) Math.round(target[0]), (int) Math.round(target[1]));
         if (lp != null && view.getPlane() == 0)
         {
-            Polygon tile = Perspective.getCanvasTileAreaPoly(client, lp, 2 * com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK + 1);
+            Polygon tile = Perspective.getCanvasTileAreaPoly(client, lp, 2 * reach + 1);
             if (tile != null) OverlayUtil.renderPolygon(graphics, tile, colour, alpha(colour, 40), YOURS);
         }
-        double d = Math.hypot(o.x() - at.getX(), o.y() - at.getY());
-        if (d <= com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK) return;
-        String text = "Omen: " + o.landmark() + " · " + Math.round(d) + " tiles · " + NomadPanel.time(Math.max(0, o.deadline() - sim.minutes())) + " left";
-        drawArrow(graphics, view, at, new double[]{o.x(), o.y()}, colour, colour, text);
+        double d = Math.hypot(target[0] - at.getX(), target[1] - at.getY());
+        if (d <= reach) return;
+        String text = "Omen: " + name + " · " + Math.round(d) + " tiles · " + NomadPanel.time(Math.max(0, o.deadline() - sim.minutes())) + " left";
+        drawArrow(graphics, view, at, target, colour, colour, text);
+    }
+
+    /** Where an omen asks you to stand, or null for one with no place. */
+    static double[] omenTarget(com.wanderingnomad.journey.Omen o, NomadSim sim)
+    {
+        if (o == null) return null;
+        switch (o.kind())
+        {
+            case com.wanderingnomad.journey.Omen.PILGRIMAGE:
+            case com.wanderingnomad.journey.Omen.ECHO:
+                return new double[]{o.x(), o.y()};
+            case com.wanderingnomad.journey.Omen.WISP:
+                return com.wanderingnomad.journey.Omens.wisp(o, sim);
+            default:
+                return null;
+        }
+    }
+
+    static int omenReach(com.wanderingnomad.journey.Omen o)
+    {
+        switch (o.kind())
+        {
+            case com.wanderingnomad.journey.Omen.ECHO:
+                return com.wanderingnomad.journey.Omens.ECHO_NEAR;
+            case com.wanderingnomad.journey.Omen.WISP:
+                return com.wanderingnomad.journey.Omens.WISP_RADIUS;
+            default:
+                return com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK;
+        }
     }
 
     /**

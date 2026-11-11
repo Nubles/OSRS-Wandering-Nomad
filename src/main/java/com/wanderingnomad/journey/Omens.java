@@ -28,6 +28,19 @@ public final class Omens
     static final int NEAR = 20;
     static final int FAR = 110;
     public static final int RENOWN = 25;
+    /** The wisp: two minutes' warning at Main's middle, then it drifts this many tiles a minute for the edge; this wide. */
+    public static final int WISP_WARN = 2;
+    public static final double WISP_SPEED = 2;
+    public static final int WISP_RADIUS = 5;
+    static final int WISP_MINUTES = 45;
+    /** Echo: a tile you stood on at least this long ago; how long it gives you, and how close counts. */
+    static final int ECHO_AGO = 20 * 60;
+    static final int ECHO_MINUTES = 90;
+    public static final int ECHO_NEAR = 2;
+    /** Edgewalker: minutes of XP near the edge it asks for, in how long. */
+    static final int EDGE_MINUTES = 10;
+    static final int EDGE_TIME = 120;
+    static final int STRANGER_MINUTES = 60;
 
     public enum Result
     {
@@ -78,6 +91,25 @@ public final class Omens
             case Omen.WANDERLUST:
                 met = j.value(Trials.WALKED) - o.base >= o.target;
                 break;
+            case Omen.WISP:
+            {
+                double[] w = wisp(o, sim);
+                boolean drifting = now >= o.start + WISP_WARN;
+                met = drifting && inside && at != null && Math.hypot(at.x - w[0], at.y - w[1]) <= WISP_RADIUS;
+                // Gone once it's wholly past Main's edge.
+                missed = !met && Math.hypot(w[0] - sim.main().x(), w[1] - sim.main().y()) > sim.main().radius() + WISP_RADIUS;
+                break;
+            }
+            case Omen.ECHO:
+                met = inside && at != null && Math.abs(at.x - o.x) <= ECHO_NEAR && Math.abs(at.y - o.y) <= ECHO_NEAR;
+                break;
+            case Omen.EDGEWALKER:
+                missed = !inside && at != null;
+                met = !missed && j.value(Trials.EDGE_XP) - o.base >= o.target;
+                break;
+            case Omen.STRANGER:
+                met = Bestiary.reached(j, 1) - o.base >= o.target;
+                break;
             default:
                 met = trophies(j) - o.base >= o.target;
                 break;
@@ -94,6 +126,32 @@ public final class Omens
             return Result.MET;
         }
         return Result.MISSED;
+    }
+
+    /** What an omen counts right now, for its progress bar. */
+    public static int counted(Journey j, Omen o)
+    {
+        switch (o.kind)
+        {
+            case Omen.WANDERLUST:
+                return j.value(Trials.WALKED);
+            case Omen.EDGEWALKER:
+                return j.value(Trials.EDGE_XP);
+            case Omen.STRANGER:
+                return Bestiary.reached(j, 1);
+            default:
+                return trophies(j);
+        }
+    }
+
+    /** Where the wisp is now, as x, y; null if the omen isn't a wisp. */
+    public static double[] wisp(Omen o, NomadSim sim)
+    {
+        if (o == null || !Omen.WISP.equals(o.kind)) return null;
+        Circle m = sim.main();
+        double heading = o.base / 1000.0;
+        double d = Math.max(0, sim.minutes() - o.start - WISP_WARN) * WISP_SPEED;
+        return new double[]{m.x() + Math.cos(heading) * d, m.y() + Math.sin(heading) * d};
     }
 
     /** The omen that was just settled or dealt is gone; this is what the sidebar shows now. */
@@ -114,6 +172,21 @@ public final class Omens
         kinds.add(Omen.HOLD_FAST);
         kinds.add(Omen.WANDERLUST);
         kinds.add(Omen.HUNT);
+        kinds.add(Omen.EDGEWALKER);
+        if (j.strangerNear) kinds.add(Omen.STRANGER);
+        // The wisp splits off Main, so only while Main is yours, ashore, and you're in it.
+        if (at != null && sim.boundIndex() == NomadSim.MAIN && !sim.main().sailing() && sim.main().contains(at.x, at.y)) kinds.add(Omen.WISP);
+        List<int[]> echoes = new ArrayList<>();
+        if (at != null)
+        {
+            Circle yours = sim.bound();
+            for (int[] s : j.steps)
+            {
+                double d = Math.hypot(s[0] - at.x, s[1] - at.y);
+                if (now - s[2] >= ECHO_AGO && d >= 10 && d <= FAR && yours.contains(s[0], s[1])) echoes.add(s);
+            }
+            if (!echoes.isEmpty()) kinds.add(Omen.ECHO);
+        }
         List<Landmarks.Landmark> near = new ArrayList<>();
         if (at != null)
         {
@@ -149,6 +222,30 @@ public final class Omens
                 o.base = j.value(Trials.WALKED);
                 o.target = WANDER_TILES;
                 o.deadline = now + WANDER_MINUTES;
+                break;
+            case Omen.WISP:
+                o.base = (int) Math.round(dice.next() * Math.PI * 2 * 1000);
+                o.deadline = now + WISP_MINUTES;
+                break;
+            case Omen.ECHO:
+            {
+                int[] e = echoes.get((int) (dice.next() * echoes.size()));
+                o.x = e[0];
+                o.y = e[1];
+                int ago = now - e[2];
+                o.landmark = (ago / 60) + " hours";
+                o.deadline = now + ECHO_MINUTES;
+                break;
+            }
+            case Omen.EDGEWALKER:
+                o.base = j.value(Trials.EDGE_XP);
+                o.target = EDGE_MINUTES;
+                o.deadline = now + EDGE_TIME;
+                break;
+            case Omen.STRANGER:
+                o.base = Bestiary.reached(j, 1);
+                o.target = 1;
+                o.deadline = now + STRANGER_MINUTES;
                 break;
             default:
                 o.base = trophies(j);

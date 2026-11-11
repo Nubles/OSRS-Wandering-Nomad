@@ -57,6 +57,8 @@ class NomadMinimapOverlay extends Overlay
     private static final int[] GLOW_ALPHA = {40, 90, 235};
     private static final Color SHADE = new Color(0, 0, 0, 70);
 
+    private static final java.awt.BasicStroke GHOST = new java.awt.BasicStroke(1.5f, java.awt.BasicStroke.CAP_BUTT,
+        java.awt.BasicStroke.JOIN_MITER, 10f, new float[]{2f, 3f}, 0f);
     private final Client client;
     private final NomadPlugin plugin;
 
@@ -125,6 +127,22 @@ class NomadMinimapOverlay extends Overlay
         if (sim.twin() != null && sim.boundIndex() != NomadSim.MAIN && sim.linked(NomadSim.MAIN))
         {
             glow(graphics, arcs(view, sim.twin()), NomadPlugin.colour(sim.twin(), 255), 0.6);
+        }
+        // Ancestor ghosts nearby: past runs' Main circles, faint and dotted.
+        com.wanderingnomad.journey.Ancestors ancestors = plugin.ancestors();
+        if (ancestors != null)
+        {
+            graphics.setStroke(GHOST);
+            for (com.wanderingnomad.journey.Ancestors.Ghost g : ancestors.ghosts())
+            {
+                Circle c = g.main();
+                if (Math.hypot(c.x() - at.getX(), c.y() - at.getY()) > c.radius() + 40) continue;
+                Path2D r = ring(view, c);
+                if (r == null) continue;
+                Color col = new Color(g.run.colour & 0xFFFFFF);
+                graphics.setColor(new Color(col.getRed(), col.getGreen(), col.getBlue(), 140));
+                graphics.draw(r);
+            }
         }
         // The half that faded at a fork's parting, dissolving.
         long now = System.currentTimeMillis();

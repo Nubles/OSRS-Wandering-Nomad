@@ -86,7 +86,7 @@ public final class Rivals
             long at = o.has("at") ? o.get("at").getAsLong() : 0;
             SavedRun saved = gson.fromJson(RunCode.decode(run, MAX_RUN_BYTES), SavedRun.class);
             if (saved == null || saved.sim == null || saved.sim.circles().isEmpty()) throw new IllegalArgumentException("empty run");
-            r.latest = new Rival.Snapshot(saved.sim.ready(), saved.surface, online, at);
+            r.latest = new Rival.Snapshot(saved.sim.ready(), saved.surface, online, at, saved.epithet);
             r.etag = etag;
             r.problem = null;
         }
@@ -135,7 +135,8 @@ public final class Rivals
         String state = r.fresh(now) ? "online" : "last seen " + ago(now - s.at);
         int gap = gap(mine, r);
         String apart = gap == 0 ? "circles touching" : gap > 0 ? String.format("%,d tiles apart", gap) : "";
-        return r.name + ": " + state + (apart.isEmpty() ? "" : ", " + apart) + ", " + (s.sim.minutes() / 60) + "h played";
+        return r.name + (s.epithet == null ? "" : " " + s.epithet) + ": " + state + (apart.isEmpty() ? "" : ", " + apart) + ", "
+            + (s.sim.minutes() / 60) + "h played";
     }
 
     static String ago(long ms)

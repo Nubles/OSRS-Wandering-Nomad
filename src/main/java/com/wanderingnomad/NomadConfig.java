@@ -41,6 +41,52 @@ public interface NomadConfig extends Config
     )
     String WORLD_WAYS = "worldWays";
 
+    @ConfigSection(
+        name = "Legacy",
+        description = "What your past runs leave behind: ancestor ghosts, the rings of lineage, scars and cairns",
+        position = 55,
+        closedByDefault = true
+    )
+    String LEGACY = "legacy";
+
+    @ConfigItem(
+        keyName = "ancestorGhosts",
+        name = "Ancestor ghosts",
+        description = "The Main circles of your latest 5 ended runs keep drifting on the maps as faint rings, played from "
+            + "their own seeds. Standing in one from inside your circle is a trial.",
+        section = LEGACY,
+        position = 0
+    )
+    default boolean ancestorGhosts()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "legacyMarks",
+        name = "Legacy marks",
+        description = "On the world map: the rings of lineage inside your edge (one band per long past run), scars where "
+            + "your edge was marked, cairns where you claimed waystones and, with Heraldry, the act's crests.",
+        section = LEGACY,
+        position = 1
+    )
+    default boolean legacyMarks()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "ancestralStart",
+        name = "Ancestral start",
+        description = "A new run's Main starts where your last run's Main ended, instead of at Lumbridge. Not for races.",
+        section = LEGACY,
+        position = 2
+    )
+    default boolean ancestralStart()
+    {
+        return false;
+    }
+
     @ConfigItem(
         keyName = "travelNetworks",
         name = "Rings and roots",

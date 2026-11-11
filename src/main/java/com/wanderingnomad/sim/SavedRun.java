@@ -12,6 +12,10 @@ public final class SavedRun
     public boolean fallen;
     /** Plot circles (a house rule): the farming patches that hold your circle, as x, y, minutes-left triples. */
     public int[] plots;
+    /** The run was laid down: its circles stand still and its epilogue is written. */
+    public boolean retired;
+    /** The run's epithet so far, such as "the Seaborn", for rivals to read; null if none yet. */
+    public String epithet;
 
     public SavedRun()
     {

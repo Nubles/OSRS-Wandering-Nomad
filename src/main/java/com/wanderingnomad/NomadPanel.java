@@ -77,6 +77,18 @@ class NomadPanel extends PluginPanel
     private final JButton encore = button("Spend Encore", "Every new music track banks a minute of Anchor: spend them all to hold "
         + "your circle still that long", () -> onEncore.run());
     private boolean fillingShatter;
+    /** Legacy: lays the run down; calls a fork wager (true for the half heading the fork's way); seals the three prophecies. */
+    private Runnable onRetire = () -> { };
+    private Consumer<Boolean> onWager = with -> { };
+    private Consumer<String[]> onSeal = picks -> { };
+    private final JPanel wagerRow = new JPanel(new GridLayout(1, 2, 4, 0));
+    private final JButton wagerWith = small("Wager", "Call the half of Main you'll keep when the fork parts. Right pays 40 renown.",
+        () -> onWager.accept(true));
+    private final JButton wagerAgainst = small("Wager", "Call the half of Main you'll keep when the fork parts. Right pays 40 renown.",
+        () -> onWager.accept(false));
+    private final JButton prophecies = small("Prophecies", "Seal three prophecies in a run's first hour; they're revealed at 100 hours",
+        this::showProphecies);
+    private final JButton layDown = new JButton("Lay down the staff");
     private final SidebarParts.Header header = new SidebarParts.Header();
     private final SidebarParts.MiniMap map = new SidebarParts.MiniMap();
     private final JLabel boonsTitle = heading("Boons");
@@ -158,6 +170,20 @@ class NomadPanel extends PluginPanel
         fix(journeyRow, 24);
         add(journeyRow);
         add(gap(4));
+        JPanel legacyRow = new JPanel(new GridLayout(1, 2, 4, 0));
+        legacyRow.setOpaque(false);
+        legacyRow.add(small("Legacy", "Your ended runs: their epilogues and sigils", this::showLegacy));
+        legacyRow.add(prophecies);
+        fix(legacyRow, 24);
+        add(legacyRow);
+        add(gap(4));
+        wagerRow.setOpaque(false);
+        wagerRow.add(wagerWith);
+        wagerRow.add(wagerAgainst);
+        wagerRow.setVisible(false);
+        fix(wagerRow, 24);
+        add(wagerRow);
+        add(gap(4));
         palette.setToolTipText("The Main circle's edge colour. Ranks unlock more.");
         palette.setFont(FontManager.getRunescapeSmallFont());
         palette.addActionListener(e ->
@@ -226,7 +252,15 @@ class NomadPanel extends PluginPanel
             onNewRun.accept(picked > 0 ? names.get(picked - 1) : null);
         });
         buttons.add(newRun);
-        fix(buttons, 4 * 26 + 12);
+        layDown.setToolTipText("End the run here: Main stops, and its epilogue and sigil are kept on your account");
+        layDown.addActionListener(e ->
+        {
+            int ok = JOptionPane.showConfirmDialog(this, "Lay down the staff? The run ends here: its circles stop, and its epilogue and sigil "
+                + "are kept on your account. You can start a new run after.", "Nomad UIM", JOptionPane.OK_CANCEL_OPTION);
+            if (ok == JOptionPane.OK_OPTION) onRetire.run();
+        });
+        buttons.add(layDown);
+        fix(buttons, 5 * 26 + 12);
         add(buttons);
 
         drawn.add(header);
@@ -283,6 +317,13 @@ class NomadPanel extends PluginPanel
         this.onEncore = onEncore;
     }
 
+    void onLegacy(Runnable onRetire, Consumer<Boolean> onWager, Consumer<String[]> onSeal)
+    {
+        this.onRetire = onRetire;
+        this.onWager = onWager;
+        this.onSeal = onSeal;
+    }
+
     void display(View v)
     {
         helmPorts = v.helmPorts;
@@ -337,6 +378,20 @@ class NomadPanel extends PluginPanel
         }
 
         lastJourney = v.journey;
+        JourneyView jv = v.journey;
+        boolean wager = v.live && jv.wagerWith != null;
+        if (wager)
+        {
+            wagerWith.setText("Wager: " + abbreviate(jv.wagerWith) + " half");
+            wagerAgainst.setText("Wager: " + abbreviate(jv.wagerAgainst) + " half");
+        }
+        if (wagerRow.isVisible() != wager)
+        {
+            wagerRow.setVisible(wager);
+            revalidate();
+        }
+        layDown.setEnabled(v.live && !jv.retired);
+        prophecies.setText(jv.prophecyOpen ? "Seal prophecies" : "Prophecies");
         if (!v.journey.rivals.equals(shownRivals))
         {
             shownRivals = v.journey.rivals;
@@ -449,6 +504,113 @@ class NomadPanel extends PluginPanel
     private static String escape(String text)
     {
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /** "north-east" as "NE". */
+    static String abbreviate(String compass)
+    {
+        StringBuilder out = new StringBuilder();
+        for (String part : compass.split("-")) if (!part.isEmpty()) out.append(Character.toUpperCase(part.charAt(0)));
+        return out.toString();
+    }
+
+    /** The trophy shelf: every ended run's sigil, title and epilogue, newest first. */
+    private void showLegacy()
+    {
+        List<com.wanderingnomad.journey.Legacy.Run> runs = lastJourney.legacy;
+        if (runs.isEmpty())
+        {
+            JOptionPane.showMessageDialog(this, "No run has ended on this account yet. When one does (or you lay down the staff), "
+                + "its epilogue and sigil are kept here.", "Nomad UIM: legacy", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        JPanel shelf = new JPanel(new GridLayout(0, 1, 0, 6));
+        shelf.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        for (com.wanderingnomad.journey.Legacy.Run run : runs)
+        {
+            JPanel row = new JPanel(new BorderLayout(8, 0));
+            row.setOpaque(false);
+            JLabel sigil = new JLabel(new javax.swing.ImageIcon(com.wanderingnomad.journey.Sigil.render(run, 56, true)));
+            row.add(sigil, BorderLayout.WEST);
+            String first = run.lines.isEmpty() ? "" : run.lines.get(0);
+            JLabel words = new JLabel("<html><b>" + escape(run.title()) + "</b><br>" + escape(first.replaceFirst("^[^:]*: ", "")) + "</html>");
+            words.setForeground(Color.WHITE);
+            row.add(words, BorderLayout.CENTER);
+            row.add(small("Read", "Its epilogue, and its sigil to save", () -> showRun(run)), BorderLayout.EAST);
+            shelf.add(row);
+        }
+        JScrollPane scroll = new JScrollPane(shelf);
+        scroll.setPreferredSize(new Dimension(380, Math.min(320, runs.size() * 62 + 8)));
+        scroll.getVerticalScrollBar().setUnitIncrement(15);
+        JOptionPane.showMessageDialog(this, scroll, "Nomad UIM: legacy", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    /** One ended run: its sigil and epilogue, with the sigil to save as a picture. */
+    void showRun(com.wanderingnomad.journey.Legacy.Run run)
+    {
+        JPanel body = new JPanel(new BorderLayout(10, 0));
+        body.setOpaque(false);
+        body.add(new JLabel(new javax.swing.ImageIcon(com.wanderingnomad.journey.Sigil.render(run, 140, true))), BorderLayout.WEST);
+        javax.swing.JTextArea area = new javax.swing.JTextArea(String.join("\n", run.lines));
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setFont(FontManager.getRunescapeSmallFont());
+        area.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        area.setForeground(Color.WHITE);
+        area.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        JScrollPane scroll = new JScrollPane(area);
+        scroll.setPreferredSize(new Dimension(300, 180));
+        body.add(scroll, BorderLayout.CENTER);
+        Object[] options = {"Save sigil", "Copy epilogue", "Close"};
+        int picked = JOptionPane.showOptionDialog(this, body, "Nomad UIM: " + run.title(), JOptionPane.DEFAULT_OPTION,
+            JOptionPane.PLAIN_MESSAGE, null, options, options[2]);
+        if (picked == 1)
+        {
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                new java.awt.datatransfer.StringSelection(String.join("\n", run.lines)), null);
+        }
+        if (picked != 0) return;
+        javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+        chooser.setSelectedFile(new java.io.File("nomad-sigil-generation-" + run.generation + ".png"));
+        if (chooser.showSaveDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) return;
+        try
+        {
+            javax.imageio.ImageIO.write(com.wanderingnomad.journey.Sigil.render(run, 512, true), "png", chooser.getSelectedFile());
+        }
+        catch (java.io.IOException e)
+        {
+            JOptionPane.showMessageDialog(this, "Couldn't save the sigil: " + e.getMessage(), "Nomad UIM", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    /** Seals the prophecies while the first hour lasts; after, shows them with what has come true. */
+    private void showProphecies()
+    {
+        JourneyView j = lastJourney;
+        if (!j.live) return;
+        if (!j.prophecyOpen)
+        {
+            String text = j.prophecies.isEmpty() ? "No prophecies were sealed this run. They can only be sealed in a run's first hour."
+                : "<html>Revealed at 100 hours, for " + com.wanderingnomad.journey.Prophecy.RENOWN + " renown each that comes true:<br><br>"
+                + escape(String.join("\n", j.prophecies)).replace("\n", "<br>") + "</html>";
+            JOptionPane.showMessageDialog(this, text, "Nomad UIM: prophecies", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        JComboBox<String> diary = new JComboBox<>(com.wanderingnomad.journey.Prophecy.diaryChoices().toArray(new String[0]));
+        JComboBox<String> port = new JComboBox<>(com.wanderingnomad.journey.Prophecy.portChoices().toArray(new String[0]));
+        JComboBox<String> place = new JComboBox<>(com.wanderingnomad.journey.Prophecy.placeChoices().toArray(new String[0]));
+        Object[] message = {
+            "Seal three prophecies. They can't be changed, and each that comes true pays "
+                + com.wanderingnomad.journey.Prophecy.RENOWN + " renown at 100 hours.",
+            "The kingdom whose diary you'll finish a tier of first:", diary,
+            "The first port you'll follow Main into:", port,
+            "Where Main will be at 100 hours:", place,
+        };
+        int ok = JOptionPane.showConfirmDialog(this, message, "Nomad UIM: seal prophecies", JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE);
+        if (ok != JOptionPane.OK_OPTION) return;
+        onSeal.accept(new String[]{(String) diary.getSelectedItem(), (String) port.getSelectedItem(), (String) place.getSelectedItem()});
     }
 
     /** The run ledger in a window of its own, with a button to copy it. */
