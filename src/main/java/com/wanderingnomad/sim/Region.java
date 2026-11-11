@@ -40,7 +40,15 @@ public final class Region
     /** Land in this kingdom. */
     public boolean contains(double x, double y)
     {
+        // The caravan has no kingdom: it may go anywhere on land.
+        if (index < 0) return Geography.WORLD.land(x, y);
         return Geography.WORLD.kingdom(x, y) == index && Geography.WORLD.land(x, y);
+    }
+
+    /** The Trade road's caravan, which has a circle but no kingdom. */
+    public boolean isCaravan()
+    {
+        return index < 0;
     }
 
     /** Each diary tier is a step; a region with two diaries takes twice as many to fill. */

@@ -18,6 +18,8 @@ public final class Waystone
     int age;
     /** A pilgrim stone rises just outside your circle and can be claimed from outside it. */
     boolean pilgrim;
+    /** Minutes it lasts before it fades whatever its circle does, 0 if only its circle drifting off it ends it (lightning, flotsam). */
+    int life;
 
     public String landmark()
     {
@@ -59,6 +61,12 @@ public final class Waystone
         return pilgrim;
     }
 
+    /** Minutes it lasts however its circle drifts, or 0 if it lasts until its circle leaves it. */
+    public int life()
+    {
+        return life;
+    }
+
     public boolean legendary()
     {
         return NomadSim.LEGENDARY.equals(tier);
@@ -67,7 +75,7 @@ public final class Waystone
     /** Minutes until a common stone ripens into a rare one, or -1 if it won't. */
     public int ripensIn()
     {
-        return NomadSim.COMMON.equals(tier) && !pilgrim ? Math.max(0, NomadSim.RIPEN - age) : -1;
+        return NomadSim.COMMON.equals(tier) && !pilgrim && life == 0 ? Math.max(0, NomadSim.RIPEN - age) : -1;
     }
 
     Waystone copy()
@@ -81,6 +89,7 @@ public final class Waystone
         w.tier = tier;
         w.age = age;
         w.pilgrim = pilgrim;
+        w.life = life;
         return w;
     }
 }

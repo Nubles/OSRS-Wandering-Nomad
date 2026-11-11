@@ -61,12 +61,18 @@ public class NomadSimTest
         for (int seed : new int[]{1, 2, 3, 482913})
         {
             NomadSim sim = NomadSim.start(seed);
+            // An eclipse carries a kingdom's circle along with Main, and it walks home after.
+            java.util.Set<Integer> eclipsed = new java.util.HashSet<>();
             for (int m = 0; m < HOURS * 60; m++)
             {
                 sim.step(null);
-                for (Circle c : sim.circles())
+                if (sim.eclipse() > 0) eclipsed.add(sim.eclipse());
+                for (int j = 0; j < sim.circles().size(); j++)
                 {
-                    if (!c.isMain()) assertTrue(c.name() + " left home", c.region().contains(c.x(), c.y()));
+                    Circle c = sim.circles().get(j);
+                    if (c.isKingdom() && !eclipsed.contains(j)) assertTrue(c.name() + " left home", c.region().contains(c.x(), c.y()));
+                    // The caravan keeps to the roads.
+                    if (c.isCaravan()) assertTrue("the caravan left the road at minute " + m, Geography.onLand(c.x(), c.y()));
                 }
             }
         }
@@ -254,7 +260,7 @@ public class NomadSimTest
         String code = RunCode.encode(json);
         assertTrue(code.startsWith("N1."));
         // Seed 7 is forked at minute 600, so this run carries both halves of Main.
-        assertTrue("code is " + code.length() + " characters", code.length() < 3000);
+        assertTrue("code is " + code.length() + " characters", code.length() < 3600);
         assertFalse(code.contains("+") || code.contains("/") || code.contains("="));
         assertEquals(json, RunCode.decode(code));
     }
@@ -314,6 +320,7 @@ public class NomadSimTest
         for (int i = 0; i < moods.size(); i++)
         {
             Circle c = sim.circles().get(i);
+            if (c.isCaravan()) continue;
             if ("desert".equals(c.regionId))
             {
                 assertEquals(new java.util.HashSet<>(java.util.Arrays.asList(Temperament.DASH, Temperament.LINGER)), moods.get(i));

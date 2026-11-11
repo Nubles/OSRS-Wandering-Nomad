@@ -203,6 +203,84 @@ public final class NomadSim
     public static final int SQUALL = 2;
     static final int GALE_SPEEDUP = 3;
     static final double SQUALL_SHRINK = 0.75;
+
+    // World events (the Idea Atlas's second wave). Each has its own dice, so none shifts the drift.
+    /** Lightning: in a Squall, a bolt strikes inside Main every 5 minutes, 3 at most, leaving a 2-minute waystone. */
+    static final int STRIKE_EVERY = 5;
+    static final int STRIKES = 3;
+    public static final int STRIKE_MINUTES = 2;
+    public static final String STRIKE = "the lightning strike";
+    // Storm surge: a storm that breaks while a port is inside Main, or within 40 tiles of its edge, drives it out to
+    // sea from there, unless it's anchored or ashore after a voyage.
+    static final int SURGE_REACH = 40;
+    /** Stampede: about once a day, after 5 minutes' warning, every kingdom's circle dashes for 10 minutes. */
+    static final int STAMPEDE_EVERY_MIN = 1200;
+    static final int STAMPEDE_EVERY_MAX = 1680;
+    public static final int STAMPEDE_WARN = 5;
+    public static final int STAMPEDE_MINUTES = 10;
+    static final int STAMPEDE_SPEEDUP = 4;
+    /**
+     * Auroras: every 12 to 24 played hours one kingdom has its signature event for an hour: its
+     * circle grows to double, rushes, marches on Main, holds still, or offers a waystone.
+     */
+    static final int AURORA_EVERY_MIN = 720;
+    static final int AURORA_EVERY_MAX = 1440;
+    public static final int AURORA_MINUTES = 60;
+    public static final int GROW = 1;
+    public static final int RUSH = 2;
+    public static final int SEEK = 3;
+    public static final int STILL = 4;
+    public static final int GIFT = 5;
+    static final int RUSH_SPEEDUP = 4;
+    /** Eclipse: when Main's middle passes within 5 tiles of a kingdom circle's, they move as one for an hour. */
+    static final double ECLIPSE_REACH = 5;
+    public static final int ECLIPSE_MINUTES = 60;
+    /** A kingdom circle that strayed out of its kingdom walks home this fast. */
+    static final double STRAY_SPEED = 3;
+    /**
+     * Rift: every 30 to 60 played hours, for 15 minutes, Main also stands at a landmark at least
+     * 300 tiles away. Main is whichever side you stand in when it closes.
+     */
+    static final int RIFT_EVERY_MIN = 1800;
+    static final int RIFT_EVERY_MAX = 3600;
+    public static final int RIFT_MINUTES = 15;
+    static final int RIFT_FAR = 300;
+    static final int RIFT_RETRY = 30;
+    /** Sea lane: a sailing Main leaves a 12-tile corridor behind it that counts as inside for an hour. */
+    public static final int LANE_MINUTES = 60;
+    public static final double LANE_HALF = 6;
+    /** Flotsam: once Sailing is unlocked, every 2 to 6 played hours a common stone floats at sea inside Main for an hour. */
+    static final int FLOTSAM_EVERY_MIN = 120;
+    static final int FLOTSAM_EVERY_MAX = 360;
+    public static final int FLOTSAM_MINUTES = 60;
+    public static final String FLOTSAM = "the flotsam";
+    /** Exodus: after 10 played hours in one kingdom, Main sets off for the kingdom it has visited least lately. */
+    public static final int EXODUS_MINUTES = 600;
+    static final int EXODUS_MOOD = 360;
+    /** Orbit: now and then Main circles a landmark 8 to 24 tiles from its middle for an hour and a quarter, then flings off. */
+    static final double ORBIT_CHANCE = 0.5;
+    public static final int ORBIT_MINUTES = 75;
+    static final int ORBIT_NEAR = 8;
+    static final int ORBIT_FAR = 24;
+    static final double ORBIT_SPEED = 4;
+    static final double ORBIT_EASE = 0.2;
+    static final double ORBIT_STEER = 0.3;
+    static final int FLING_WAY = 150;
+    /** Gravity: standing where your circle overlaps another, their middles drift together, 20 minutes an overlap at most. */
+    public static final int GRAVITY_MINUTES = 20;
+    static final double GRAVITY_PULL = 0.05;
+    /** Homing: the last waystone you claimed in Main pulls Main back toward it, fading over 12 hours. */
+    public static final int HOMING_MINUTES = 720;
+    static final double HOMING_PULL = 0.02;
+    /** Border kiss (a setting, off by default): two kingdom circles touching open a crossing for 20 minutes. */
+    public static final int KISS_MINUTES = 20;
+    static final int KISS_RANGE = 200;
+    /** The Trade road's caravan walks 1.5 tiles a minute and rests 20 minutes at each town. */
+    static final double CARAVAN_SPEED = 1.5;
+    static final int CARAVAN_REST = 20;
+    static final int CARAVAN_LOOKAHEAD = 8;
+    static final int CARAVAN_ARRIVE = 4;
+    static final int CARAVAN_CHOICES = 3;
     private static final String[] COMPASS = {"east", "north-east", "north", "north-west", "west", "south-west", "south", "south-east"};
 
     int seed;
@@ -268,6 +346,55 @@ public final class NomadSim
     /** Minutes left on Gathering. */
     int gatherLeft;
 
+    /** Lightning: bolts so far (each one's dice come from the seed and this). */
+    int bolts;
+    /** Stampedes so far, the minute the next is due, and its warning and minutes left. */
+    int stampedes;
+    int nextStampede;
+    int stampedeWarn;
+    int stampedeLeft;
+    /** Auroras so far, the minute the next is due, the circle having one (0 if none), its minutes left, and tiles a Grow added. */
+    int auroras;
+    int nextAurora;
+    int auroraCircle;
+    int auroraLeft;
+    int auroraGrow;
+    /** The kingdom circle eclipsed with Main (0 if none), and the minutes left. */
+    int eclipse;
+    int eclipseLeft;
+    /** Rifts so far, the minute the next is due, the far half while one is open, where it stands, and its minutes left. */
+    int rifts;
+    int nextRift;
+    Circle rift;
+    String riftAt;
+    int riftLeft;
+    /** Sea lane: tail x, y and head x, y while there is one, and its age in minutes. */
+    double[] lane;
+    int laneAge;
+    /** Flotsam so far and the minute the next floats up. */
+    int flotsams;
+    int nextFlotsam;
+    /** Exodus: per kingdom (in REGIONS order) the played minute + 1 Main's middle was last in it, 0 if never; where it is now and since when. */
+    int[] visits;
+    String kingdom;
+    int kingdomSince;
+    /** Gravity: the circle you stand in the overlap with (its index + 1, 0 if none), and the minutes spent pulling. */
+    int gravityWith;
+    int gravity;
+    /** Homing: the last waystone claimed in Main, and minutes left on its pull. */
+    int homingX;
+    int homingY;
+    int homingLeft;
+    /** Border kiss: whether the setting is on, the two circles kissing (index + 1 each, 0 if none) and its minutes left. */
+    boolean borderKiss;
+    int kissA;
+    int kissB;
+    int kissLeft;
+    /** Deep time (a setting): set while you're underground, so Main drifts at half pace. */
+    boolean deep;
+    /** Trade road: legs the caravan has set out on (each one's dice come from the seed and this). */
+    int caravanLegs;
+
     public static NomadSim start(int seed)
     {
         NomadSim sim = new NomadSim();
@@ -280,7 +407,33 @@ public final class NomadSim
             sim.circles.add(Circle.region(r, rng.next() * Math.PI * 2));
         }
         sim.rngState = rng.state();
+        sim.addCaravan();
         return sim;
+    }
+
+    /**
+     * Brings a run saved by an older plugin up to date: runs saved before the Trade road gain its
+     * caravan. Call it after loading a run from JSON.
+     */
+    public NomadSim ready()
+    {
+        if (waystones == null) waystones = new ArrayList<>();
+        if (boons == null) boons = new ArrayList<>();
+        if (pending == null) pending = new ArrayList<>();
+        if (questsMissing == null) questsMissing = new ArrayList<>();
+        boolean has = false;
+        for (Circle c : circles) has |= c.isCaravan();
+        if (!has) addCaravan();
+        return this;
+    }
+
+    /** The caravan sets out from a town the seed picks, for the next town along. */
+    private void addCaravan()
+    {
+        Rng dice = new Rng(seed ^ 0x3243F6A9);
+        Geography.Port from = Geography.TOWNS.get((int) (dice.next() * Geography.TOWNS.size()));
+        Geography.Port to = nextTown(from, null, dice);
+        circles.add(Circle.caravan(from, to.name));
     }
 
     /** A deep copy, for looking ahead without touching this run. */
@@ -329,6 +482,41 @@ public final class NomadSim
         s.voyages = voyages;
         s.helmsTo = helmsTo;
         s.gatherLeft = gatherLeft;
+        s.bolts = bolts;
+        s.stampedes = stampedes;
+        s.nextStampede = nextStampede;
+        s.stampedeWarn = stampedeWarn;
+        s.stampedeLeft = stampedeLeft;
+        s.auroras = auroras;
+        s.nextAurora = nextAurora;
+        s.auroraCircle = auroraCircle;
+        s.auroraLeft = auroraLeft;
+        s.auroraGrow = auroraGrow;
+        s.eclipse = eclipse;
+        s.eclipseLeft = eclipseLeft;
+        s.rifts = rifts;
+        s.nextRift = nextRift;
+        s.rift = rift == null ? null : rift.copy();
+        s.riftAt = riftAt;
+        s.riftLeft = riftLeft;
+        s.lane = lane == null ? null : lane.clone();
+        s.laneAge = laneAge;
+        s.flotsams = flotsams;
+        s.nextFlotsam = nextFlotsam;
+        s.visits = visits == null ? null : visits.clone();
+        s.kingdom = kingdom;
+        s.kingdomSince = kingdomSince;
+        s.gravityWith = gravityWith;
+        s.gravity = gravity;
+        s.homingX = homingX;
+        s.homingY = homingY;
+        s.homingLeft = homingLeft;
+        s.borderKiss = borderKiss;
+        s.kissA = kissA;
+        s.kissB = kissB;
+        s.kissLeft = kissLeft;
+        s.deep = deep;
+        s.caravanLegs = caravanLegs;
         return s;
     }
 
@@ -402,10 +590,168 @@ public final class NomadSim
         return minutes - lastBig;
     }
 
-    /** Whether a tile is inside Main, counting both halves while it's forked. */
+    /** Whether a tile is inside Main, counting both halves while it's forked, an open rift's far half and a sea lane. */
     public boolean inMain(int x, int y)
     {
-        return main().contains(x, y) || (twin != null && twin.contains(x, y));
+        return main().contains(x, y) || (twin != null && twin.contains(x, y)) || (rift != null && rift.contains(x, y))
+            || inLane(x, y);
+    }
+
+    /** Whether a tile lies in the sea lane Main left behind it. */
+    public boolean inLane(double x, double y)
+    {
+        return lane != null && segmentDist(x, y, lane[0], lane[1], lane[2], lane[3]) <= LANE_HALF;
+    }
+
+    /** The sea lane as {tail x, tail y, head x, head y}, or null. */
+    public double[] lane()
+    {
+        return lane == null ? null : lane.clone();
+    }
+
+    /** While a rift is open, Main's far half; otherwise null. */
+    public Circle rift()
+    {
+        return rift;
+    }
+
+    /** The landmark an open rift's far half stands at, or null. */
+    public String riftAt()
+    {
+        return riftAt;
+    }
+
+    public int riftLeft()
+    {
+        return riftLeft;
+    }
+
+    /** The kingdom circle eclipsed with Main, by index, or 0. */
+    public int eclipse()
+    {
+        return eclipse;
+    }
+
+    public int eclipseLeft()
+    {
+        return eclipseLeft;
+    }
+
+    /** Minutes of warning before a stampede, 0 if none is coming. */
+    public int stampedeWarning()
+    {
+        return stampedeWarn;
+    }
+
+    public int stampedeLeft()
+    {
+        return stampedeLeft;
+    }
+
+    /** The circle having an aurora, by index, or 0; and its minutes left. */
+    public int auroraCircle()
+    {
+        return auroraCircle;
+    }
+
+    public int auroraLeft()
+    {
+        return auroraLeft;
+    }
+
+    /** A kingdom's signature event: its name and what it does ({@link #GROW}, {@link #RUSH}, ...). */
+    public static String auroraName(String regionId)
+    {
+        switch (regionId == null ? "" : regionId)
+        {
+            case "misthalin": return "Harvest Moon";
+            case "asgarnia": return "White Knights' Muster";
+            case "kandarin": return "Glider Winds";
+            case "fremennik": return "Aurora";
+            case "desert": return "Mirage";
+            case "morytania": return "Blood Moon";
+            case "wilderness": return "Bloodlust";
+            case "karamja": return "Monsoon";
+            case "kourend": return "Council's Blessing";
+            case "tirannwn": return "Crystal Song";
+            case "varlamore": return "Sun's Favour";
+            default: return "Aurora";
+        }
+    }
+
+    public static int auroraKind(String regionId)
+    {
+        switch (regionId == null ? "" : regionId)
+        {
+            case "misthalin":
+            case "kourend":
+                return GIFT;
+            case "asgarnia":
+            case "morytania":
+                return SEEK;
+            case "kandarin":
+            case "wilderness":
+                return RUSH;
+            case "desert":
+            case "tirannwn":
+                return STILL;
+            default:
+                return GROW;
+        }
+    }
+
+    /** Minutes left on the pull of the last waystone claimed in Main, 0 if none. */
+    public int homingLeft()
+    {
+        return homingLeft;
+    }
+
+    public Tile homing()
+    {
+        return homingLeft > 0 ? new Tile(homingX, homingY) : null;
+    }
+
+    /** Whether the Border kiss setting is on. */
+    public void setBorderKiss(boolean on)
+    {
+        borderKiss = on;
+        if (!on) kissA = kissB = kissLeft = 0;
+    }
+
+    /** The kingdom circle a border kiss lets you cross straight into, by index, or -1. */
+    public int kissing()
+    {
+        if (kissLeft <= 0) return -1;
+        if (bound + 1 == kissA) return kissB - 1;
+        if (bound + 1 == kissB) return kissA - 1;
+        return -1;
+    }
+
+    public int kissLeft()
+    {
+        return kissLeft;
+    }
+
+    /** Deep time (a setting): while you're underground, Main drifts at half pace. */
+    public void setDeep(boolean underground)
+    {
+        deep = underground;
+    }
+
+    /** The caravan circle's index. */
+    public int caravanIndex()
+    {
+        for (int j = 0; j < circles.size(); j++)
+        {
+            if (circles.get(j).isCaravan()) return j;
+        }
+        return -1;
+    }
+
+    /** Minutes of Gravity spent with the overlap you stand in. */
+    public int gravity()
+    {
+        return gravity;
     }
 
     /** Whether a tile is inside your circle, counting both of Main's halves while it's forked. */
@@ -471,10 +817,10 @@ public final class NomadSim
         return bound == MAIN && main().contains(Geography.VOLCANO.x, Geography.VOLCANO.y);
     }
 
-    /** From Main, any region circle; from a region circle, only Main. */
+    /** From Main, any region circle; from a region circle, only Main (or one a border kiss opened to). */
     public boolean linked(int index)
     {
-        return index != bound && (bound == MAIN || index == MAIN);
+        return index != bound && (bound == MAIN || index == MAIN || (index >= 0 && index == kissing()));
     }
 
     /**
@@ -791,7 +1137,8 @@ public final class NomadSim
     {
         if (w.legendary()) return -1;
         if (w.pilgrim) return Math.max(0, PILGRIM_MINUTES - w.age);
-        return minutesLeft(circles.get(w.circle), w.x, w.y);
+        int left = minutesLeft(circles.get(w.circle), w.x, w.y);
+        return w.life > 0 ? Math.min(left, Math.max(0, w.life - w.age)) : left;
     }
 
     /** Whether a boon is one of the legendary ones. */
@@ -838,9 +1185,9 @@ public final class NomadSim
             c.touchingYours = linked(circles.indexOf(c)) && bound().touches(c);
         }
         Circle to = bound();
-        return to.isMain()
-            ? "You crossed back into the Main circle."
-            : "You crossed into " + to.name() + ". It never leaves its kingdom, and the only way out is back into Main.";
+        if (to.isMain()) return "You crossed back into the Main circle.";
+        if (to.isCaravan()) return "You joined the caravan. It walks the roads between bank towns, and the only way off is back into Main.";
+        return "You crossed into " + to.name() + ". It never leaves its kingdom, and the only way out is back into Main.";
     }
 
     /**
@@ -908,21 +1255,48 @@ public final class NomadSim
 
         boolean stranded = stranded();
         if (!stranded) b.waiting = false;
+        int partner = gravityPartner(player, out, log);
         for (int j = 0; j < circles.size(); j++)
         {
             Circle c = circles.get(j);
             boolean yours = j == bound;
+            int aurora = j == auroraCircle && auroraLeft > 0 ? auroraKind(c.regionId) : 0;
             // Region circles wander on their own; only yours leans toward Main, and only once you're stranded.
-            boolean pulled = yours && stranded && !c.isMain();
-            // Gathering: every kingdom's circle steers for Main.
-            boolean gather = gatherLeft > 0 && !c.isMain();
+            boolean pulled = yours && stranded && c.isKingdom();
+            // Gathering: every kingdom's circle steers for Main, as does one whose aurora sends it to Main.
+            boolean gather = (gatherLeft > 0 && c.isKingdom()) || aurora == SEEK;
             Circle toward = pulled || gather ? main : null;
             double pull = pulled ? STRANDED_PULL : gather ? GATHER_PULL : 0;
+            // Gravity: standing where two circles overlap draws their middles together.
+            if (toward == null && partner >= 0 && (j == bound || j == partner))
+            {
+                toward = circles.get(j == bound ? partner : bound);
+                pull = GRAVITY_PULL;
+            }
             Tile lean = yours && !out && player != null && dist(c, player) >= c.radius - LEAN_BAND ? player : null;
             int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
-                * (j == MAIN && stormLeft > 0 && stormKind == GALE ? GALE_SPEEDUP : 1);
+                * (j == MAIN && stormLeft > 0 && stormKind == GALE ? GALE_SPEEDUP : 1)
+                * (c.isKingdom() && stampedeLeft > 0 ? STAMPEDE_SPEEDUP : 1)
+                * (aurora == RUSH ? RUSH_SPEEDUP : 1);
             if (j == MAIN && twin != null) part(c, twin);
+            else if (eclipse > 0 && j == eclipse)
+            {
+                // Eclipsed: it moves as one with Main.
+                c.x = main.x;
+                c.y = main.y;
+                c.heading = main.heading;
+                if (c.pulse > 0) c.pulse--;
+            }
             else if (yours && c.crownLeft > 0 && player != null && c.voyage == null) follow(c, player);
+            else if (j == MAIN && deep && c.voyage == null && (minutes & 1) == 1)
+            {
+                // Deep time: underground, Main drifts only every other minute.
+            }
+            else if (aurora == STILL)
+            {
+                // Its aurora holds it still.
+            }
+            else if (c.isCaravan()) caravan(c, yours, stranded, log);
             else move(c, rng, speedup, yours, toward, pull, lean, log);
         }
         minutes++;
@@ -931,6 +1305,14 @@ public final class NomadSim
         storm(log);
         ghost(log);
         comet(player, log);
+        stampede(log);
+        aurora(log);
+        eclipse(log);
+        rift(player, log);
+        seaLane();
+        flotsam(log);
+        exodus(log);
+        kiss(log);
 
         if (minutes % 5 == 0)
         {
@@ -970,7 +1352,7 @@ public final class NomadSim
             if (c.anchorLeft > 0 && --c.anchorLeft == 0 && yours) log.add("Your circle lifted its Anchor and drifts again.");
             if (c.expandLeft > 0 && --c.expandLeft == 0)
             {
-                shiftRange(c, -c.expand);
+                shiftRange(c, -EXPAND_TILES);
                 if (yours) log.add("Expand wore off: your circle shrank back by " + EXPAND_TILES + " tiles.");
             }
         }
@@ -983,6 +1365,7 @@ public final class NomadSim
         if (calmLeft > 0 && --calmLeft == 0) log.add("The Calm has lifted: forks and storms can come again.");
         if (gatherLeft > 0 && --gatherLeft == 0) log.add("The Gathering is over: the kingdoms' circles go their own ways.");
         if (homewardLeft > 0 && --homewardLeft == 0) log.add("Homeward is ready again: a Home Teleport from inside Main will carry it with you.");
+        if (homingLeft > 0) homingLeft--;
     }
 
     /** The Wanderer's Crown: the circle's middle walks toward you, up to 10 tiles a minute, never off land or out of its kingdom. */
@@ -1025,6 +1408,13 @@ public final class NomadSim
                 waystones.remove(i);
                 boons.add(w.boon);
                 log.add("You claimed the waystone at " + w.landmark + ": " + w.boon + ". Spend it from the sidebar.");
+                if (w.circle == MAIN)
+                {
+                    // Homing: Main leans back toward where you claimed it, less and less over 12 hours.
+                    homingX = w.x;
+                    homingY = w.y;
+                    homingLeft = HOMING_MINUTES;
+                }
                 break;
             }
         }
@@ -1032,6 +1422,13 @@ public final class NomadSim
         {
             Waystone w = waystones.get(i);
             if (LEGENDARY.equals(w.tier)) continue;
+            if (w.life > 0 && w.age >= w.life)
+            {
+                waystones.remove(i);
+                log.add(STRIKE.equals(w.landmark) ? "The waystone at the lightning strike burned out."
+                    : "The waystone at " + w.landmark + " is gone.");
+                continue;
+            }
             if (w.pilgrim)
             {
                 if (w.age < PILGRIM_MINUTES) continue;
@@ -1046,7 +1443,7 @@ public final class NomadSim
         for (Waystone w : waystones)
         {
             w.age++;
-            if (w.pilgrim || !COMMON.equals(w.tier) || w.age != RIPEN) continue;
+            if (w.pilgrim || w.life > 0 || !COMMON.equals(w.tier) || w.age != RIPEN) continue;
             Rng dice = new Rng(seed ^ ((ripened + 1) * 0x68E31DA4));
             ripened++;
             w.tier = RARE;
@@ -1238,6 +1635,19 @@ public final class NomadSim
         {
             // Anchored: it holds its place, voyage and all, and only breathes.
         }
+        else if (c.isKingdom() && !c.region().contains(c.x, c.y))
+        {
+            // Out of its kingdom (after an eclipse): it walks straight home.
+            Tile home = c.region().home();
+            double d = Circle.dist(home.x - c.x, home.y - c.y);
+            if (d > 0)
+            {
+                double step = Math.min(d, STRAY_SPEED);
+                c.heading = StrictMath.atan2(home.y - c.y, home.x - c.x);
+                c.x += (home.x - c.x) / d * step;
+                c.y += (home.y - c.y) / d * step;
+            }
+        }
         else if (c.voyage != null)
         {
             if (c.voyage.wreck != null && Circle.dist(c.voyage.tx - c.x, c.voyage.ty - c.y) <= c.voyage.wreckAt)
@@ -1272,8 +1682,16 @@ public final class NomadSim
         else
         {
             if (c.shore > 0) c.shore--;
-            if (c.moodLeft <= 0) startMood(c, t, rng, allowed, yours, log);
-            c.moodLeft--;
+            boolean orbiting = c.orbitLeft > 0;
+            if (orbiting)
+            {
+                orbit(c, yours, log);
+            }
+            else
+            {
+                if (c.moodLeft <= 0) startMood(c, t, rng, allowed, yours, log);
+                c.moodLeft--;
+            }
             int m = c.mood;
             // In a peninsula or cove, Main forgets its mood and keeps a steady pace until it's out,
             // and deep inside one it heads for the way out.
@@ -1286,14 +1704,17 @@ public final class NomadSim
 
             // The turn rate eases toward the mood's own (straight, a held loop, or a meander's swing)
             // and wobbles, so the heading curves rather than running in straight lines.
-            double target = steady ? 0
-                : m == Temperament.LOOP ? c.bend
-                : m == Temperament.MEANDER ? c.bend * StrictMath.sin(c.swing * MEANDER_STEP) : 0;
-            c.swing++;
-            c.turn += (target - c.turn) * TURN_EASE + (rng.next() - 0.5) * 2 * MOOD_WOBBLE[m];
-            c.turn = clamp(c.turn, -TURN_MAX, TURN_MAX);
-            c.heading += c.turn;
-            c.speed += ((steady ? 1 : MOOD_SPEED[m]) - c.speed) * SPEED_EASE;
+            if (!orbiting)
+            {
+                double target = steady ? 0
+                    : m == Temperament.LOOP ? c.bend
+                    : m == Temperament.MEANDER ? c.bend * StrictMath.sin(c.swing * MEANDER_STEP) : 0;
+                c.swing++;
+                c.turn += (target - c.turn) * TURN_EASE + (rng.next() - 0.5) * 2 * MOOD_WOBBLE[m];
+                c.turn = clamp(c.turn, -TURN_MAX, TURN_MAX);
+                c.heading += c.turn;
+                c.speed += ((steady ? 1 : MOOD_SPEED[m]) - c.speed) * SPEED_EASE;
+            }
 
             if (c.wx != 0 && Circle.dist(c.wx - c.x, c.wy - c.y) < c.radius / 2)
             {
@@ -1316,9 +1737,14 @@ public final class NomadSim
                     c.wx = c.wy = 0;
                 }
             }
-            else if (c.wx != 0 && MOOD_PULL[m] > 0 && !cramped)
+            else if (c.wx != 0 && MOOD_PULL[m] > 0 && !cramped && !orbiting)
             {
                 steer(c, c.wx, c.wy, MOOD_PULL[m]);
+            }
+            // Homing: the last waystone you claimed in Main pulls it back a little, less and less.
+            if (c.isMain() && homingLeft > 0 && depth == 0 && c.port == null && !orbiting)
+            {
+                steer(c, homingX, homingY, HOMING_PULL * homingLeft / HOMING_MINUTES);
             }
             if (toward != null)
             {
@@ -1354,6 +1780,7 @@ public final class NomadSim
                     c.moodLeft = 0;
                     c.avoid = 0;
                     c.port = null;
+                    c.orbitLeft = 0;
                 }
             }
             else
@@ -1465,6 +1892,12 @@ public final class NomadSim
         }
         int[] range = c.isMain() ? MAIN_WAY : REGION_WAY;
         boolean island = c.isMain() && Geography.pocketDepth(c.x, c.y) < 0;
+        if (c.isMain() && helmsTo == null && Geography.pocketDepth(c.x, c.y) == 0)
+        {
+            // Orbit, on its own dice: now and then it circles a landmark near its middle instead.
+            Rng spin = new Rng(seed ^ ((minutes + 1) * 0x7A3B1C5D));
+            if (spin.next() < ORBIT_CHANCE && startOrbit(c, spin, yours, log)) return;
+        }
         if (c.isMain() && (helmsTo != null || (c.shore <= 0 && Geography.pocketDepth(c.x, c.y) == 0)))
         {
             // A port of call, from open land only and on its own dice, so the drift's stay as they
@@ -1519,6 +1952,51 @@ public final class NomadSim
             c.trail = next;
         }
         if (yours) log.add("Your circle " + MOOD_LOG[mood] + ".");
+    }
+
+    /** Orbit: picks a landmark 8 to 24 tiles from Main's middle to circle round; false if there's none. */
+    private boolean startOrbit(Circle c, Rng spin, boolean yours, List<String> log)
+    {
+        List<Landmarks.Landmark> near = new ArrayList<>();
+        for (Landmarks.Landmark l : Landmarks.ALL)
+        {
+            double d = Circle.dist(l.x - c.x, l.y - c.y);
+            if (d >= ORBIT_NEAR && d <= ORBIT_FAR && Geography.onLand(l.x, l.y)) near.add(l);
+        }
+        if (near.isEmpty()) return false;
+        Landmarks.Landmark l = near.get((int) (spin.next() * near.size()));
+        c.orbitX = l.x;
+        c.orbitY = l.y;
+        c.orbitR = Circle.dist(l.x - c.x, l.y - c.y);
+        c.orbitSide = spin.next() < 0.5 ? 1 : -1;
+        c.orbitLeft = ORBIT_MINUTES;
+        c.wx = c.wy = 0;
+        c.port = null;
+        if (yours) log.add("Your circle starts to orbit " + l.name + ".");
+        return true;
+    }
+
+    /** Orbit: steers round its landmark, holding its distance, then flings off in a straight line. */
+    private static void orbit(Circle c, boolean yours, List<String> log)
+    {
+        double a = StrictMath.atan2(c.y - c.orbitY, c.x - c.orbitX);
+        double d = Circle.dist(c.x - c.orbitX, c.y - c.orbitY);
+        double off = clamp((d - c.orbitR) / c.orbitR * 2, -0.6, 0.6);
+        double want = a + c.orbitSide * (Math.PI / 2 + off);
+        double turn = want - c.heading;
+        c.heading += StrictMath.atan2(StrictMath.sin(turn), StrictMath.cos(turn)) * ORBIT_STEER;
+        c.turn = 0;
+        c.speed += (ORBIT_SPEED - c.speed) * ORBIT_EASE;
+        if (--c.orbitLeft > 0) return;
+        // Fling: off in a straight line, dashing.
+        c.mood = Temperament.DASH;
+        c.moodLeft = MOOD_MAX[Temperament.DASH];
+        int wx = (int) round(c.x + StrictMath.cos(c.heading) * FLING_WAY);
+        int wy = (int) round(c.y + StrictMath.sin(c.heading) * FLING_WAY);
+        boolean ok = Geography.onLand(wx, wy) && Geography.pocketDepth(wx, wy) == 0;
+        c.wx = ok ? wx : 0;
+        c.wy = ok ? wy : 0;
+        if (yours) log.add("Your circle flings off " + compass(c.heading) + "!");
     }
 
     /** Whether the drift about half an hour ahead along a heading, and halfway there, is still allowed. */
@@ -1627,6 +2105,10 @@ public final class NomadSim
         voyages++;
         c.port = null;
         c.wx = c.wy = 0;
+        c.orbitLeft = 0;
+        // Sea lane: the way it sails counts as inside behind it for a while.
+        lane = new double[]{c.x, c.y, c.x, c.y};
+        laneAge = 0;
         log.add("The Main circle boarded a boat at " + port.name + ", bound for " + to + ".");
         lastBig = minutes;
     }
@@ -1674,7 +2156,8 @@ public final class NomadSim
         // Pacing: after 4 quiet hours the next fork comes now.
         if (minutes - lastBig >= QUIET) nextFork = Math.min(nextFork, minutes);
         if (minutes < nextFork) return;
-        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS || stormWarn > 0 || stormLeft > 0 || calmLeft > 0)
+        if (m.voyage != null || m.anchorLeft > 0 || m.radius < FORK_MIN_RADIUS || stormWarn > 0 || stormLeft > 0 || calmLeft > 0
+            || rift != null)
         {
             nextFork = minutes + FORK_RETRY;
             return;
@@ -1704,7 +2187,12 @@ public final class NomadSim
         Circle m = main();
         if (stormLeft > 0)
         {
-            if (--stormLeft > 0) return;
+            if (--stormLeft > 0)
+            {
+                int gone = STORM_MINUTES - stormLeft;
+                if (stormKind == SQUALL && gone % STRIKE_EVERY == 0 && gone / STRIKE_EVERY <= STRIKES) strike(m, log);
+                return;
+            }
             if (stormKind == SQUALL) m.radiusTarget = clamp(squallFrom, m.radiusMin, m.radiusMax);
             log.add(stormKind == GALE ? "The gale has blown itself out." : "The squall has passed. The Main circle eases back to its size.");
             stormKind = 0;
@@ -1720,6 +2208,13 @@ public final class NomadSim
                 log.add("The storm blew past the Main circle.");
                 stormKind = 0;
                 nextStorm = minutes + STORM_RETRY;
+                return;
+            }
+            if (m.anchorLeft <= 0 && m.shore <= 0 && surge(m, log))
+            {
+                stormKind = 0;
+                storms++;
+                nextStorm = 0;
                 return;
             }
             stormLeft = STORM_MINUTES;
@@ -1852,6 +2347,579 @@ public final class NomadSim
         comet = k;
         log.add("A comet is coming! In " + COMET_WARN + " minutes it streaks " + compass(a)
             + " across the map, straight through the Main circle. Stand in its path to catch it.");
+    }
+
+    /** Lightning: a bolt strikes a spot of land inside Main, leaving a common waystone for 2 minutes. */
+    private void strike(Circle m, List<String> log)
+    {
+        Rng dice = new Rng(seed ^ ((bolts + 1) * 0x4CF5AD43));
+        bolts++;
+        for (int k = 0; k < 12; k++)
+        {
+            double a = dice.next() * Math.PI * 2;
+            double d = Math.sqrt(dice.next()) * m.radius * 0.9;
+            int x = (int) round(m.x + StrictMath.cos(a) * d);
+            int y = (int) round(m.y + StrictMath.sin(a) * d);
+            if (!Geography.onLand(x, y) || takenAt(x, y)) continue;
+            Waystone w = new Waystone();
+            w.landmark = STRIKE;
+            w.x = x;
+            w.y = y;
+            w.circle = MAIN;
+            w.tier = COMMON;
+            w.boon = COMMON_BOONS[(int) (dice.next() * COMMON_BOONS.length)];
+            w.life = STRIKE_MINUTES;
+            waystones.add(w);
+            log.add("Lightning! A bolt struck inside the Main circle, " + Math.round(d) + " tiles " + compass(a)
+                + " of its middle, and left a waystone holding " + w.boon + " (common) for " + STRIKE_MINUTES + " minutes.");
+            return;
+        }
+    }
+
+    private boolean takenAt(int x, int y)
+    {
+        for (Waystone w : waystones)
+        {
+            if (w.x == x && w.y == y) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Storm surge: the storm breaks while a port Main can sail from is inside it, so it drives Main
+     * out to sea from there at once, to a port the seed picks. True if it did.
+     */
+    private boolean surge(Circle m, List<String> log)
+    {
+        List<String> missing = questsMissing == null ? Collections.<String>emptyList() : questsMissing;
+        List<Geography.Port> ports = new ArrayList<>();
+        for (Geography.Port p : Geography.PORTS)
+        {
+            if (dist(m, p.tile) <= m.radius + SURGE_REACH && !Geography.routesFrom(p.name, dockLevel(), missing).isEmpty()) ports.add(p);
+        }
+        if (ports.isEmpty()) return false;
+        Rng dice = new Rng(seed ^ ((storms + 1) * 0x2545F491));
+        Geography.Port port = ports.get((int) (dice.next() * ports.size()));
+        List<String> routes = Geography.routesFrom(port.name, dockLevel(), missing);
+        String to = routes.get((int) (dice.next() * routes.size()));
+        log.add("Storm surge! The storm broke over " + port.name + " and drives the Main circle out to sea.");
+        board(m, port, to, log);
+        return true;
+    }
+
+    /** Stampede: schedules, warns of, runs and ends them; see {@link #STAMPEDE_EVERY_MIN}. */
+    private void stampede(List<String> log)
+    {
+        if (stampedeLeft > 0)
+        {
+            if (--stampedeLeft > 0) return;
+            stampedes++;
+            nextStampede = 0;
+            log.add("The stampede is over: the kingdoms' circles slow back down.");
+            return;
+        }
+        if (stampedeWarn > 0)
+        {
+            if (--stampedeWarn > 0) return;
+            stampedeLeft = STAMPEDE_MINUTES;
+            log.add("Stampede! Every kingdom's circle dashes for " + STAMPEDE_MINUTES + " minutes.");
+            return;
+        }
+        if (nextStampede <= 0)
+        {
+            Rng dice = new Rng(seed ^ ((stampedes + 1) * 0x6A09E667));
+            nextStampede = minutes + STAMPEDE_EVERY_MIN + (int) (dice.next() * (STAMPEDE_EVERY_MAX - STAMPEDE_EVERY_MIN));
+        }
+        if (minutes < nextStampede) return;
+        stampedeWarn = STAMPEDE_WARN;
+        log.add("A stampede is coming! In " + STAMPEDE_WARN + " minutes every kingdom's circle dashes for "
+            + STAMPEDE_MINUTES + " minutes. The Main circle stays calm.");
+    }
+
+    /** Auroras: schedules them, picks a kingdom and starts its signature event, and ends it; see {@link #AURORA_EVERY_MIN}. */
+    private void aurora(List<String> log)
+    {
+        if (auroraLeft > 0)
+        {
+            if (--auroraLeft > 0) return;
+            Circle c = circles.get(auroraCircle);
+            if (auroraGrow != 0) shiftRange(c, -auroraGrow);
+            auroraGrow = 0;
+            log.add("The " + auroraName(c.regionId) + " over " + c.name() + " has passed.");
+            auroraCircle = 0;
+            auroras++;
+            nextAurora = 0;
+            return;
+        }
+        if (nextAurora <= 0)
+        {
+            Rng dice = new Rng(seed ^ ((auroras + 1) * 0x3C6EF372));
+            nextAurora = minutes + AURORA_EVERY_MIN + (int) (dice.next() * (AURORA_EVERY_MAX - AURORA_EVERY_MIN));
+        }
+        if (minutes < nextAurora) return;
+        Rng dice = new Rng(seed ^ ((auroras + 1) * 0x0BB67AE8));
+        List<Integer> kingdoms = new ArrayList<>();
+        for (int j = 0; j < circles.size(); j++)
+        {
+            if (circles.get(j).isKingdom() && j != eclipse) kingdoms.add(j);
+        }
+        int j = kingdoms.get((int) (dice.next() * kingdoms.size()));
+        Circle c = circles.get(j);
+        auroraCircle = j;
+        auroraLeft = AURORA_MINUTES;
+        String name = auroraName(c.regionId);
+        switch (auroraKind(c.regionId))
+        {
+            case GROW:
+                auroraGrow = (int) round(c.radius);
+                shiftRange(c, auroraGrow);
+                c.pulse = 45;
+                log.add(name + " over " + c.name() + "! Its circle doubles in size for an hour.");
+                break;
+            case RUSH:
+                log.add(name + " over " + c.name() + "! Its circle rushes about four times as fast for an hour.");
+                break;
+            case SEEK:
+                log.add(name + " over " + c.name() + "! Its circle marches toward the Main circle for an hour.");
+                break;
+            case STILL:
+                log.add(name + " over " + c.name() + "! Its circle holds perfectly still for an hour.");
+                break;
+            default:
+            {
+                String rose = gift(j, dice);
+                log.add(name + " over " + c.name() + "!" + (rose == null ? " Its circle glows for an hour." : " " + rose));
+                break;
+            }
+        }
+    }
+
+    /** A Gift aurora: a common waystone rises at a landmark in the circle, or null if none is free. */
+    private String gift(int j, Rng dice)
+    {
+        Circle c = circles.get(j);
+        List<Landmarks.Landmark> free = new ArrayList<>();
+        for (Landmarks.Landmark l : Landmarks.ALL)
+        {
+            if (c.contains(l.x, l.y) && !taken(l)) free.add(l);
+        }
+        if (free.isEmpty()) return null;
+        Landmarks.Landmark l = free.get((int) (dice.next() * free.size()));
+        Waystone w = stone(l, j, COMMON, COMMON_BOONS[(int) (dice.next() * COMMON_BOONS.length)]);
+        return "A waystone rose at " + l.name + " in " + c.name() + ", holding " + w.boon + " (common).";
+    }
+
+    /** Eclipse: Main's middle passing within 3 tiles of a kingdom circle's joins them for an hour. */
+    private void eclipse(List<String> log)
+    {
+        Circle m = main();
+        if (eclipse > 0)
+        {
+            if (--eclipseLeft > 0 && m.voyage == null && twin == null) return;
+            Circle c = circles.get(eclipse);
+            log.add("The eclipse is over. The " + c.name() + " circle goes its own way"
+                + (c.region().contains(c.x, c.y) ? "." : ", walking home to its kingdom."));
+            eclipse = 0;
+            eclipseLeft = 0;
+            return;
+        }
+        if (twin != null || m.voyage != null) return;
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            if (!c.isKingdom() || Circle.dist(c.x - m.x, c.y - m.y) > ECLIPSE_REACH) continue;
+            eclipse = j;
+            eclipseLeft = ECLIPSE_MINUTES;
+            c.x = m.x;
+            c.y = m.y;
+            c.pulse = 45;
+            lastBig = minutes;
+            log.add("Eclipse! The Main circle and the " + c.name() + " circle line up and move as one for an hour. The "
+                + c.name() + " circle can leave its kingdom with Main.");
+            return;
+        }
+    }
+
+    /** Rifts: schedules them, opens one at a far landmark, and closes it; see {@link #RIFT_EVERY_MIN}. */
+    private void rift(Tile player, List<String> log)
+    {
+        Circle m = main();
+        if (rift != null)
+        {
+            if (--riftLeft > 0) return;
+            boolean there = bound == MAIN && player != null && rift.contains(player.x, player.y) && !m.contains(player.x, player.y);
+            if (there)
+            {
+                m.x = rift.x;
+                m.y = rift.y;
+                m.voyage = null;
+                m.port = null;
+                m.orbitLeft = 0;
+                m.moodLeft = 0;
+                m.wx = m.wy = 0;
+                m.turn = 0;
+                m.pulse = 45;
+                lastBig = minutes;
+                log.add("The rift closed. You stood at " + riftAt + ", so the Main circle is there now.");
+            }
+            else
+            {
+                log.add("The rift closed. The Main circle stays where it was.");
+            }
+            rift = null;
+            riftAt = null;
+            rifts++;
+            nextRift = 0;
+            return;
+        }
+        if (nextRift <= 0)
+        {
+            Rng dice = new Rng(seed ^ ((rifts + 1) * 0x510E527F));
+            nextRift = minutes + RIFT_EVERY_MIN + (int) (dice.next() * (RIFT_EVERY_MAX - RIFT_EVERY_MIN));
+        }
+        if (minutes < nextRift) return;
+        if (m.voyage != null || twin != null || forkWarn > 0)
+        {
+            nextRift = minutes + RIFT_RETRY;
+            return;
+        }
+        List<Landmarks.Landmark> far = new ArrayList<>();
+        for (Landmarks.Landmark l : Landmarks.ALL)
+        {
+            if (Circle.dist(l.x - m.x, l.y - m.y) >= RIFT_FAR && Geography.pocketDepth(l.x, l.y) == 0) far.add(l);
+        }
+        if (far.isEmpty())
+        {
+            nextRift = minutes + RIFT_RETRY;
+            return;
+        }
+        Rng dice = new Rng(seed ^ ((rifts + 1) * 0x1F83D9AB));
+        Landmarks.Landmark l = far.get((int) (dice.next() * far.size()));
+        rift = m.copy();
+        rift.x = l.x;
+        rift.y = l.y;
+        rift.voyage = null;
+        rift.port = null;
+        rift.crownLeft = 0;
+        rift.orbitLeft = 0;
+        riftAt = l.name;
+        riftLeft = RIFT_MINUTES;
+        lastBig = minutes;
+        log.add("A rift opened! For " + RIFT_MINUTES + " minutes the Main circle also stands at " + l.name + ", far to the "
+            + compass(StrictMath.atan2(l.y - m.y, l.x - m.x)) + ". Teleport there and you're inside; when the rift closes, "
+            + "Main is whichever side you stand in.");
+    }
+
+    /** The sea lane follows Main while it sails, then fades from the end it set out from. */
+    private void seaLane()
+    {
+        if (lane == null) return;
+        Circle m = main();
+        laneAge++;
+        if (m.voyage != null)
+        {
+            lane[2] = m.x;
+            lane[3] = m.y;
+        }
+        if (laneAge <= LANE_MINUTES) return;
+        double d = Circle.dist(lane[2] - lane[0], lane[3] - lane[1]);
+        if (d <= SAIL_SPEED)
+        {
+            if (m.voyage == null) lane = null;
+            else
+            {
+                lane[0] = lane[2];
+                lane[1] = lane[3];
+            }
+            return;
+        }
+        lane[0] += (lane[2] - lane[0]) / d * SAIL_SPEED;
+        lane[1] += (lane[3] - lane[1]) / d * SAIL_SPEED;
+    }
+
+    /** Flotsam: once Sailing is unlocked, now and then a common stone floats at sea inside Main for an hour. */
+    private void flotsam(List<String> log)
+    {
+        if (!sailingUnlocked) return;
+        if (nextFlotsam <= 0)
+        {
+            Rng dice = new Rng(seed ^ ((flotsams + 1) * 0x5BE0CD19));
+            nextFlotsam = minutes + FLOTSAM_EVERY_MIN + (int) (dice.next() * (FLOTSAM_EVERY_MAX - FLOTSAM_EVERY_MIN));
+        }
+        if (minutes < nextFlotsam) return;
+        Rng dice = new Rng(seed ^ ((flotsams + 1) * 0x9B05688C));
+        flotsams++;
+        nextFlotsam = 0;
+        Circle m = main();
+        for (int k = 0; k < 16; k++)
+        {
+            double a = dice.next() * Math.PI * 2;
+            double d = Math.sqrt(dice.next()) * m.radius;
+            int x = (int) round(m.x + StrictMath.cos(a) * d);
+            int y = (int) round(m.y + StrictMath.sin(a) * d);
+            if (Geography.onLand(x, y) || !m.contains(x, y) || takenAt(x, y)) continue;
+            Waystone w = new Waystone();
+            w.landmark = FLOTSAM;
+            w.x = x;
+            w.y = y;
+            w.circle = MAIN;
+            w.tier = COMMON;
+            w.boon = COMMON_BOONS[(int) (dice.next() * COMMON_BOONS.length)];
+            w.life = FLOTSAM_MINUTES;
+            waystones.add(w);
+            log.add("Flotsam is floating at sea inside the Main circle, " + compass(a) + " of its middle, holding " + w.boon
+                + " (common). Sail through it within the hour to claim it.");
+            return;
+        }
+    }
+
+    /** Exodus: keeps track of the kingdom under Main's middle, and after 10 hours in one sends Main elsewhere. */
+    private void exodus(List<String> log)
+    {
+        Circle m = main();
+        if (m.voyage != null) return;
+        if (visits == null || visits.length != Geography.REGIONS.size()) visits = new int[Geography.REGIONS.size()];
+        Region here = Geography.regionAt(m.x, m.y);
+        String id = here == null ? null : here.id;
+        if (here != null) visits[Geography.REGIONS.indexOf(here)] = minutes + 1;
+        if (id == null ? kingdom != null : !id.equals(kingdom))
+        {
+            kingdom = id;
+            kingdomSince = minutes;
+            return;
+        }
+        if (here == null || minutes - kingdomSince < EXODUS_MINUTES || twin != null || m.port != null || m.orbitLeft > 0) return;
+        kingdomSince = minutes;
+        int best = -1;
+        for (int k = 0; k < Geography.REGIONS.size(); k++)
+        {
+            Region r = Geography.REGIONS.get(k);
+            if (r == here || Geography.pocketDepth(r.home().x, r.home().y) != 0) continue;
+            if (Geography.harbourSteps(Geography.homeOf(r), m.x, m.y) < 0) continue;
+            if (best < 0 || visits[k] < visits[best]) best = k;
+        }
+        if (best < 0) return;
+        Region to = Geography.REGIONS.get(best);
+        m.wx = to.home().x;
+        m.wy = to.home().y;
+        m.mood = Temperament.ROAM;
+        m.moodLeft = EXODUS_MOOD;
+        m.avoid = 0;
+        log.add("Exodus! After " + EXODUS_MINUTES / 60 + " hours in " + here.name + ", the Main circle grows restless and sets off for "
+            + to.name + ".");
+    }
+
+    /** Gravity: the circle you stand in the overlap with, if it still pulls this minute; else -1. */
+    private int gravityPartner(Tile player, boolean out, List<String> log)
+    {
+        if (gravityWith > 0 && (gravityWith > circles.size() || !bound().touches(circles.get(gravityWith - 1))))
+        {
+            gravityWith = 0;
+            gravity = 0;
+        }
+        if (player == null || out || bound().isCaravan()) return -1;
+        int partner = -1;
+        for (int j = 0; j < circles.size() && partner < 0; j++)
+        {
+            Circle c = circles.get(j);
+            if (j == bound || !linked(j) || c.isCaravan() || j == eclipse) continue;
+            if (bound().contains(player.x, player.y) && c.contains(player.x, player.y)) partner = j;
+        }
+        if (partner < 0) return -1;
+        if (partner + 1 != gravityWith)
+        {
+            gravityWith = partner + 1;
+            gravity = 0;
+        }
+        if (gravity >= GRAVITY_MINUTES) return -1;
+        if (gravity++ == 0)
+        {
+            log.add("Gravity: you stand where your circle overlaps " + circles.get(partner).name()
+                + ", so their middles drift together, for up to " + GRAVITY_MINUTES + " minutes.");
+        }
+        return partner;
+    }
+
+    /** Border kiss: while you're in a kingdom circle that touches another kingdom's, a crossing opens for 20 minutes. */
+    private void kiss(List<String> log)
+    {
+        if (kissA > 0 && (kissA > circles.size() || kissB > circles.size()
+            || !circles.get(kissA - 1).touches(circles.get(kissB - 1))))
+        {
+            if (kissLeft > 0) log.add("The border kiss closed: the two circles drifted apart.");
+            kissA = kissB = kissLeft = 0;
+        }
+        if (kissLeft > 0)
+        {
+            Circle b = bound();
+            if (bound == MAIN || b.gap(main()) > KISS_RANGE || --kissLeft == 0)
+            {
+                kissLeft = 0;
+                log.add("The border kiss closed.");
+            }
+            return;
+        }
+        // The same two can't kiss again until they part.
+        if (kissA > 0 || !borderKiss || bound == MAIN) return;
+        Circle b = bound();
+        if (!b.isKingdom() || b.gap(main()) > KISS_RANGE) return;
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            if (j == bound || !c.isKingdom() || !b.touches(c)) continue;
+            kissA = bound + 1;
+            kissB = j + 1;
+            kissLeft = KISS_MINUTES;
+            lastBig = minutes;
+            log.add("Border kiss! Your circle touches " + c.name() + " across the border: for " + KISS_MINUTES
+                + " minutes you may cross straight into it.");
+            return;
+        }
+    }
+
+    /**
+     * The Trade road: the caravan walks the roads from bank town to bank town and rests at each.
+     * While you ride it away from Main, it heads for the town nearest Main instead.
+     */
+    private void caravan(Circle c, boolean yours, boolean stranded, List<String> log)
+    {
+        if (c.pulse > 0) c.pulse--;
+        if (c.anchorLeft > 0) return;
+        Geography.Port to = c.port == null ? null : Geography.town(c.port);
+        boolean waiting = false;
+        if (yours && stranded)
+        {
+            Geography.Port home = nearestTown(main().x, main().y, c);
+            if (home != null && home != to)
+            {
+                to = home;
+                c.port = home.name;
+                c.shore = 0;
+            }
+            waiting = home != null;
+        }
+        if (to == null)
+        {
+            Rng dice = new Rng(seed ^ ((caravanLegs + 1) * 0x6C8E9CF5));
+            caravanLegs++;
+            to = nextTown(null, c, dice);
+            if (to == null) return;
+            c.port = to.name;
+        }
+        if (c.shore > 0)
+        {
+            if (--c.shore == 0 && waiting)
+            {
+                // Riding it away from Main: it waits at the town nearest Main until you step off.
+                c.shore = CARAVAN_REST;
+            }
+            else if (c.shore == 0)
+            {
+                Rng dice = new Rng(seed ^ ((caravanLegs + 1) * 0x6C8E9CF5));
+                caravanLegs++;
+                Geography.Port next = nextTown(to, c, dice);
+                if (next != null)
+                {
+                    c.port = next.name;
+                    if (yours) log.add("The caravan sets out from " + to.name + " for " + next.name + ".");
+                }
+            }
+            return;
+        }
+        double d = Circle.dist(to.tile.x - c.x, to.tile.y - c.y);
+        if (d <= CARAVAN_ARRIVE)
+        {
+            c.shore = CARAVAN_REST;
+            if (yours) log.add("The caravan reached " + to.name + " and rests there for " + CARAVAN_REST + " minutes.");
+            return;
+        }
+        double[] way = Geography.wayTo(to, c.x, c.y, CARAVAN_LOOKAHEAD);
+        double nx = c.x;
+        double ny = c.y;
+        if (way != null)
+        {
+            double wd = Circle.dist(way[0] - c.x, way[1] - c.y);
+            double step = Math.min(wd, CARAVAN_SPEED * (c.tailwindLeft > 0 ? 2 : 1));
+            if (wd > 0)
+            {
+                c.heading = StrictMath.atan2(way[1] - c.y, way[0] - c.x);
+                nx = c.x + (way[0] - c.x) / wd * step;
+                ny = c.y + (way[1] - c.y) / wd * step;
+            }
+        }
+        if (way == null || !Geography.onLand(nx, ny))
+        {
+            // Off the road (a corner of river in the way): it steps onto the road's nearest cell instead.
+            double[] snap = Geography.snapToWalk(to, c.x, c.y);
+            if (snap == null) return;
+            nx = snap[0];
+            ny = snap[1];
+        }
+        c.x = nx;
+        c.y = ny;
+    }
+
+    /**
+     * The town the caravan heads for next: one of the three nearest Main that it isn't at and can
+     * walk to, as the seed picks, so the caravan keeps crossing Main's path.
+     */
+    private Geography.Port nextTown(Geography.Port from, Circle c, Rng dice)
+    {
+        Circle m = main();
+        List<Geography.Port> options = new ArrayList<>();
+        for (Geography.Port p : Geography.TOWNS)
+        {
+            if (p == from) continue;
+            if (c != null && Geography.harbourSteps(p, c.x, c.y) < 0) continue;
+            int at = 0;
+            double d = dist(m, p.tile);
+            while (at < options.size() && dist(m, options.get(at).tile) <= d) at++;
+            options.add(at, p);
+        }
+        if (options.isEmpty()) return null;
+        return options.get((int) (dice.next() * Math.min(CARAVAN_CHOICES, options.size())));
+    }
+
+    /** The town nearest a point that the caravan can walk to. */
+    private static Geography.Port nearestTown(double x, double y, Circle c)
+    {
+        Geography.Port best = null;
+        double bestD = 0;
+        for (Geography.Port p : Geography.TOWNS)
+        {
+            double d = Circle.dist(p.tile.x - x, p.tile.y - y);
+            if (best != null && d >= bestD) continue;
+            if (Geography.harbourSteps(p, c.x, c.y) < 0) continue;
+            best = p;
+            bestD = d;
+        }
+        return best;
+    }
+
+    /**
+     * For trying world events out in game: the next {@code what} ("stampede", "aurora", "rift" or
+     * "flotsam") comes at the next played minute. Never called by the rules.
+     */
+    public void eventSoonForTesting(String what)
+    {
+        int at = Math.max(1, minutes);
+        switch (what)
+        {
+            case "stampede":
+                if (stampedeWarn == 0 && stampedeLeft == 0) nextStampede = at;
+                break;
+            case "aurora":
+                if (auroraLeft == 0) nextAurora = at;
+                break;
+            case "rift":
+                if (rift == null) nextRift = at;
+                break;
+            case "flotsam":
+                nextFlotsam = at;
+                break;
+            default:
+                break;
+        }
     }
 
     /** Distance from (px, py) to the segment from (ax, ay) to (bx, by). */

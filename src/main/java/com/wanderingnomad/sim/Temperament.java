@@ -64,6 +64,8 @@ final class Temperament
     {
         switch (regionId)
         {
+            case "caravan":
+                return of("Steady", 1, 1, 1, 0, 0, 0, 0, 0);
             case "misthalin":
                 return of("Gentle", 0.7, 1.4, 3, 2, 0.5, 0.3, 1.5, 2);
             case "asgarnia":

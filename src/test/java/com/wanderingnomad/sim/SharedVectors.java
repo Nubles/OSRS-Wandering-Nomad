@@ -26,7 +26,7 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26, 560};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
     /** Left alone, sets course for a port, sails, and is blown off course: a castaway. */
@@ -39,6 +39,8 @@ public final class SharedVectors
     static final int CALM_SEED = 77;
     /** Comets, the Wanderer's Crown, Gathering, Helmsman, Homeward, pilgrim, ripening and legendary stones. */
     static final int WAVE_SEED = 9001;
+    /** World events: a stampede, auroras, flotsam, a rift walked into, Deep time, Gravity, a border kiss and riding the caravan. */
+    static final int WORLD_SEED = 560;
 
     private SharedVectors()
     {
@@ -79,6 +81,7 @@ public final class SharedVectors
         if (seed == BOON_SEED) return boonScript(seed);
         if (seed == CALM_SEED) return calmScript(seed);
         if (seed == WAVE_SEED) return waveScript(seed);
+        if (seed == WORLD_SEED) return worldScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
         Circle m = probe.main();
@@ -237,6 +240,73 @@ public final class SharedVectors
         return events;
     }
 
+    static JsonArray worldScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        events.add(event(0, "sailing", true));
+        events.add(event(0, "kiss", true));
+        events.add(event(5, "event", "stampede"));
+        events.add(event(30, "event", "aurora"));
+        events.add(event(40, "event", "flotsam"));
+        // Ride the caravan: cross into it once it touches Main, ride an hour, and cross back as soon as it can.
+        int ride = firstMinute(seed, events, s -> s.minutes() >= 45 && s.boundIndex() == NomadSim.MAIN
+            && s.main().touches(s.circles().get(s.caravanIndex())));
+        int after = 300;
+        if (ride >= 0 && ride < 900)
+        {
+            events.add(event(ride, "crossto", probe(seed, events, ride).caravanIndex()));
+            for (int t = ride + 60; t < ride + 600; t += 20) events.add(event(t, "crossto", NomadSim.MAIN));
+            final int rode = ride + 60;
+            int back = firstMinute(seed, events, s -> s.minutes() >= rode && s.boundIndex() == NomadSim.MAIN);
+            after = back >= 0 ? back : ride + 600;
+        }
+        // Stand where Main and the circle nearest it overlap for half an hour (Gravity), cross in, and back out.
+        final int searchFrom = after;
+        int touch = firstMinute(seed, events, s -> s.minutes() >= searchFrom && s.boundIndex() == NomadSim.MAIN && overlap(s) != null);
+        if (touch >= 0 && touch < 1200)
+        {
+            int[] at = overlap(probe(seed, events, touch));
+            events.add(event(touch, "player", at[0], at[1]));
+            events.add(event(touch + 30, "crossto", at[2]));
+            events.add(event(touch + 31, "player"));
+            for (int t = touch + 90; t < MINUTES; t += 20) events.add(event(t, "crossto", NomadSim.MAIN));
+            after = touch + 31;
+        }
+        // Deep time for two hours.
+        events.add(event(after, "deep", true));
+        events.add(event(after + 120, "deep", false));
+        events.add(event(after + 130, "event", "aurora"));
+        int riftAt = Math.min(1300, Math.max(1000, after + 140));
+        // A rift, walked into: stand at its far half until it closes, so Main moves there.
+        events.add(event(riftAt, "event", "rift"));
+        final int asked = riftAt;
+        int opened = firstMinute(seed, events, s -> s.minutes() >= asked && s.rift() != null);
+        if (opened >= 0)
+        {
+            Circle r = probe(seed, events, opened).rift();
+            events.add(event(opened, "player", (int) Math.round(r.x), (int) Math.round(r.y)));
+            events.add(event(opened + NomadSim.RIFT_MINUTES + 2, "player"));
+        }
+        events.add(event(1400, "event", "stampede"));
+        return events;
+    }
+
+    /** Where your circle overlaps the nearest circle you could cross into, as {x, y, its index}, or null. */
+    private static int[] overlap(NomadSim s)
+    {
+        Circle b = s.bound();
+        for (int j = 0; j < s.circles().size(); j++)
+        {
+            Circle c = s.circles().get(j);
+            if (!s.linked(j) || c.isCaravan() || b.gap(c) > -2) continue;
+            double d = Circle.dist(c.x - b.x, c.y - b.y);
+            // The middle of the overlap, along the line between the two middles.
+            double t = (b.radius + (d - c.radius)) / 2 / d;
+            return new int[]{(int) Math.round(b.x + (c.x - b.x) * t), (int) Math.round(b.y + (c.y - b.y) * t), j};
+        }
+        return null;
+    }
+
     /** The index of the last boon held at {@code minute}, once its events are applied. */
     private static int last(int seed, JsonArray events, int minute)
     {
@@ -356,6 +426,18 @@ public final class SharedVectors
                     break;
                 case "helmsman":
                     line = sim.useHelmsman(a.get(0).getAsInt(), a.get(1).getAsString());
+                    break;
+                case "event":
+                    sim.eventSoonForTesting(a.get(0).getAsString());
+                    break;
+                case "kiss":
+                    sim.setBorderKiss(a.get(0).getAsBoolean());
+                    break;
+                case "deep":
+                    sim.setDeep(a.get(0).getAsBoolean());
+                    break;
+                case "crossto":
+                    line = sim.crossTo(a.get(0).getAsInt(), null);
                     break;
                 case "homeward":
                     line = sim.homeward(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));

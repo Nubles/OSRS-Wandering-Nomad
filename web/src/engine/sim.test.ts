@@ -57,6 +57,10 @@ describe('the TypeScript sim matches the plugin', () => {
           else if (e.kind === 'comet') sim.cometSoonForTesting();
           else if (e.kind === 'helmsman') line = sim.useHelmsman(e.args[0] as number, e.args[1] as string);
           else if (e.kind === 'homeward') line = sim.homeward({ x: e.args[0] as number, y: e.args[1] as number }, { x: e.args[2] as number, y: e.args[3] as number });
+          else if (e.kind === 'event') sim.eventSoonForTesting(e.args[0] as string);
+          else if (e.kind === 'kiss') sim.setBorderKiss(e.args[0] as boolean);
+          else if (e.kind === 'deep') sim.state.deep = e.args[0] as boolean;
+          else if (e.kind === 'crossto') line = sim.crossTo(e.args[0] as number, null);
           if (line != null) log.push([minute, line]);
         }
         for (const line of sim.step(player)) log.push([minute, line]);
@@ -90,9 +94,9 @@ describe('run codes', () => {
     const c = CASES[1];
     const code = await encodeRun({ sim: c.final, surface: { x: 3200, y: 3200 } });
     expect(code.startsWith('N1.')).toBe(true);
-    // Storms, Sailing docks, comets, the lost half and ports of call grew the saved run a little;
+    // Storms, Sailing docks, comets, the lost half, ports of call and world events grew the saved run;
     // links stay far under URL limits.
-    expect(code.length).toBeLessThan(2900);
+    expect(code.length).toBeLessThan(3600);
     expect((await decodeRun(code)).sim).toEqual(c.final);
   });
 

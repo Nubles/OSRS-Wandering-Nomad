@@ -64,6 +64,39 @@ final class Harbours
         return best;
     }
 
+    /**
+     * The middle of the cell on the walk to the port nearest a tile: its own cell or one beside it.
+     * Null if none of them is on the walk.
+     */
+    synchronized double[] snap(Geography.Port p, double x, double y)
+    {
+        int cols = w.cols();
+        int i = index(x, y);
+        if (i < 0) return null;
+        short[] field = field(p);
+        int row = i / cols;
+        int col = i - row * cols;
+        double[] best = null;
+        double bestD = 0;
+        for (int dr = -1; dr <= 1; dr++)
+        {
+            for (int dc = -1; dc <= 1; dc++)
+            {
+                int c = col + dc;
+                int r = row + dr;
+                if (c < 0 || r < 0 || c >= cols || r >= w.rows() || field[r * cols + c] < 0) continue;
+                double[] at = centre(c, r);
+                double d = Circle.dist(at[0] - x, at[1] - y);
+                if (best == null || d < bestD)
+                {
+                    best = at;
+                    bestD = d;
+                }
+            }
+        }
+        return best;
+    }
+
     private double[] centre(int col, int row)
     {
         return new double[] {w.x0() + (col + 0.5) * w.cell(), w.y0() + (row + 0.5) * w.cell()};
