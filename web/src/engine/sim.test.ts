@@ -61,6 +61,12 @@ describe('the TypeScript sim matches the plugin', () => {
           else if (e.kind === 'kiss') sim.setBorderKiss(e.args[0] as boolean);
           else if (e.kind === 'deep') sim.state.deep = e.args[0] as boolean;
           else if (e.kind === 'crossto') line = sim.crossTo(e.args[0] as number, null);
+          else if (e.kind === 'lodestone') line = sim.useLodestone(e.args[0] as number, e.args[1] as string);
+          else if (e.kind === 'shatter') sim.setShatterNext(e.args[0] as boolean);
+          else if (e.kind === 'vigil') sim.setVigil(e.args[0] as boolean);
+          else if (e.kind === 'rites') sim.setRites(e.args[0] as boolean);
+          else if (e.kind === 'rite') line = sim.performRite(e.args[0] as string, { x: e.args[1] as number, y: e.args[2] as number });
+          else throw new Error(`unknown event ${e.kind}`);
           if (line != null) log.push([minute, line]);
         }
         for (const line of sim.step(player)) log.push([minute, line]);

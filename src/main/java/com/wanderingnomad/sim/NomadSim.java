@@ -104,11 +104,18 @@ public final class NomadSim
     public static final String CROWN = "Wanderer's Crown";
     public static final String HELMSMAN = "Helmsman";
     public static final String GATHERING = "Gathering";
+    /** Wave 3 boons: two common (Foresight, Ward) and four rare (Wake, Leap, Lodestone, Keystone). */
+    public static final String FORESIGHT = "Foresight";
+    public static final String WARD = "Ward";
+    public static final String WAKE = "Wake";
+    public static final String LEAP = "Leap";
+    public static final String LODESTONE = "Lodestone";
+    public static final String KEYSTONE = "Keystone";
     public static final String COMMON = "common";
     public static final String RARE = "rare";
     public static final String LEGENDARY = "legendary";
-    private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR, LANTERN, CALM};
-    private static final String[] RARE_BOONS = {RUDDER, BRIDGE};
+    private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR, LANTERN, CALM, FORESIGHT, WARD};
+    private static final String[] RARE_BOONS = {RUDDER, BRIDGE, WAKE, LEAP, LODESTONE, KEYSTONE};
     private static final String[] LEGENDARY_BOONS = {CROWN, HELMSMAN, GATHERING};
     public static final int BOONS_HELD = 3;
     public static final int CLAIM_REACH = 3;
@@ -278,6 +285,35 @@ public final class NomadSim
     /** The Trade road's caravan walks 1.5 tiles a minute and rests 20 minutes at each town. */
     static final double CARAVAN_SPEED = 1.5;
     public static final int CARAVAN_REST = 20;
+    /** Foresight looks this far ahead for the next fork. */
+    public static final int FORESIGHT_LOOK = 720;
+    /** Ward: once you step outside holding one, outside costs nothing for this long. */
+    public static final int WARD_MINUTES = 5;
+    /** Wake: for this long the ground your circle leaves stays yours for {@link #WAKE_TRAIL} minutes. */
+    public static final int WAKE_MINUTES = 60;
+    public static final int WAKE_TRAIL = 15;
+    /** Leap: how far along its heading the circle jumps (less if that's off land or out of its kingdom). */
+    public static final int LEAP_TILES = 40;
+    /** Lodestone: minutes your circle leans toward the landmark you picked, and how hard. */
+    public static final int LODE_MINUTES = 180;
+    static final double LODE_PULL = 0.12;
+    /** Lodestone landmarks: those within this many tiles of your circle's middle. */
+    public static final int LODE_REACH = 300;
+    /** Keystone: at the next fork both halves live on this long before they part. */
+    public static final int KEYSTONE_MINUTES = 60;
+    /** Shatter: the chance a shattered waystone bursts into a rare boon. */
+    static final double SHATTER_ODDS = 0.5;
+    /** Kingdom stones: the chance a stone in a kingdom's circle holds that kingdom's favourite boon. */
+    static final double KINGDOM_FAVOUR = 0.5;
+    /** Wandering stones: the share of rare stones that hop to a landmark ahead every so often, and how far they look. */
+    static final double WANDER_CHANCE = 0.3;
+    public static final int WANDER_EVERY = 10;
+    public static final int WANDER_STEP = 8;
+    /** A wandering stone's name once it rises: it never stands at a landmark for long. */
+    public static final String WANDERER = "the wandering stone";
+    /** Rites (a setting): how close a kill has to be to count for a waystone's rite, and the other rites. */
+    public static final int RITE_KILL_REACH = 10;
+    public static final int RITE_REACH = CLAIM_REACH + 2;
     static final int CARAVAN_LOOKAHEAD = 8;
     static final int CARAVAN_ARRIVE = 4;
     static final int CARAVAN_CHOICES = 3;
@@ -394,6 +430,22 @@ public final class NomadSim
     boolean deep;
     /** Trade road: legs the caravan has set out on (each one's dice come from the seed and this). */
     int caravanLegs;
+    /** Foresight: the played minute the foreseen fork's warning begins (0 if none foreseen), and its axis. */
+    int foreseen;
+    double foreseenAxis;
+    /** Ward: minutes left on a broken Ward, while being outside costs nothing. */
+    int wardLeft;
+    /** Keystone: armed for the next fork, and minutes left holding both halves of this one. */
+    boolean keystone;
+    int keystoneLeft;
+    /** Shatter: whether the next waystone you claim is shattered instead, and how many have been. */
+    boolean shatterNext;
+    int shattered;
+    /** Vigil and Rites (settings), and the waystone each last asked you about (landmark|circle), or null. */
+    boolean vigil;
+    String vigilAt;
+    boolean rites;
+    String riteAt;
 
     public static NomadSim start(int seed)
     {
@@ -517,6 +569,17 @@ public final class NomadSim
         s.kissLeft = kissLeft;
         s.deep = deep;
         s.caravanLegs = caravanLegs;
+        s.foreseen = foreseen;
+        s.foreseenAxis = foreseenAxis;
+        s.wardLeft = wardLeft;
+        s.keystone = keystone;
+        s.keystoneLeft = keystoneLeft;
+        s.shatterNext = shatterNext;
+        s.shattered = shattered;
+        s.vigil = vigil;
+        s.vigilAt = vigilAt;
+        s.rites = rites;
+        s.riteAt = riteAt;
         return s;
     }
 
@@ -757,7 +820,8 @@ public final class NomadSim
     /** Whether a tile is inside your circle, counting both of Main's halves while it's forked. */
     public boolean inYours(int x, int y)
     {
-        return bound == MAIN ? inMain(x, y) : bound().contains(x, y);
+        return (bound == MAIN ? inMain(x, y) : bound().contains(x, y)) || bound().inWake(x, y)
+            || (bound == MAIN && twin != null && twin.inWake(x, y));
     }
 
     /** A compass word for a heading, such as north-west. */
@@ -943,8 +1007,32 @@ public final class NomadSim
                 gatherLeft = GATHER_MINUTES;
                 line = "Gathering: for an hour every kingdom's circle turns toward the Main circle.";
                 break;
+            case FORESIGHT:
+                line = foresight();
+                break;
+            case WAKE:
+                c.wakeLeft = WAKE_MINUTES;
+                if (bound == MAIN && twin != null) twin.wakeLeft = WAKE_MINUTES;
+                line = "Wake: for an hour the ground your circle leaves stays yours for " + WAKE_TRAIL + " minutes after.";
+                break;
+            case LEAP:
+                line = leap(c);
+                if (line == null) return null;
+                break;
+            case KEYSTONE:
+                if (twin != null)
+                {
+                    keystoneLeft = KEYSTONE_MINUTES;
+                    line = "Keystone: both halves of Main live on for another hour before they part.";
+                }
+                else
+                {
+                    keystone = true;
+                    line = "Keystone: at the next fork, both halves of Main live on for an hour before they part.";
+                }
+                break;
             default:
-                // Helmsman needs a port: see useHelmsman.
+                // Helmsman needs a port (see useHelmsman), Lodestone a landmark (see useLodestone), and a Ward works while held.
                 return null;
         }
         boons.remove(index);
@@ -966,6 +1054,173 @@ public final class NomadSim
         if (near == null) return "Helmsman: the next time a port is inside the Main circle, it sets sail for " + port + ".";
         setCourse(m, near);
         return "Helmsman: the Main circle sets course for " + near.name + ", and will sail from there for " + port + ".";
+    }
+
+    /**
+     * Lodestone: for 3 hours your circle leans toward {@code landmark}, which must be one
+     * {@link #lodestoneTargets()} lists. Returns the log line, or null if nothing was spent.
+     */
+    public String useLodestone(int index, String landmark)
+    {
+        if (index < 0 || index >= boons.size() || !LODESTONE.equals(boons.get(index))) return null;
+        if (landmark == null || !lodestoneTargets().contains(landmark)) return null;
+        Landmarks.Landmark l = Landmarks.byName(landmark);
+        Circle c = bound();
+        c.lodeX = l.x;
+        c.lodeY = l.y;
+        c.lodeLeft = LODE_MINUTES;
+        if (bound == MAIN && twin != null)
+        {
+            twin.lodeX = l.x;
+            twin.lodeY = l.y;
+            twin.lodeLeft = LODE_MINUTES;
+        }
+        boons.remove(index);
+        return "Lodestone: for 3 hours your circle leans toward " + l.name + ".";
+    }
+
+    /** The landmarks a Lodestone can point your circle at: those within {@link #LODE_REACH} tiles, nearest first (for a kingdom's circle, in its kingdom). */
+    public List<String> lodestoneTargets()
+    {
+        Circle c = bound();
+        List<Landmarks.Landmark> near = new ArrayList<>();
+        for (Landmarks.Landmark l : Landmarks.ALL)
+        {
+            double d = Circle.dist(l.x - c.x, l.y - c.y);
+            if (d > LODE_REACH || d < c.radius / 2) continue;
+            if (c.isKingdom() && !c.region().contains(l.x, l.y)) continue;
+            int at = 0;
+            while (at < near.size() && Circle.dist(near.get(at).x - c.x, near.get(at).y - c.y) <= d) at++;
+            near.add(at, l);
+        }
+        List<String> out = new ArrayList<>();
+        for (Landmarks.Landmark l : near) out.add(l.name);
+        return out;
+    }
+
+    /** Foresight: plays a copy of the run ahead to find the next fork's warning, and remembers it. */
+    private String foresight()
+    {
+        NomadSim ahead = copy();
+        ahead.vigil = false;
+        ahead.rites = false;
+        for (int k = 0; k < FORESIGHT_LOOK; k++)
+        {
+            if (ahead.forkWarn > 0 && ahead.twin == null) break;
+            ahead.step(null);
+        }
+        if (ahead.forkWarn <= 0 || ahead.twin != null)
+        {
+            foreseen = 0;
+            return "Foresight: no fork comes in the next " + FORESIGHT_LOOK / 60 + " hours.";
+        }
+        foreseen = ahead.minutes;
+        foreseenAxis = ahead.forkAxis;
+        return "Foresight: the next fork comes in about " + span(Math.max(1, foreseen - minutes)) + ", one half heading "
+            + compass(foreseenAxis) + " and the other " + compass(foreseenAxis + Math.PI) + ".";
+    }
+
+    /** Leap: the circle jumps up to {@link #LEAP_TILES} along its heading, as far as stays on land (or in its kingdom). Null if it can't. */
+    private String leap(Circle c)
+    {
+        if (c.voyage != null) return null;
+        for (int d = LEAP_TILES; d >= 4; d -= 2)
+        {
+            double nx = c.x + StrictMath.cos(c.heading) * d;
+            double ny = c.y + StrictMath.sin(c.heading) * d;
+            boolean ok = c.isKingdom() ? c.region().contains(nx, ny) : Geography.onLand(nx, ny);
+            if (!ok) continue;
+            c.x = nx;
+            c.y = ny;
+            c.wx = c.wy = 0;
+            c.orbitLeft = 0;
+            c.pulse = 45;
+            return "Leap: your circle jumped " + d + " tiles " + compass(c.heading) + ".";
+        }
+        return null;
+    }
+
+    /** Minutes as "45 minutes" or "2h 05m". */
+    static String span(int m)
+    {
+        if (m < 60) return m + (m == 1 ? " minute" : " minutes");
+        return (m / 60) + "h " + (m % 60 < 10 ? "0" : "") + (m % 60) + "m";
+    }
+
+    /** The minute the foreseen fork's warning begins, or 0 if none is foreseen; and its axis. */
+    public int foreseen()
+    {
+        return foreseen;
+    }
+
+    public double foreseenAxis()
+    {
+        return foreseenAxis;
+    }
+
+    public int wardLeft()
+    {
+        return wardLeft;
+    }
+
+    /** Keystone: whether it's armed for the next fork, and minutes left holding both halves of this one. */
+    public boolean keystoneArmed()
+    {
+        return keystone;
+    }
+
+    public int keystoneLeft()
+    {
+        return keystoneLeft;
+    }
+
+    /** Shatter: the next waystone you claim (not a legendary one) is shattered instead, for a 50/50 at a rare boon. */
+    public void setShatterNext(boolean on)
+    {
+        shatterNext = on;
+    }
+
+    public boolean shatterNext()
+    {
+        return shatterNext;
+    }
+
+    /** Vigil (a setting): a waystone in the outer half of its circle needs you on it two minutes running. */
+    public void setVigil(boolean on)
+    {
+        vigil = on;
+        if (!on) vigilAt = null;
+    }
+
+    /** Rites (a setting): each waystone asks for a small rite before it gives up its boon. */
+    public void setRites(boolean on)
+    {
+        rites = on;
+        if (!on) riteAt = null;
+    }
+
+    public boolean ritesOn()
+    {
+        return rites;
+    }
+
+    /**
+     * A rite done where you stand: marks every waystone in reach that asks for it (a kill counts
+     * within {@link #RITE_KILL_REACH} tiles, the rest within {@link #RITE_REACH}). Returns the log
+     * line, or null if no stone wanted it.
+     */
+    public String performRite(String rite, Tile player)
+    {
+        if (!rites || player == null) return null;
+        int reach = Waystone.KILL.equals(rite) ? RITE_KILL_REACH : RITE_REACH;
+        String done = null;
+        for (Waystone w : waystones)
+        {
+            if (w.riteDone || !rite.equals(w.rite()) || Circle.dist(player.x - w.x, player.y - w.y) > reach) continue;
+            w.riteDone = true;
+            if (done == null) done = called(w);
+        }
+        return done == null ? null : "Rite done: " + done + " will give up its boon now.";
     }
 
     /** The ports a Helmsman can send Main to: any that some route your boats can sail reaches. */
@@ -1246,8 +1501,15 @@ public final class NomadSim
             outside = out;
             log.add(out ? "You are outside your circle. It drifts 5x faster and shrinks 1 tile a minute."
                 : "You are back inside your circle.");
+            if (out && wardLeft <= 0 && boons.remove(WARD))
+            {
+                wardLeft = WARD_MINUTES;
+                log.add("Your Ward breaks: for " + WARD_MINUTES + " minutes, being outside costs nothing.");
+            }
         }
-        if (out && b.radius > b.radiusMin)
+        // A broken Ward: outside, your circle neither shrinks nor hurries.
+        boolean penalty = out && wardLeft <= 0;
+        if (penalty && b.radius > b.radiusMin)
         {
             b.radius = Math.max(b.radiusMin, b.radius - 1);
             b.radiusTarget = b.radius;
@@ -1274,7 +1536,7 @@ public final class NomadSim
                 pull = GRAVITY_PULL;
             }
             Tile lean = yours && !out && player != null && dist(c, player) >= c.radius - LEAN_BAND ? player : null;
-            int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
+            int speedup = (yours && penalty ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
                 * (j == MAIN && stormLeft > 0 && stormKind == GALE ? GALE_SPEEDUP : 1)
                 * (c.isKingdom() && stampedeLeft > 0 ? STAMPEDE_SPEEDUP : 1)
                 * (aurora == RUSH ? RUSH_SPEEDUP : 1);
@@ -1299,6 +1561,7 @@ public final class NomadSim
             else if (c.isCaravan()) caravan(c, yours, stranded, log);
             else move(c, rng, speedup, yours, toward, pull, lean, log);
         }
+        wakes(log);
         minutes++;
         tickBoons(log);
         fork(player, log);
@@ -1366,6 +1629,40 @@ public final class NomadSim
         if (gatherLeft > 0 && --gatherLeft == 0) log.add("The Gathering is over: the kingdoms' circles go their own ways.");
         if (homewardLeft > 0 && --homewardLeft == 0) log.add("Homeward is ready again: a Home Teleport from inside Main will carry it with you.");
         if (homingLeft > 0) homingLeft--;
+        if (wardLeft > 0 && --wardLeft == 0) log.add("The Ward's protection has worn off.");
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            if (c.lodeLeft > 0 && --c.lodeLeft == 0 && j == bound) log.add("The Lodestone's pull has faded.");
+        }
+        if (twin != null && twin.lodeLeft > 0) twin.lodeLeft--;
+    }
+
+    /** Wake: a circle leaving one adds where it is each minute; once it stops, the oldest minute fades each minute. */
+    private void wakes(List<String> log)
+    {
+        for (int j = 0; j <= circles.size(); j++)
+        {
+            // A forked Main's other half leaves a Wake of its own.
+            Circle c = j < circles.size() ? circles.get(j) : twin;
+            if (c == null) continue;
+            if (c.wakeLeft > 0)
+            {
+                double[] w = c.wake == null ? new double[0] : c.wake;
+                int keep = Math.min(w.length, (WAKE_TRAIL - 1) * 3);
+                double[] next = new double[keep + 3];
+                System.arraycopy(w, w.length - keep, next, 0, keep);
+                next[keep] = c.x;
+                next[keep + 1] = c.y;
+                next[keep + 2] = c.radius;
+                c.wake = next;
+                if (--c.wakeLeft == 0 && j == bound && c == bound()) log.add("Your circle stops leaving a Wake; the ground behind it fades over " + WAKE_TRAIL + " minutes.");
+            }
+            else if (c.wake != null)
+            {
+                c.wake = c.wake.length <= 3 ? null : java.util.Arrays.copyOfRange(c.wake, 3, c.wake.length);
+            }
+        }
     }
 
     /** The Wanderer's Crown: the circle's middle walks toward you, up to 10 tiles a minute, never off land or out of its kingdom. */
@@ -1396,6 +1693,8 @@ public final class NomadSim
     /** Claims a waystone you stand on, fades those whose circle drifted off, and places waiting summons. */
     private void waystones(Tile player, List<String> log)
     {
+        String keptVigil = null;
+        String askedRite = null;
         if (player != null && boons.size() < BOONS_HELD)
         {
             for (int i = 0; i < waystones.size(); i++)
@@ -1405,9 +1704,42 @@ public final class NomadSim
                 boolean anywhere = w.pilgrim || LEGENDARY.equals(w.tier);
                 if (w.circle != bound || (!anywhere && !bound().contains(player.x, player.y))) continue;
                 if (Circle.dist(player.x - w.x, player.y - w.y) > CLAIM_REACH) continue;
+                String key = w.landmark + "|" + w.circle;
+                if (rites && !w.riteDone)
+                {
+                    // Rites: it waits for its rite. It says what that is once each time you step onto it.
+                    askedRite = key;
+                    if (!key.equals(riteAt)) log.add("Rite: to claim " + called(w) + ", " + Waystone.riteText(w.rite()) + ".");
+                    break;
+                }
+                Circle host = circles.get(w.circle);
+                if (vigil && !anywhere && Circle.dist(w.x - host.x, w.y - host.y) > host.radius / 2 && !key.equals(vigilAt))
+                {
+                    // Vigil: near the edge, it takes a minute standing on it.
+                    keptVigil = key;
+                    log.add("Vigil: stand your ground on " + called(w) + " for a minute to claim it.");
+                    break;
+                }
                 waystones.remove(i);
+                if (shatterNext && !LEGENDARY.equals(w.tier))
+                {
+                    shatterNext = false;
+                    Rng dice = new Rng(seed ^ ((shattered + 1) * 0x2F1B3C4D));
+                    shattered++;
+                    if (dice.next() < SHATTER_ODDS)
+                    {
+                        String won = RARE_BOONS[(int) (dice.next() * RARE_BOONS.length)];
+                        boons.add(won);
+                        log.add("You shattered " + called(w) + ": it burst into " + won + " (rare)!");
+                    }
+                    else
+                    {
+                        log.add("You shattered " + called(w) + ": it crumbled to nothing.");
+                    }
+                    break;
+                }
                 boons.add(w.boon);
-                log.add("You claimed the waystone at " + w.landmark + ": " + w.boon + ". Spend it from the sidebar.");
+                log.add("You claimed " + called(w) + ": " + w.boon + ". Spend it from the sidebar.");
                 if (w.circle == MAIN)
                 {
                     // Homing: Main leans back toward where you claimed it, less and less over 12 hours.
@@ -1418,6 +1750,8 @@ public final class NomadSim
                 break;
             }
         }
+        vigilAt = keptVigil;
+        riteAt = askedRite;
         for (int i = waystones.size() - 1; i >= 0; i--)
         {
             Waystone w = waystones.get(i);
@@ -1438,11 +1772,12 @@ public final class NomadSim
             }
             if (circles.get(w.circle).contains(w.x, w.y)) continue;
             waystones.remove(i);
-            log.add("The waystone at " + w.landmark + " faded: its circle drifted off it.");
+            log.add(capital(called(w)) + " faded: its circle drifted off it.");
         }
         for (Waystone w : waystones)
         {
             w.age++;
+            if (w.wander && w.age % WANDER_EVERY == 0) hop(w, log);
             if (w.pilgrim || w.life > 0 || !COMMON.equals(w.tier) || w.age != RIPEN) continue;
             Rng dice = new Rng(seed ^ ((ripened + 1) * 0x68E31DA4));
             ripened++;
@@ -1451,6 +1786,49 @@ public final class NomadSim
             log.add("The waystone at " + w.landmark + " ripened: it holds " + w.boon + " (rare) now.");
         }
         placePending(log);
+    }
+
+    /** A wandering stone hops on along its heading, if it can. */
+    private void hop(Waystone w, List<String> log)
+    {
+        double[] to = nextHop(w);
+        if (to == null) return;
+        w.x = (int) to[0];
+        w.y = (int) to[1];
+        w.heading = to[2];
+        if (w.circle == bound) log.add("The wandering stone hopped " + WANDER_STEP + " tiles " + compass(w.heading) + ".");
+    }
+
+    /**
+     * Where a wandering stone hops next, as {x, y, heading}: {@link #WANDER_STEP} tiles along its
+     * heading, or turned as little as it takes to stay on land inside its circle. Null if it can't.
+     */
+    public double[] nextHop(Waystone w)
+    {
+        if (!w.wander) return null;
+        Circle c = circles.get(w.circle);
+        for (int k = 0; k < 8; k++)
+        {
+            // Straight on, then 45 degrees either way, then 90, and so on round to straight back.
+            int t = k == 0 ? 0 : k == 7 ? 4 : (k + 1) / 2 * (k % 2 == 1 ? 1 : -1);
+            double h = w.heading + t * Math.PI / 4;
+            int nx = (int) Math.round(w.x + StrictMath.cos(h) * WANDER_STEP);
+            int ny = (int) Math.round(w.y + StrictMath.sin(h) * WANDER_STEP);
+            if (!c.contains(nx, ny) || !Geography.onLand(nx, ny) || takenAt(nx, ny)) continue;
+            return new double[]{nx, ny, h};
+        }
+        return null;
+    }
+
+    /** "the waystone at X", or "the wandering stone". */
+    static String called(Waystone w)
+    {
+        return WANDERER.equals(w.landmark) ? WANDERER : "the waystone at " + w.landmark;
+    }
+
+    private static String capital(String s)
+    {
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     private void placePending(List<String> log)
@@ -1554,12 +1932,41 @@ public final class NomadSim
             lanternX = 0;
             lanternY = 0;
         }
-        String[] pool = RARE.equals(tier) ? RARE_BOONS : COMMON_BOONS;
+        // Kingdom stones: the Wilderness only gives rare ones, and a kingdom's stone often holds its favourite boon.
+        Circle c = circles.get(o[1]);
+        boolean rare = RARE.equals(tier) || (c.isKingdom() && "wilderness".equals(c.regionId));
+        String[] pool = rare ? RARE_BOONS : COMMON_BOONS;
         Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
-        Waystone w = stone(l, o[1], RARE.equals(tier) ? RARE : COMMON, pool[(int) (rng.next() * pool.length)]);
-        Circle c = circles.get(w.circle);
-        return "A waystone rose at " + l.name + (w.circle == bound ? " in your circle" : " in " + c.name())
-            + ", holding " + w.boon + " (" + (RARE.equals(tier) ? "rare" : "common") + ").";
+        String boon = pool[(int) (rng.next() * pool.length)];
+        if (c.isKingdom() && rng.next() < KINGDOM_FAVOUR) boon = favourite(c.regionId, rare);
+        Waystone w = stone(l, o[1], rare ? RARE : COMMON, boon);
+        if (rare && rng.next() < WANDER_CHANCE)
+        {
+            w.wander = true;
+            w.landmark = WANDERER;
+            w.heading = round(rng.next() * Math.PI * 2 * 1e4) / 1e4;
+        }
+        return (w.wander ? "A wandering stone rose at " : "A waystone rose at ") + l.name + (w.circle == bound ? " in your circle" : " in " + c.name())
+            + ", holding " + w.boon + " (" + (rare ? "rare" : "common") + ")." + (w.wander ? " It hops " + WANDER_STEP + " tiles every " + WANDER_EVERY + " minutes." : "");
+    }
+
+    /** A kingdom's favourite boon, common or rare, after its temperament. */
+    public static String favourite(String regionId, boolean rare)
+    {
+        switch (regionId)
+        {
+            case "misthalin": return rare ? BRIDGE : CALM;
+            case "asgarnia": return rare ? KEYSTONE : ANCHOR;
+            case "kandarin": return rare ? LODESTONE : LANTERN;
+            case "fremennik": return rare ? WAKE : EXPAND;
+            case "desert": return rare ? LEAP : TAILWIND;
+            case "morytania": return rare ? RUDDER : WARD;
+            case "karamja": return rare ? WAKE : TAILWIND;
+            case "kourend": return rare ? LODESTONE : FORESIGHT;
+            case "tirannwn": return rare ? KEYSTONE : FORESIGHT;
+            case "varlamore": return rare ? BRIDGE : EXPAND;
+            default: return rare ? LEAP : WARD;
+        }
     }
 
     /** A legendary stone: the landmark in your circle furthest from its middle. It never fades. */
@@ -1745,6 +2152,11 @@ public final class NomadSim
             if (c.isMain() && homingLeft > 0 && depth == 0 && c.port == null && !orbiting)
             {
                 steer(c, homingX, homingY, HOMING_PULL * homingLeft / HOMING_MINUTES);
+            }
+            // Lodestone: it leans toward the landmark you picked.
+            if (c.lodeLeft > 0 && c.port == null && !orbiting)
+            {
+                steer(c, c.lodeX, c.lodeY, LODE_PULL);
             }
             if (toward != null)
             {
@@ -2122,6 +2534,12 @@ public final class NomadSim
         Circle m = main();
         if (twin != null)
         {
+            if (keystoneLeft > 0)
+            {
+                // Keystone: both halves live on until it gives way.
+                if (--keystoneLeft == 0) log.add("The Keystone gave way: the halves of Main part as they drift apart, and the one you stand in lives on.");
+                return;
+            }
             forkAge++;
             if (m.gap(twin) <= 0 && forkAge < FORK_GIVE_UP) return;
             settle(player, log);
@@ -2146,6 +2564,12 @@ public final class NomadSim
             lastBig = minutes;
             log.add("The Main circle forked! One half heads " + compass(forkAxis) + ", the other " + compass(forkAxis + Math.PI)
                 + ". Stand in the half you want when they part.");
+            if (keystone)
+            {
+                keystone = false;
+                keystoneLeft = KEYSTONE_MINUTES;
+                log.add("The Keystone holds: both halves live on for an hour before they part.");
+            }
             return;
         }
         if (nextFork <= 0)
@@ -2176,6 +2600,7 @@ public final class NomadSim
             }
         }
         forkWarn = FORK_WARN;
+        foreseen = 0;
         log.add("The Main circle is about to fork. In " + FORK_WARN + " minutes it splits in two, one half heading "
             + compass(forkAxis) + " and the other " + compass(forkAxis + Math.PI)
             + ". The half you're standing in when they part lives on.");

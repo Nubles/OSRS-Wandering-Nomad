@@ -136,4 +136,14 @@ public final class Landmarks
     private Landmarks()
     {
     }
+
+    /** The landmark of that name, or null. */
+    public static Landmark byName(String name)
+    {
+        for (Landmark l : ALL)
+        {
+            if (l.name.equals(name)) return l;
+        }
+        return null;
+    }
 }

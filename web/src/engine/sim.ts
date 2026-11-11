@@ -77,11 +77,18 @@ export const CALM = 'Calm';
 export const CROWN = "Wanderer's Crown";
 export const HELMSMAN = 'Helmsman';
 export const GATHERING = 'Gathering';
+/** Wave 3 boons, as in NomadSim.java. */
+export const FORESIGHT = 'Foresight';
+export const WARD = 'Ward';
+export const WAKE = 'Wake';
+export const LEAP = 'Leap';
+export const LODESTONE = 'Lodestone';
+export const KEYSTONE = 'Keystone';
 export const COMMON = 'common';
 export const RARE = 'rare';
 export const LEGENDARY = 'legendary';
-const COMMON_BOONS = [EXPAND, TAILWIND, ANCHOR, LANTERN, CALM];
-const RARE_BOONS = [RUDDER, BRIDGE];
+const COMMON_BOONS = [EXPAND, TAILWIND, ANCHOR, LANTERN, CALM, FORESIGHT, WARD];
+const RARE_BOONS = [RUDDER, BRIDGE, WAKE, LEAP, LODESTONE, KEYSTONE];
 const LEGENDARY_BOONS = [CROWN, HELMSMAN, GATHERING];
 export const BOONS_HELD = 3;
 export const CLAIM_REACH = 3;
@@ -204,6 +211,64 @@ const CARAVAN_LOOKAHEAD = 8;
 const CARAVAN_ARRIVE = 4;
 const CARAVAN_CHOICES = 3;
 export const CARAVAN_RADIUS = 10;
+export const FORESIGHT_LOOK = 720;
+export const WARD_MINUTES = 5;
+export const WAKE_MINUTES = 60;
+export const WAKE_TRAIL = 15;
+export const LEAP_TILES = 40;
+export const LODE_MINUTES = 180;
+const LODE_PULL = 0.12;
+export const LODE_REACH = 300;
+export const KEYSTONE_MINUTES = 60;
+const SHATTER_ODDS = 0.5;
+const KINGDOM_FAVOUR = 0.5;
+const WANDER_CHANCE = 0.3;
+export const WANDER_EVERY = 10;
+export const WANDER_STEP = 8;
+export const WANDERER = 'the wandering stone';
+export const RITE_KILL_REACH = 10;
+export const RITE_REACH = CLAIM_REACH + 2;
+/** The rites a waystone can ask for (with Rites on), as in Waystone.java. */
+export const RITES = ['bow', 'eat', 'fire', 'kill'];
+
+/** The rite a stone asks for, from where it stands. */
+export const riteOf = (w: { x: number; y: number }) => RITES[(((w.x * 7 + w.y * 13) % 4) + 4) % 4];
+
+export function riteText(rite: string): string {
+  switch (rite) {
+    case 'bow': return 'bow to it';
+    case 'eat': return 'eat something beside it';
+    case 'fire': return 'light a fire beside it';
+    default: return 'kill something near it';
+  }
+}
+
+/** A kingdom's favourite boon, common or rare. As in NomadSim.java. */
+export function favourite(regionId: string, rare: boolean): string {
+  switch (regionId) {
+    case 'misthalin': return rare ? BRIDGE : CALM;
+    case 'asgarnia': return rare ? KEYSTONE : ANCHOR;
+    case 'kandarin': return rare ? LODESTONE : LANTERN;
+    case 'fremennik': return rare ? WAKE : EXPAND;
+    case 'desert': return rare ? LEAP : TAILWIND;
+    case 'morytania': return rare ? RUDDER : WARD;
+    case 'karamja': return rare ? WAKE : TAILWIND;
+    case 'kourend': return rare ? LODESTONE : FORESIGHT;
+    case 'tirannwn': return rare ? KEYSTONE : FORESIGHT;
+    case 'varlamore': return rare ? BRIDGE : EXPAND;
+    default: return rare ? LEAP : WARD;
+  }
+}
+
+/** Minutes as "45 minutes" or "2h 05m". */
+export function span(m: number): string {
+  if (m < 60) return `${m} ${m === 1 ? 'minute' : 'minutes'}`;
+  return `${Math.trunc(m / 60)}h ${m % 60 < 10 ? '0' : ''}${m % 60}m`;
+}
+
+/** "the waystone at X", or "the wandering stone". */
+const called = (w: Waystone) => (w.landmark === WANDERER ? WANDERER : `the waystone at ${w.landmark}`);
+const capital = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 /** A kingdom's signature event: its name, and what it does. As in NomadSim.java. */
 export function auroraName(regionId?: string): string {
@@ -341,6 +406,13 @@ export interface CircleState {
   orbitR: number;
   orbitSide: number;
   orbitLeft: number;
+  /** Lodestone: the landmark tile it leans toward, and the minutes left. */
+  lodeX: number;
+  lodeY: number;
+  lodeLeft: number;
+  /** Wake: minutes left leaving one, and the ground it holds as x, y, radius triples, oldest first. */
+  wakeLeft: number;
+  wake?: number[];
 }
 
 /** A waystone holding one boon at a landmark inside a circle (by index). */
@@ -358,6 +430,11 @@ export interface Waystone {
   pilgrim: boolean;
   /** Minutes it lasts however its circle drifts (lightning, flotsam), 0 if only its circle leaving ends it. */
   life: number;
+  /** A wandering stone hops on along its heading every 10 minutes. */
+  wander: boolean;
+  heading: number;
+  /** Rites (a setting): whether its rite is done. */
+  riteDone: boolean;
 }
 
 export interface SimState {
@@ -446,15 +523,29 @@ export interface SimState {
   kissLeft: number;
   deep: boolean;
   caravanLegs: number;
+  foreseen: number;
+  foreseenAxis: number;
+  wardLeft: number;
+  keystone: boolean;
+  keystoneLeft: number;
+  shatterNext: boolean;
+  shattered: number;
+  vigil: boolean;
+  vigilAt?: string;
+  rites: boolean;
+  riteAt?: string;
 }
 
 const WAVE_TWO_ZEROES = [
   'bolts', 'stampedes', 'nextStampede', 'stampedeWarn', 'stampedeLeft', 'auroras', 'nextAurora', 'auroraCircle', 'auroraLeft',
   'auroraGrow', 'eclipse', 'eclipseLeft', 'rifts', 'nextRift', 'riftLeft', 'laneAge', 'flotsams', 'nextFlotsam', 'kingdomSince',
   'gravityWith', 'gravity', 'homingX', 'homingY', 'homingLeft', 'kissA', 'kissB', 'kissLeft', 'caravanLegs',
+  'foreseen', 'foreseenAxis', 'wardLeft', 'keystoneLeft', 'shattered',
 ] as const;
 
-const ORBIT_ZEROES = ['orbitX', 'orbitY', 'orbitR', 'orbitSide', 'orbitLeft'] as const;
+const WAVE_THREE_FALSES = ['keystone', 'shatterNext', 'vigil', 'rites'] as const;
+
+const ORBIT_ZEROES = ['orbitX', 'orbitY', 'orbitR', 'orbitSide', 'orbitLeft', 'lodeX', 'lodeY', 'lodeLeft', 'wakeLeft'] as const;
 
 export const contains = (c: CircleState, x: number, y: number) => dist(x - c.x, y - c.y) <= c.radius;
 export const isCaravan = (c: CircleState) => c.regionId === 'caravan';
@@ -534,7 +625,13 @@ export class NomadSim {
     for (const c of [...state.circles, state.twin, state.ghost, state.rift]) {
       if (c) for (const k of ORBIT_ZEROES) c[k] ??= 0;
     }
-    for (const w of state.waystones) w.life ??= 0;
+    for (const w of state.waystones) {
+      w.life ??= 0;
+      w.wander ??= false;
+      w.heading ??= 0;
+      w.riteDone ??= false;
+    }
+    for (const k of WAVE_THREE_FALSES) state[k] ??= false;
     if (!state.circles.some(isCaravan)) this.addCaravan();
   }
 
@@ -563,7 +660,7 @@ export class NomadSim {
       forks: 0, nextFork: 0, lastBig: 0, forkWarn: 0, forkAxis: 0, forkAge: 0,
       storms: 0, nextStorm: 0, stormWarn: 0, stormLeft: 0, stormKind: 0, squallFrom: 0,
       ripened: 0, comets: 0, nextComet: 0, homewardLeft: 0, ghostLeft: 0, ghostApart: false, voyages: 0, gatherLeft: 0,
-      borderKiss: false, deep: false,
+      borderKiss: false, deep: false, keystone: false, shatterNext: false, vigil: false, rites: false,
     } as unknown as SimState;
     for (const k of WAVE_TWO_ZEROES) state[k] = 0;
     // The constructor adds the caravan.
@@ -642,7 +739,9 @@ export class NomadSim {
 
   /** Whether a tile is inside your circle, counting both of Main's halves while it's forked. */
   inYours(x: number, y: number): boolean {
-    return this.state.bound === MAIN ? this.inMain(x, y) : contains(this.bound, x, y);
+    const s = this.state;
+    return (s.bound === MAIN ? this.inMain(x, y) : contains(this.bound, x, y)) || inWake(this.bound, x, y)
+      || (s.bound === MAIN && s.twin != null && inWake(s.twin, x, y));
   }
 
   name(c: CircleState): string {
@@ -743,11 +842,177 @@ export class NomadSim {
         s.gatherLeft = GATHER_MINUTES;
         line = "Gathering: for an hour every kingdom's circle turns toward the Main circle.";
         break;
+      case FORESIGHT:
+        line = this.foresight();
+        break;
+      case WAKE:
+        c.wakeLeft = WAKE_MINUTES;
+        if (s.bound === MAIN && s.twin) s.twin.wakeLeft = WAKE_MINUTES;
+        line = `Wake: for an hour the ground your circle leaves stays yours for ${WAKE_TRAIL} minutes after.`;
+        break;
+      case LEAP: {
+        const leapt = this.leap(c);
+        if (leapt == null) return null;
+        line = leapt;
+        break;
+      }
+      case KEYSTONE:
+        if (s.twin) {
+          s.keystoneLeft = KEYSTONE_MINUTES;
+          line = 'Keystone: both halves of Main live on for another hour before they part.';
+        } else {
+          s.keystone = true;
+          line = 'Keystone: at the next fork, both halves of Main live on for an hour before they part.';
+        }
+        break;
       default:
         return null;
     }
     s.boons.splice(index, 1);
     return line;
+  }
+
+  /** Lodestone: your circle leans toward a landmark for 3 hours. As in NomadSim.java. */
+  useLodestone(index: number, landmark: string): string | null {
+    const s = this.state;
+    if (index < 0 || index >= s.boons.length || s.boons[index] !== LODESTONE) return null;
+    if (!this.lodestoneTargets().includes(landmark)) return null;
+    const l = LANDMARKS.find((k) => k.name === landmark)!;
+    const c = this.bound;
+    c.lodeX = l.x;
+    c.lodeY = l.y;
+    c.lodeLeft = LODE_MINUTES;
+    if (s.bound === MAIN && s.twin) {
+      s.twin.lodeX = l.x;
+      s.twin.lodeY = l.y;
+      s.twin.lodeLeft = LODE_MINUTES;
+    }
+    s.boons.splice(index, 1);
+    return `Lodestone: for 3 hours your circle leans toward ${l.name}.`;
+  }
+
+  /** The landmarks a Lodestone can point your circle at, nearest first. */
+  lodestoneTargets(): string[] {
+    const c = this.bound;
+    const region = isKingdom(c) ? this.geo.region(c.regionId!)! : null;
+    const near: Landmark[] = [];
+    for (const l of LANDMARKS) {
+      const d = dist(l.x - c.x, l.y - c.y);
+      if (d > LODE_REACH || d < c.radius / 2) continue;
+      if (region && !this.geo.inRegion(region, l.x, l.y)) continue;
+      let at = 0;
+      while (at < near.length && dist(near[at].x - c.x, near[at].y - c.y) <= d) at++;
+      near.splice(at, 0, l);
+    }
+    return near.map((l) => l.name);
+  }
+
+  /** Foresight: plays a copy of the run ahead to find the next fork's warning. */
+  private foresight(): string {
+    const s = this.state;
+    const ahead = this.clone();
+    ahead.state.vigil = false;
+    ahead.state.rites = false;
+    for (let k = 0; k < FORESIGHT_LOOK; k++) {
+      if (ahead.state.forkWarn > 0 && !ahead.state.twin) break;
+      ahead.step(null);
+    }
+    if (ahead.state.forkWarn <= 0 || ahead.state.twin) {
+      s.foreseen = 0;
+      return `Foresight: no fork comes in the next ${FORESIGHT_LOOK / 60} hours.`;
+    }
+    s.foreseen = ahead.state.minutes;
+    s.foreseenAxis = ahead.state.forkAxis;
+    return `Foresight: the next fork comes in about ${span(Math.max(1, s.foreseen - s.minutes))}, one half heading ${compass(s.foreseenAxis)} and the other ${compass(s.foreseenAxis + Math.PI)}.`;
+  }
+
+  /** Leap: jumps up to 40 tiles along its heading, as far as stays on land or in its kingdom. */
+  private leap(c: CircleState): string | null {
+    if (c.voyage) return null;
+    const region = isKingdom(c) ? this.geo.region(c.regionId!)! : null;
+    for (let d = LEAP_TILES; d >= 4; d -= 2) {
+      const nx = c.x + Math.cos(c.heading) * d;
+      const ny = c.y + Math.sin(c.heading) * d;
+      const ok = region ? this.geo.inRegion(region, nx, ny) : this.geo.onLand(nx, ny);
+      if (!ok) continue;
+      c.x = nx;
+      c.y = ny;
+      c.wx = c.wy = 0;
+      c.orbitLeft = 0;
+      c.pulse = 45;
+      return `Leap: your circle jumped ${d} tiles ${compass(c.heading)}.`;
+    }
+    return null;
+  }
+
+  setShatterNext(on: boolean) {
+    this.state.shatterNext = on;
+  }
+
+  setVigil(on: boolean) {
+    this.state.vigil = on;
+    if (!on) delete this.state.vigilAt;
+  }
+
+  setRites(on: boolean) {
+    this.state.rites = on;
+    if (!on) delete this.state.riteAt;
+  }
+
+  /** A rite done where you stand. As in NomadSim.java. */
+  performRite(rite: string, player: Tile | null): string | null {
+    const s = this.state;
+    if (!s.rites || player == null) return null;
+    const reach = rite === 'kill' ? RITE_KILL_REACH : RITE_REACH;
+    let done: string | null = null;
+    for (const w of s.waystones) {
+      if (w.riteDone || riteOf(w) !== rite || dist(player.x - w.x, player.y - w.y) > reach) continue;
+      w.riteDone = true;
+      done ??= called(w);
+    }
+    return done == null ? null : `Rite done: ${done} will give up its boon now.`;
+  }
+
+  /** Where a wandering stone hops next, as [x, y, heading], or null. As in NomadSim.java. */
+  nextHop(w: Waystone): [number, number, number] | null {
+    if (!w.wander) return null;
+    const c = this.circles[w.circle];
+    for (let k = 0; k < 8; k++) {
+      const t = k === 0 ? 0 : k === 7 ? 4 : Math.trunc((k + 1) / 2) * (k % 2 === 1 ? 1 : -1);
+      const h = w.heading + (t * Math.PI) / 4;
+      const nx = javaRound(w.x + Math.cos(h) * WANDER_STEP);
+      const ny = javaRound(w.y + Math.sin(h) * WANDER_STEP);
+      if (!contains(c, nx, ny) || !this.geo.onLand(nx, ny) || this.takenAt(nx, ny)) continue;
+      return [nx, ny, h];
+    }
+    return null;
+  }
+
+  private hop(w: Waystone, log: string[]) {
+    const to = this.nextHop(w);
+    if (!to) return;
+    [w.x, w.y, w.heading] = to;
+    if (w.circle === this.state.bound) log.push(`The wandering stone hopped ${WANDER_STEP} tiles ${compass(w.heading)}.`);
+  }
+
+  /** Wake: a circle leaving one adds where it is each minute; once it stops, the oldest minute fades each minute. */
+  private wakes(log: string[]) {
+    const s = this.state;
+    const all: (CircleState | undefined)[] = [...this.circles, s.twin];
+    all.forEach((c, j) => {
+      if (!c) return;
+      if (c.wakeLeft > 0) {
+        const w = c.wake ?? [];
+        const keep = Math.min(w.length, (WAKE_TRAIL - 1) * 3);
+        c.wake = [...w.slice(w.length - keep), c.x, c.y, c.radius];
+        if (--c.wakeLeft === 0 && j === s.bound && c === this.bound) {
+          log.push(`Your circle stops leaving a Wake; the ground behind it fades over ${WAKE_TRAIL} minutes.`);
+        }
+      } else if (c.wake) {
+        if (c.wake.length <= 3) delete c.wake;
+        else c.wake = c.wake.slice(3);
+      }
+    });
   }
 
   /** Helmsman: Main's next voyage goes to the port you pick. As in NomadSim.java. */
@@ -900,8 +1165,16 @@ export class NomadSim {
     if (out !== s.outside) {
       s.outside = out;
       log.push(out ? 'You are outside your circle. It drifts 5x faster and shrinks 1 tile a minute.' : 'You are back inside your circle.');
+      const ward = s.boons.indexOf(WARD);
+      if (out && s.wardLeft <= 0 && ward >= 0) {
+        s.boons.splice(ward, 1);
+        s.wardLeft = WARD_MINUTES;
+        log.push(`Your Ward breaks: for ${WARD_MINUTES} minutes, being outside costs nothing.`);
+      }
     }
-    if (out && b.radius > b.radiusMin) {
+    // A broken Ward: outside, your circle neither shrinks nor hurries.
+    const penalty = out && s.wardLeft <= 0;
+    if (penalty && b.radius > b.radiusMin) {
       b.radius = Math.max(b.radiusMin, b.radius - 1);
       b.radiusTarget = b.radius;
     }
@@ -922,7 +1195,7 @@ export class NomadSim {
         pull = GRAVITY_PULL;
       }
       const lean = yours && !out && player != null && dist(player.x - c.x, player.y - c.y) >= c.radius - LEAN_BAND ? player : null;
-      const speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
+      const speedup = (yours && penalty ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
         * (j === MAIN && s.stormLeft > 0 && s.stormKind === GALE ? GALE_SPEEDUP : 1)
         * (isKingdom(c) && s.stampedeLeft > 0 ? STAMPEDE_SPEEDUP : 1)
         * (aurora === RUSH ? RUSH_SPEEDUP : 1);
@@ -941,6 +1214,7 @@ export class NomadSim {
       } else if (isCaravan(c)) this.caravan(c, yours, stranded, log);
       else this.move(c, rng, speedup, yours, toward, pull, lean, log);
     });
+    this.wakes(log);
     s.minutes++;
     this.tickBoons(log);
     this.fork(player, log);
@@ -997,6 +1271,11 @@ export class NomadSim {
     if (s.gatherLeft > 0 && --s.gatherLeft === 0) log.push("The Gathering is over: the kingdoms' circles go their own ways.");
     if (s.homewardLeft > 0 && --s.homewardLeft === 0) log.push('Homeward is ready again: a Home Teleport from inside Main will carry it with you.');
     if (s.homingLeft > 0) s.homingLeft--;
+    if (s.wardLeft > 0 && --s.wardLeft === 0) log.push("The Ward's protection has worn off.");
+    this.circles.forEach((c, j) => {
+      if (c.lodeLeft > 0 && --c.lodeLeft === 0 && j === s.bound) log.push("The Lodestone's pull has faded.");
+    });
+    if (s.twin && s.twin.lodeLeft > 0) s.twin.lodeLeft--;
   }
 
   /** The Wanderer's Crown: the circle's middle walks toward you, up to 10 tiles a minute. */
@@ -1106,15 +1385,42 @@ export class NomadSim {
 
   private waystones(player: Tile | null, log: string[]) {
     const s = this.state;
+    let keptVigil: string | undefined;
+    let askedRite: string | undefined;
     if (player != null && s.boons.length < BOONS_HELD) {
       for (let i = 0; i < s.waystones.length; i++) {
         const w = s.waystones[i];
         const anywhere = w.pilgrim || w.tier === LEGENDARY;
         if (w.circle !== s.bound || (!anywhere && !contains(this.bound, player.x, player.y))) continue;
         if (dist(player.x - w.x, player.y - w.y) > CLAIM_REACH) continue;
+        const key = `${w.landmark}|${w.circle}`;
+        if (s.rites && !w.riteDone) {
+          askedRite = key;
+          if (key !== s.riteAt) log.push(`Rite: to claim ${called(w)}, ${riteText(riteOf(w))}.`);
+          break;
+        }
+        const host = this.circles[w.circle];
+        if (s.vigil && !anywhere && dist(w.x - host.x, w.y - host.y) > host.radius / 2 && key !== s.vigilAt) {
+          keptVigil = key;
+          log.push(`Vigil: stand your ground on ${called(w)} for a minute to claim it.`);
+          break;
+        }
         s.waystones.splice(i, 1);
+        if (s.shatterNext && w.tier !== LEGENDARY) {
+          s.shatterNext = false;
+          const dice = new Rng(s.seed ^ Math.imul(s.shattered + 1, 0x2f1b3c4d));
+          s.shattered++;
+          if (dice.next() < SHATTER_ODDS) {
+            const won = RARE_BOONS[Math.floor(dice.next() * RARE_BOONS.length)];
+            s.boons.push(won);
+            log.push(`You shattered ${called(w)}: it burst into ${won} (rare)!`);
+          } else {
+            log.push(`You shattered ${called(w)}: it crumbled to nothing.`);
+          }
+          break;
+        }
         s.boons.push(w.boon);
-        log.push(`You claimed the waystone at ${w.landmark}: ${w.boon}. Spend it from the sidebar.`);
+        log.push(`You claimed ${called(w)}: ${w.boon}. Spend it from the sidebar.`);
         if (w.circle === MAIN) {
           // Homing: Main leans back toward where you claimed it, less and less over 12 hours.
           s.homingX = w.x;
@@ -1124,6 +1430,10 @@ export class NomadSim {
         break;
       }
     }
+    if (keptVigil != null) s.vigilAt = keptVigil;
+    else delete s.vigilAt;
+    if (askedRite != null) s.riteAt = askedRite;
+    else delete s.riteAt;
     for (let i = s.waystones.length - 1; i >= 0; i--) {
       const w = s.waystones[i];
       if (w.tier === LEGENDARY) continue;
@@ -1140,10 +1450,11 @@ export class NomadSim {
       }
       if (contains(this.circles[w.circle], w.x, w.y)) continue;
       s.waystones.splice(i, 1);
-      log.push(`The waystone at ${w.landmark} faded: its circle drifted off it.`);
+      log.push(`${capital(called(w))} faded: its circle drifted off it.`);
     }
     for (const w of s.waystones) {
       w.age++;
+      if (w.wander && w.age % WANDER_EVERY === 0) this.hop(w, log);
       if (w.pilgrim || w.life > 0 || w.tier !== COMMON || w.age !== RIPEN) continue;
       const dice = new Rng(s.seed ^ Math.imul(s.ripened + 1, 0x68e31da4));
       s.ripened++;
@@ -1222,10 +1533,20 @@ export class NomadSim {
       s.lanternX = 0;
       s.lanternY = 0;
     }
-    const pool = tier === RARE ? RARE_BOONS : COMMON_BOONS;
+    // Kingdom stones: the Wilderness only gives rare ones, and a kingdom's stone often holds its favourite boon.
+    const c = this.circles[j];
+    const rare = tier === RARE || (isKingdom(c) && c.regionId === 'wilderness');
+    const pool = rare ? RARE_BOONS : COMMON_BOONS;
     const l: Landmark = LANDMARKS[k];
-    const w = this.stone(l, j, tier === RARE ? RARE : COMMON, pool[Math.floor(rng.next() * pool.length)]);
-    return `A waystone rose at ${l.name}${j === s.bound ? ' in your circle' : ` in ${this.name(this.circles[j])}`}, holding ${w.boon} (${tier === RARE ? 'rare' : 'common'}).`;
+    let boon = pool[Math.floor(rng.next() * pool.length)];
+    if (isKingdom(c) && rng.next() < KINGDOM_FAVOUR) boon = favourite(c.regionId!, rare);
+    const w = this.stone(l, j, rare ? RARE : COMMON, boon);
+    if (rare && rng.next() < WANDER_CHANCE) {
+      w.wander = true;
+      w.landmark = WANDERER;
+      w.heading = round(rng.next() * Math.PI * 2 * 1e4) / 1e4;
+    }
+    return `${w.wander ? 'A wandering stone rose at ' : 'A waystone rose at '}${l.name}${j === s.bound ? ' in your circle' : ` in ${this.name(c)}`}, holding ${w.boon} (${rare ? 'rare' : 'common'}).${w.wander ? ` It hops ${WANDER_STEP} tiles every ${WANDER_EVERY} minutes.` : ''}`;
   }
 
   /** A legendary stone: the landmark in your circle furthest from its middle. It never fades. */
@@ -1251,7 +1572,7 @@ export class NomadSim {
   }
 
   private stone(l: Landmark, circle: number, tier: string, boon: string): Waystone {
-    const w: Waystone = { landmark: l.name, x: l.x, y: l.y, circle, boon, tier, age: 0, pilgrim: false, life: 0 };
+    const w: Waystone = { landmark: l.name, x: l.x, y: l.y, circle, boon, tier, age: 0, pilgrim: false, life: 0, wander: false, heading: 0, riteDone: false };
     this.state.waystones.push(w);
     return w;
   }
@@ -1360,6 +1681,8 @@ export class NomadSim {
       if (!c.regionId && s.homingLeft > 0 && depth === 0 && c.port == null && !orbiting) {
         steer(c, s.homingX, s.homingY, (HOMING_PULL * s.homingLeft) / HOMING_MINUTES);
       }
+      // Lodestone: it leans toward the landmark you picked.
+      if (c.lodeLeft > 0 && c.port == null && !orbiting) steer(c, c.lodeX, c.lodeY, LODE_PULL);
       if (toward) steer(c, toward.x, toward.y, pull);
       if (pocket) {
         const out = geo.wayOut(c.x, c.y, 2)!;
@@ -1543,7 +1866,7 @@ export class NomadSim {
       const y = round(m.y + Math.sin(a) * d);
       if (!this.geo.onLand(x, y) || this.takenAt(x, y)) continue;
       const boon = COMMON_BOONS[Math.floor(dice.next() * COMMON_BOONS.length)];
-      s.waystones.push({ landmark: STRIKE, x, y, circle: MAIN, boon, tier: COMMON, age: 0, pilgrim: false, life: STRIKE_MINUTES });
+      s.waystones.push({ landmark: STRIKE, x, y, circle: MAIN, boon, tier: COMMON, age: 0, pilgrim: false, life: STRIKE_MINUTES, wander: false, heading: 0, riteDone: false });
       log.push(`Lightning! A bolt struck inside the Main circle, ${javaRound(d)} tiles ${compass(a)} of its middle, and left a waystone holding ${boon} (common) for ${STRIKE_MINUTES} minutes.`);
       return;
     }
@@ -1782,7 +2105,7 @@ export class NomadSim {
       const y = round(m.y + Math.sin(a) * d);
       if (this.geo.onLand(x, y) || !contains(m, x, y) || this.takenAt(x, y)) continue;
       const boon = COMMON_BOONS[Math.floor(dice.next() * COMMON_BOONS.length)];
-      s.waystones.push({ landmark: FLOTSAM, x, y, circle: MAIN, boon, tier: COMMON, age: 0, pilgrim: false, life: FLOTSAM_MINUTES });
+      s.waystones.push({ landmark: FLOTSAM, x, y, circle: MAIN, boon, tier: COMMON, age: 0, pilgrim: false, life: FLOTSAM_MINUTES, wander: false, heading: 0, riteDone: false });
       log.push(`Flotsam is floating at sea inside the Main circle, ${compass(a)} of its middle, holding ${boon} (common). Sail through it within the hour to claim it.`);
       return;
     }
@@ -2116,6 +2439,11 @@ export class NomadSim {
     const s = this.state;
     const m = this.main;
     if (s.twin) {
+      if (s.keystoneLeft > 0) {
+        // Keystone: both halves live on until it gives way.
+        if (--s.keystoneLeft === 0) log.push('The Keystone gave way: the halves of Main part as they drift apart, and the one you stand in lives on.');
+        return;
+      }
       s.forkAge++;
       if (gap(m, s.twin) <= 0 && s.forkAge < FORK_GIVE_UP) return;
       this.settle(player, log);
@@ -2138,6 +2466,11 @@ export class NomadSim {
       s.forkAge = 0;
       s.lastBig = s.minutes;
       log.push(`The Main circle forked! One half heads ${compass(s.forkAxis)}, the other ${compass(s.forkAxis + Math.PI)}. Stand in the half you want when they part.`);
+      if (s.keystone) {
+        s.keystone = false;
+        s.keystoneLeft = KEYSTONE_MINUTES;
+        log.push('The Keystone holds: both halves live on for an hour before they part.');
+      }
       return;
     }
     if (s.nextFork <= 0) {
@@ -2163,6 +2496,7 @@ export class NomadSim {
       }
     }
     s.forkWarn = FORK_WARN;
+    s.foreseen = 0;
     log.push(`The Main circle is about to fork. In ${FORK_WARN} minutes it splits in two, one half heading ${compass(s.forkAxis)} and the other ${compass(s.forkAxis + Math.PI)}. The half you're standing in when they part lives on.`);
   }
 
@@ -2268,8 +2602,16 @@ function blank(x: number, y: number, heading: number, start: number, min: number
     pulse: 0, tiers: 0, atEdge: false, waiting: false, touchingYours: false,
     mood: 0, moodLeft: 0, turn: 0, bend: 0, swing: 0, speed: 1, wx: 0, wy: 0, avoid: 0,
     expand: 0, expandLeft: 0, tailwindLeft: 0, anchorLeft: 0, crownLeft: 0, shore: 0,
-    orbitX: 0, orbitY: 0, orbitR: 0, orbitSide: 0, orbitLeft: 0,
+    orbitX: 0, orbitY: 0, orbitR: 0, orbitSide: 0, orbitLeft: 0, lodeX: 0, lodeY: 0, lodeLeft: 0, wakeLeft: 0,
   };
+}
+
+/** Whether a tile lies in the ground a circle's Wake still holds. */
+export function inWake(c: CircleState, x: number, y: number): boolean {
+  const w = c.wake;
+  if (!w) return false;
+  for (let k = 0; k + 2 < w.length; k += 3) if (dist(x - w[k], y - w[k + 1]) <= w[k + 2]) return true;
+  return false;
 }
 
 /** Tiles between two circles' edges; 0 or less once they overlap. */

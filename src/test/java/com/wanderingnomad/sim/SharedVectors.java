@@ -26,7 +26,7 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26, 560, 3};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26, 560, 3, 333};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
     /** Left alone, sets course for a port, sails, and is blown off course: a castaway. */
@@ -43,6 +43,8 @@ public final class SharedVectors
     static final int WORLD_SEED = 560;
     /** Border kiss: stays in Misthalin until its circle touches Asgarnia's across the border, then crosses straight over. */
     static final int KISS_SEED = 3;
+    /** Wave 3's boons and stones: Foresight, Ward, Wake, Leap, Lodestone, Keystone, Shatter, Rites, Vigil, kingdom and wandering stones. */
+    static final int STONE_SEED = 333;
     /** Kisses are rare: this seed's comes a little after the usual run length. */
     static final int KISS_RUN = 1620;
 
@@ -87,6 +89,7 @@ public final class SharedVectors
         if (seed == WAVE_SEED) return waveScript(seed);
         if (seed == WORLD_SEED) return worldScript(seed);
         if (seed == KISS_SEED) return kissScript(seed);
+        if (seed == STONE_SEED) return stoneScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
         Circle m = probe.main();
@@ -314,6 +317,110 @@ public final class SharedVectors
         return events;
     }
 
+    static JsonArray stoneScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        // Shatter the first waystone claimed, then claim the next one as usual.
+        events.add(event(5, "shatter", true));
+        int at = claim(seed, events, 5, NomadSim.COMMON);
+        at = claim(seed, events, Math.max(at, 40), NomadSim.COMMON);
+        // Rites: a stone that asks for one, the rite done, then claimed.
+        at = Math.max(at, 200);
+        events.add(event(at, "rites", true));
+        events.add(event(at, "summon", NomadSim.COMMON));
+        int[] found = findWaystone(seed, events, at, at + 100);
+        if (found != null)
+        {
+            events.add(event(found[0], "player", found[1], found[2]));
+            String rite = riteAt(probe(seed, events, found[0]), found[1], found[2]);
+            events.add(event(found[0] + 1, "rite", rite, found[1], found[2]));
+            events.add(event(found[0] + 3, "player"));
+            at = found[0] + 4;
+        }
+        events.add(event(at, "rites", false));
+        // Vigil: on a stone near the edge it takes two minutes.
+        events.add(event(at + 1, "vigil", true));
+        at = claim(seed, events, at + 1, NomadSim.COMMON);
+        events.add(event(at, "vigil", false));
+        // Foresight, and a Keystone armed for the fork it foresees.
+        at = Math.max(at, 300);
+        events.add(event(at, "give", NomadSim.FORESIGHT));
+        events.add(event(at, "boon", last(seed, events, at), 0));
+        events.add(event(at + 2, "give", NomadSim.KEYSTONE));
+        events.add(event(at + 2, "boon", last(seed, events, at + 2), 0));
+        // A Ward, broken by stepping outside for ten minutes.
+        events.add(event(at + 10, "give", NomadSim.WARD));
+        Circle m = probe(seed, events, at + 15).main();
+        events.add(event(at + 15, "player", (int) Math.round(m.x + m.radius + 15), (int) Math.round(m.y)));
+        events.add(event(at + 25, "player"));
+        // A Wake, then standing in the ground it holds behind the circle.
+        events.add(event(at + 30, "give", NomadSim.WAKE));
+        events.add(event(at + 30, "boon", last(seed, events, at + 30), 0));
+        int[] behind = inWakeOnly(probe(seed, events, at + 88));
+        if (behind != null)
+        {
+            events.add(event(at + 88, "player", behind[0], behind[1]));
+            events.add(event(at + 90, "player"));
+        }
+        // A Leap, and a Lodestone toward a landmark it offers.
+        events.add(event(at + 100, "give", NomadSim.LEAP));
+        events.add(event(at + 100, "boon", last(seed, events, at + 100), 0));
+        events.add(event(at + 120, "give", NomadSim.LODESTONE));
+        List<String> targets = probe(seed, events, at + 120).lodestoneTargets();
+        if (!targets.isEmpty())
+        {
+            events.add(event(at + 120, "lodestone", last(seed, events, at + 120), targets.get(Math.min(3, targets.size() - 1))));
+        }
+        // Rare stones left to wander, and common ones in kingdoms' circles.
+        for (int k = 0; k < 16; k++) events.add(event(at + 200 + k * 40, "summon", k % 4 == 3 ? NomadSim.COMMON : NomadSim.RARE));
+        // Anchor the circle once a wandering stone rises, so it has time to hop.
+        int wander = firstMinute(seed, events, s -> s.waystones().stream().anyMatch(Waystone::wanders));
+        if (wander >= 0)
+        {
+            events.add(event(wander, "give", NomadSim.ANCHOR));
+            events.add(event(wander, "boon", last(seed, events, wander), 0));
+        }
+        return events;
+    }
+
+    /** A tile in your circle's Wake but outside the circle itself, or null. */
+    private static int[] inWakeOnly(NomadSim s)
+    {
+        Circle c = s.bound();
+        double[] wake = c.wake();
+        for (int k = 0; k + 2 < wake.length; k += 3)
+        {
+            for (int a = 0; a < 16; a++)
+            {
+                double t = a * Math.PI / 8;
+                int px = (int) Math.round(wake[k] + StrictMath.cos(t) * (wake[k + 2] - 2));
+                int py = (int) Math.round(wake[k + 1] + StrictMath.sin(t) * (wake[k + 2] - 2));
+                if (!c.contains(px, py) && s.inYours(px, py)) return new int[]{px, py};
+            }
+        }
+        return null;
+    }
+
+    /** Summons a stone at {@code at} and stands on it for 3 minutes once it's in your circle; the minute after, or {@code at} + 100. */
+    private static int claim(int seed, JsonArray events, int at, String tier)
+    {
+        events.add(event(at, "summon", tier));
+        int[] found = findWaystone(seed, events, at, at + 100);
+        if (found == null) return at + 100;
+        events.add(event(found[0], "player", found[1], found[2]));
+        events.add(event(found[0] + 3, "player"));
+        return found[0] + 4;
+    }
+
+    private static String riteAt(NomadSim s, int x, int y)
+    {
+        for (Waystone w : s.waystones())
+        {
+            if (w.x() == x && w.y() == y) return w.rite();
+        }
+        return Waystone.BOW;
+    }
+
     /** The first kingdom's circle touching Main, by index, or 0. */
     private static int kingdomTouching(NomadSim s)
     {
@@ -487,6 +594,21 @@ public final class SharedVectors
                     break;
                 case "crossto":
                     line = sim.crossTo(a.get(0).getAsInt(), null);
+                    break;
+                case "lodestone":
+                    line = sim.useLodestone(a.get(0).getAsInt(), a.get(1).getAsString());
+                    break;
+                case "shatter":
+                    sim.setShatterNext(a.get(0).getAsBoolean());
+                    break;
+                case "vigil":
+                    sim.setVigil(a.get(0).getAsBoolean());
+                    break;
+                case "rites":
+                    sim.setRites(a.get(0).getAsBoolean());
+                    break;
+                case "rite":
+                    line = sim.performRite(a.get(0).getAsString(), new Tile(a.get(1).getAsInt(), a.get(2).getAsInt()));
                     break;
                 case "homeward":
                     line = sim.homeward(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));

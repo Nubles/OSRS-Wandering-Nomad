@@ -70,6 +70,13 @@ public final class Circle
     double orbitR;
     int orbitSide;
     int orbitLeft;
+    /** Lodestone: the landmark tile this circle leans toward, and the minutes left. */
+    int lodeX;
+    int lodeY;
+    int lodeLeft;
+    /** Wake: minutes left leaving a wake, and the wake itself as x, y, radius for each of the last minutes, oldest first (null if none). */
+    int wakeLeft;
+    double[] wake;
 
     static final class Voyage
     {
@@ -128,6 +135,11 @@ public final class Circle
         c.orbitR = orbitR;
         c.orbitSide = orbitSide;
         c.orbitLeft = orbitLeft;
+        c.lodeX = lodeX;
+        c.lodeY = lodeY;
+        c.lodeLeft = lodeLeft;
+        c.wakeLeft = wakeLeft;
+        c.wake = wake == null ? null : wake.clone();
         return c;
     }
 
@@ -212,6 +224,40 @@ public final class Circle
     public Tile orbitAround()
     {
         return orbitLeft > 0 ? new Tile(orbitX, orbitY) : null;
+    }
+
+    /** Minutes left leaning toward a Lodestone's landmark, 0 if none; and that landmark's tile. */
+    public int lodeLeft()
+    {
+        return lodeLeft;
+    }
+
+    public Tile lode()
+    {
+        return lodeLeft > 0 ? new Tile(lodeX, lodeY) : null;
+    }
+
+    /** Minutes left leaving a Wake. */
+    public int wakeLeft()
+    {
+        return wakeLeft;
+    }
+
+    /** The Wake behind it as x, y, radius triples, oldest first, or an empty array. */
+    public double[] wake()
+    {
+        return wake == null ? new double[0] : wake.clone();
+    }
+
+    /** Whether a tile lies in the ground its Wake still holds. */
+    public boolean inWake(double px, double py)
+    {
+        if (wake == null) return false;
+        for (int k = 0; k + 2 < wake.length; k += 3)
+        {
+            if (dist(px - wake[k], py - wake[k + 1]) <= wake[k + 2]) return true;
+        }
+        return false;
     }
 
     /** For the caravan: the town it is heading for (or resting at), or null. */
