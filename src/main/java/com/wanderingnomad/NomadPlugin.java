@@ -14,6 +14,7 @@ import com.wanderingnomad.journey.Omen;
 import com.wanderingnomad.journey.Omens;
 import com.wanderingnomad.journey.Rank;
 import com.wanderingnomad.journey.Renown;
+import com.wanderingnomad.journey.RoadStones;
 import com.wanderingnomad.journey.Trial;
 import com.wanderingnomad.journey.Trials;
 import com.wanderingnomad.sim.Circle;
@@ -26,6 +27,7 @@ import com.wanderingnomad.sim.RunCode;
 import com.wanderingnomad.sim.SavedRun;
 import com.wanderingnomad.sim.Surface;
 import com.wanderingnomad.sim.Tile;
+import com.wanderingnomad.sim.Waystone;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -62,6 +64,7 @@ import net.runelite.api.Scene;
 import net.runelite.api.Skill;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.CommandExecuted;
@@ -193,6 +196,13 @@ public class NomadPlugin extends Plugin
     private int delveLeft;
     private int delveWait;
     static final int DELVE_MINUTES = 60;
+    /** Rites: the bow emote's animation, and eating or drinking's. */
+    static final int BOW_ANIMATION = 858;
+    static final int EAT_ANIMATION = 829;
+    /** The boons ::nomadgive hands out in turn, to try the newer ones. */
+    private static final String[] TEST_BOONS = {NomadSim.FORESIGHT, NomadSim.WARD, NomadSim.WAKE, NomadSim.LEAP, NomadSim.LODESTONE,
+        NomadSim.KEYSTONE};
+    private int testBoon;
     /**
      * Homeward: the varp the game sets when Home Teleport is cast (RuneLite's LAST_HOME_TELEPORT),
      * and how many ticks apart that and the jump to where it lands may be.
@@ -247,12 +257,14 @@ public class NomadPlugin extends Plugin
         panel = new NomadPanel(this::crossFromPanel, this::useBoonFromPanel, this::newRunFromPanel, this::viewOnWebsite,
             this::copyRunCode, this::copyLiveLink, this::pickPalette, this::swearOath);
         panel.onHelm(this::helmFromPanel);
+        panel.onLode(this::lodeFromPanel);
+        panel.onShatter(this::shatterFromPanel);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
             panel.addTestButtons(
                 new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots",
-                    "Comet soon", "Legendary stone", "Stampede soon", "Aurora soon", "Rift soon", "Flotsam soon"},
+                    "Comet soon", "Legendary stone", "Stampede soon", "Aurora soon", "Rift soon", "Flotsam soon", "Give a new boon"},
                 new Runnable[]{
                     () -> clientThread.invokeLater(() -> test("nomadmoments")),
                     () -> clientThread.invokeLater(() -> test("nomadfork")),
@@ -269,6 +281,7 @@ public class NomadPlugin extends Plugin
                     () -> clientThread.invokeLater(() -> test("nomadevent", "aurora")),
                     () -> clientThread.invokeLater(() -> test("nomadevent", "rift")),
                     () -> clientThread.invokeLater(() -> test("nomadevent", "flotsam")),
+                    () -> clientThread.invokeLater(() -> test("nomadgive")),
                 });
         }
         navButton = NavigationButton.builder()
@@ -418,6 +431,8 @@ public class NomadPlugin extends Plugin
         sim.setSailing(client.getRealSkillLevel(Skill.SAILING), docksQuestsMissing());
         sim.setBorderKiss(config.borderKiss());
         sim.setDeep(config.deepTime() && underground);
+        sim.setVigil(config.vigil());
+        sim.setRites(config.rites());
         int boundBefore = sim.boundIndex();
         // Delving, you count as inside wherever the circle goes: the rules get no tile to judge.
         List<String> lines = sim.step(delveLeft > 0 ? null : surface);
@@ -436,6 +451,7 @@ public class NomadPlugin extends Plugin
         String born = Lineage.sync(journey, sim.seed(), sim.forks(), sim.minutes());
         if (born != null) report(java.util.Collections.singletonList(born + " is born: the half that lived carries Main's line on."));
         journey.minute(!outsideNow());
+        for (RoadStones.Due due : RoadStones.due(journey)) summon(due.tier, due.why);
         String owed = Bestiary.due(journey, sim.minutes());
         if (owed != null) summon(owed, "A Bestiary milestone");
         journey.set(Trials.PLAYED, sim.minutes());
@@ -496,6 +512,11 @@ public class NomadPlugin extends Plugin
                     report(java.util.Collections.singletonList("Light the Lantern while you stand inside your circle."));
                     publish();
                 }
+                else if (index < sim.boons().size() && NomadSim.LEAP.equals(sim.boons().get(index)))
+                {
+                    report(java.util.Collections.singletonList("Leap needs ground to land on: not at sea, and land (or your kingdom) ahead."));
+                    publish();
+                }
                 return;
             }
             boonSpent(line);
@@ -511,6 +532,57 @@ public class NomadPlugin extends Plugin
             String line = sim.useHelmsman(index, port);
             if (line != null) boonSpent(line);
         });
+    }
+
+    /** Spends a Lodestone from the sidebar on the landmark picked from its menu. */
+    private void lodeFromPanel(int index, String landmark)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null) return;
+            String line = sim.useLodestone(index, landmark);
+            if (line != null) boonSpent(line);
+        });
+    }
+
+    /** Arms or calls off Shatter for the next waystone you claim, from the sidebar. */
+    private void shatterFromPanel(boolean on)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null || sim.shatterNext() == on) return;
+            sim.setShatterNext(on);
+            report(java.util.Collections.singletonList(on
+                ? "Shatter: the next waystone you claim breaks open instead, for a 50/50 at a rare boon."
+                : "Shatter called off: the next waystone you claim gives its own boon."));
+            save();
+            publish();
+        });
+    }
+
+    /**
+     * Rites: a bow, a bite, a fire or a kill near a waystone that asks for it. Animations and XP
+     * arrive on the client thread.
+     */
+    private void rite(String rite)
+    {
+        if (sim == null || !config.rites()) return;
+        sim.setRites(true);
+        String line = sim.performRite(rite, locate());
+        if (line == null) return;
+        report(java.util.Collections.singletonList(line));
+        save();
+        publish();
+    }
+
+    /** The bow emote and eating (or drinking), seen on your own player. */
+    @Subscribe
+    public void onAnimationChanged(AnimationChanged ev)
+    {
+        if (sim == null || !config.rites() || ev.getActor() != client.getLocalPlayer()) return;
+        int anim = ev.getActor().getAnimation();
+        if (anim == BOW_ANIMATION) rite(Waystone.BOW);
+        else if (anim == EAT_ANIMATION) rite(Waystone.EAT);
     }
 
     /** Everything that follows a boon being spent. Client thread. */
@@ -533,6 +605,7 @@ public class NomadPlugin extends Plugin
         Skill skill = ev.getSkill();
         Integer before = lastXp.put(skill, ev.getXp());
         // The first value per skill arrives at login; only later rises are gains.
+        if (before != null && ev.getXp() > before && skill == Skill.FIREMAKING) rite(Waystone.FIRE);
         if (before == null || sim == null || !config.ruleGuard() || !outsideNow()) return;
         guard.xp(skill.getName(), ev.getXp() - before);
     }
@@ -541,6 +614,7 @@ public class NomadPlugin extends Plugin
     public void onNpcLootReceived(NpcLootReceived ev)
     {
         if (sim == null) return;
+        rite(Waystone.KILL);
         NPC npc = ev.getNpc();
         String name = npc == null || npc.getName() == null ? "something" : Text.removeTags(npc.getName());
         boolean inside = surface != null && !outsideNow();
@@ -903,9 +977,18 @@ public class NomadPlugin extends Plugin
                 reply("The next " + what + " comes at the next played minute" + ("flotsam".equals(what) ? ", if Main is at sea." : "."));
                 break;
             }
+            case "nomadgive":
+            {
+                // Testing: hands you one of the newer boons (or the one named), in turn.
+                String boon = args.length > 0 ? args[0].substring(0, 1).toUpperCase() + args[0].substring(1).toLowerCase()
+                    : TEST_BOONS[testBoon++ % TEST_BOONS.length];
+                reply(sim.giveForTesting(boon) ? "You were given " + boon + "." : "Your hands are full: spend a boon first.");
+                save();
+                break;
+            }
             default:
                 reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>, ::nomadcomet, ::nomadlegend, "
-                    + "::nomadevent <stampede|aurora|rift|flotsam>.");
+                    + "::nomadevent <stampede|aurora|rift|flotsam>, ::nomadgive [boon].");
                 break;
         }
     }
@@ -1613,6 +1696,12 @@ public class NomadPlugin extends Plugin
         {
             view.state = "Delving: inside for " + delveLeft + " min";
             view.stateColour = SidebarParts.IN;
+        }
+        if (sim != null && journey != null)
+        {
+            view.road = NomadPanel.time(journey.streak()) + "/" + RoadStones.ROAD_MINUTES / 60 + "h";
+            int squares = journey.value(Trials.SQUARES);
+            view.squares = squares + "/" + (squares + RoadStones.squaresToGo(journey));
         }
         view.journey = sim == null ? JourneyView.EMPTY : JourneyView.of(journey, renown, trials, sim.minutes());
         if (sim != null && journey != null && renown != null && trials != null) view.journey.ledger = Ledger.text(sim, journey, renown, trials);

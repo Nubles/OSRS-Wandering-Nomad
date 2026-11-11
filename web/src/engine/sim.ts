@@ -949,6 +949,13 @@ export class NomadSim {
     this.state.shatterNext = on;
   }
 
+  /** The landmark your circle's Lodestone leans toward, or null. */
+  lodestoneTo(): string | null {
+    const c = this.bound;
+    if (c.lodeLeft <= 0) return null;
+    return LANDMARKS.find((l) => l.x === c.lodeX && l.y === c.lodeY)?.name ?? null;
+  }
+
   setVigil(on: boolean) {
     this.state.vigil = on;
     if (!on) delete this.state.vigilAt;

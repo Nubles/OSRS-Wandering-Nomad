@@ -126,6 +126,13 @@ class NomadStatusOverlay extends OverlayPanel
             if (sim.bridgeLeft() > 0) chips.add(NomadSim.BRIDGE + " " + sim.bridgeLeft() + "m");
             if (sim.calmLeft() > 0) chips.add(NomadSim.CALM + " " + NomadPanel.time(sim.calmLeft()));
             if (sim.lanternLit()) chips.add(NomadSim.LANTERN + " lit");
+            if (c.wakeLeft() > 0) chips.add(NomadSim.WAKE + " " + NomadPanel.time(c.wakeLeft()));
+            if (c.lodeLeft() > 0) chips.add(NomadSim.LODESTONE + " " + NomadPanel.time(c.lodeLeft()));
+            if (sim.wardLeft() > 0) chips.add(NomadSim.WARD + " " + sim.wardLeft() + "m");
+            else if (sim.boons().contains(NomadSim.WARD)) chips.add(NomadSim.WARD + " held");
+            if (sim.keystoneLeft() > 0) chips.add(NomadSim.KEYSTONE + " " + sim.keystoneLeft() + "m");
+            else if (sim.keystoneArmed()) chips.add(NomadSim.KEYSTONE + " armed");
+            if (sim.shatterNext()) chips.add("Shatter next");
             if (!chips.isEmpty()) panelComponent.getChildren().add(chips);
         }
         panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").build());

@@ -101,6 +101,8 @@ final class Moments
     /** Waystones at the last look, by landmark and circle, with the boon each held. */
     private final Map<String, String> stones = new HashMap<>();
     private int boons;
+    /** Waystones shattered at the last look: a shattered one's own line tells it, not the claim or fade banner. */
+    private int shattered;
     private String mood;
     private final Set<String> effects = new HashSet<>();
     /** 0 while the edge is more than 5 minutes off, 1 within 5, 2 within 1. */
@@ -214,6 +216,7 @@ final class Moments
                 out.add(b);
             }
             boolean claimed = sim.boons().size() > boons;
+            boolean shattering = sim.shattered() > shattered;
             for (Waystone w : sim.waystones())
             {
                 if (stones.containsKey(key(w))) continue;
@@ -221,7 +224,7 @@ final class Moments
             }
             for (Map.Entry<String, String> stone : stones.entrySet())
             {
-                if (stonesNow.containsKey(stone.getKey())) continue;
+                if (stonesNow.containsKey(stone.getKey()) || shattering) continue;
                 String boon = stone.getValue();
                 out.add(claimed
                     ? new Banner("Waystone claimed", boon + " is yours. Spend it from the sidebar.", GOLD, Icon.WAYSTONE, true,
@@ -268,6 +271,7 @@ final class Moments
         stones.clear();
         stones.putAll(stonesNow);
         boons = sim.boons().size();
+        shattered = sim.shattered();
         mood = yours.moodName();
         effects.clear();
         effects.addAll(effectsNow);
@@ -465,6 +469,15 @@ final class Moments
         out.add(fromLine("Your circle starts to orbit the Grand Exchange."));
         out.add(fromLine("Border kiss! Your circle touches Kandarin across the border: for 20 minutes you may cross straight into it."));
         out.add(fromLine("The caravan sets out from Lumbridge for Varrock."));
+        out.add(fromLine("Foresight: the next fork comes in about 2h 10m, one half heading north and the other south."));
+        out.add(fromLine("Your Ward breaks: for 5 minutes, being outside costs nothing."));
+        out.add(fromLine("Leap: your circle jumped 36 tiles north-east."));
+        out.add(fromLine("The Keystone holds: both halves live on for an hour before they part."));
+        out.add(fromLine("Rite: to claim the waystone at Draynor Village, light a fire beside it."));
+        out.add(fromLine("Vigil: stand your ground on the waystone at Draynor Village for a minute to claim it."));
+        out.add(fromLine("You shattered the waystone at Draynor Village: it burst into Lodestone (rare)!"));
+        out.add(new Banner("Wandering stone risen", "Leap (rare), in your circle. It hops 8 tiles every 10 minutes: catch it.", GOLD,
+            Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
         out.add(new Banner("Legendary waystone risen", NomadSim.CROWN + " at the Grand Exchange. It never fades.", SidebarParts.LEGEND,
             Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
         out.add(rankUp(com.wanderingnomad.journey.Rank.PATHFINDER));
@@ -515,6 +528,8 @@ final class Moments
             if (c.expandLeft() > 0) out.add(NomadSim.EXPAND + "@" + j);
             if (c.tailwindLeft() > 0) out.add(NomadSim.TAILWIND + "@" + j);
             if (c.anchorLeft() > 0) out.add(NomadSim.ANCHOR + "@" + j);
+            if (c.wakeLeft() > 0) out.add(NomadSim.WAKE + "@" + j);
+            if (c.lodeLeft() > 0) out.add(NomadSim.LODESTONE + "@" + j);
         }
         if (sim.bridgeLeft() > 0) out.add(NomadSim.BRIDGE + "@-1");
         if (sim.calmLeft() > 0) out.add(NomadSim.CALM + "@-1");
@@ -546,8 +561,95 @@ final class Moments
         }
         boolean rare = NomadSim.RARE.equals(w.tier());
         String where = w.circle() == sim.boundIndex() ? "your circle" : sim.circles().get(w.circle()).name();
+        if (w.wanders())
+        {
+            return new Banner("Wandering stone risen", w.boon() + " (" + w.tier() + "), in " + where + ". It hops " + NomadSim.WANDER_STEP
+                + " tiles every " + NomadSim.WANDER_EVERY + " minutes: catch it.", GOLD, Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
         return new Banner(rare ? "Rare waystone risen" : "Waystone risen", w.boon() + " at " + w.landmark() + ", in " + where + ".",
             GOLD, Icon.WAYSTONE, rare, rare ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.PRAYER_DEPLETE_TWINKLE);
+    }
+
+    private static final Pattern FORESEEN = Pattern.compile("^Foresight: the next fork comes in about (.+), one half heading (.+) and the other (.+)\\.$");
+    private static final Pattern LEAPT = Pattern.compile("^Leap: your circle jumped (\\d+) tiles (.+)\\.$");
+    private static final Pattern RITE = Pattern.compile("^Rite: to claim (.+?), (bow to it|eat something beside it|light a fire beside it|kill something near it)\\.$");
+    private static final Pattern RITE_DONE = Pattern.compile("^Rite done: (.+) will give up its boon now\\.$");
+    private static final Pattern VIGIL = Pattern.compile("^Vigil: stand your ground on (.+) for a minute to claim it\\.$");
+    private static final Pattern BURST = Pattern.compile("^You shattered (.+): it burst into (.+) \\(rare\\)!$");
+
+    /** The waystone and boon lines that deserve a banner of their own: Foresight, Ward, Leap, Keystone, Rites, Vigil and Shatter. Null otherwise. */
+    static Banner boonLine(String line)
+    {
+        Matcher m = FORESEEN.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Foresight", "A fork comes in about " + m.group(1) + ": one half heads " + m.group(2) + ", the other " + m.group(3) + ".",
+                GOLD, Icon.FORK, true, SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+        }
+        if (line.startsWith("Foresight: no fork"))
+        {
+            return new Banner("Foresight", "No fork comes in the next " + NomadSim.FORESIGHT_LOOK / 60 + " hours.", GOLD, Icon.FORK, false,
+                SoundEffectID.UI_BOOP);
+        }
+        if (line.startsWith("Your Ward breaks"))
+        {
+            return new Banner("Your Ward breaks", "Being outside costs nothing for " + NomadSim.WARD_MINUTES + " minutes. Get back in.", IN,
+                Icon.RING, true, SoundEffectID.PRAYER_ACTIVATE_PROTECT_ITEM);
+        }
+        if (line.startsWith("The Ward's protection has worn off"))
+        {
+            return new Banner("The Ward has worn off", "Being outside counts again.", OUT, Icon.RING, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+        }
+        m = LEAPT.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Leap!", "Your circle jumped " + m.group(1) + " tiles " + m.group(2) + ".", GOLD, Icon.BOON, true,
+                SoundEffectID.TELEPORT_VWOOP);
+        }
+        if (line.startsWith("Keystone: "))
+        {
+            return new Banner("Keystone set", line.substring("Keystone: ".length()), GOLD, Icon.FORK, false, SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+        }
+        if (line.startsWith("The Keystone holds"))
+        {
+            return new Banner("The Keystone holds", "Both halves of Main live on for an hour before they part.", GOLD, Icon.FORK, true,
+                SoundEffectID.PRAYER_ACTIVATE_PIETY);
+        }
+        if (line.startsWith("The Keystone gave way"))
+        {
+            return new Banner("The Keystone gave way", "The halves part as they drift apart. The one you stand in lives on.", GOLD.darker(),
+                Icon.FORK, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        m = RITE.matcher(line);
+        if (m.find())
+        {
+            String called = m.group(1);
+            return new Banner("A rite to claim it", "To claim " + called + ", " + m.group(2) + ".", GOLD, Icon.WAYSTONE, false,
+                SoundEffectID.UI_BOOP);
+        }
+        m = RITE_DONE.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Rite done", "Step on " + m.group(1) + " to claim it.", GOLD, Icon.WAYSTONE, false,
+                SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+        }
+        m = VIGIL.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Vigil", "Stand on " + m.group(1) + " a minute more to claim it.", GOLD, Icon.WAYSTONE, false, SoundEffectID.UI_BOOP);
+        }
+        m = BURST.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Shattered: " + m.group(2) + "!", "The stone burst into a rare boon. Spend it from the sidebar.", SidebarParts.RARE,
+                Icon.WAYSTONE, true, SoundEffectID.PRAYER_ACTIVATE_PIETY, Event.CLAIMED);
+        }
+        if (line.startsWith("You shattered") && line.endsWith("crumbled to nothing."))
+        {
+            return new Banner("Shattered: nothing", "The stone crumbled away. Better luck next time.", GOLD.darker(), Icon.WAYSTONE, false,
+                SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+        }
+        return null;
     }
 
     private static final Color SKY = new Color(0xBFE3FF);
@@ -772,6 +874,7 @@ final class Moments
             return new Banner("A waystone ripened", m.group(2) + " at " + m.group(1) + " is rare now.", SidebarParts.RARE, Icon.WAYSTONE, true,
                 SoundEffectID.TOWN_CRIER_BELL_DONG);
         }
-        return worldEvent(line);
+        Banner boon = boonLine(line);
+        return boon != null ? boon : worldEvent(line);
     }
 }

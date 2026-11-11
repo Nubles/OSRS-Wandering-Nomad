@@ -107,6 +107,7 @@ class NomadWorldMapOverlay extends Overlay
             drawForecast(graphics, forecast, circles, sim.boundIndex(), bounds, west, south, zoom);
         }
         int yours = sim.boundIndex();
+        drawWakes(graphics, sim, bounds, west, south, zoom);
         Ellipse2D[] rings = new Ellipse2D[circles.size()];
         for (int j = 0; j < circles.size(); j++)
         {
@@ -645,11 +646,50 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setStroke(new BasicStroke(1f));
             graphics.setColor(Color.BLACK);
             graphics.draw(diamond);
+            if (w.wanders())
+            {
+                // Where it hops next, so you can head it off.
+                double[] hop = sim.nextHop(w);
+                if (hop != null)
+                {
+                    double hx = bounds.x + (hop[0] - west) * zoom;
+                    double hy = bounds.y + bounds.height - (hop[1] - south) * zoom;
+                    graphics.setStroke(DASHED);
+                    graphics.setColor(colour);
+                    graphics.draw(new Line2D.Double(px, py, hx, hy));
+                    graphics.draw(new Ellipse2D.Double(hx - 3, hy - 3, 6, 6));
+                }
+            }
             String text = NomadPanel.stoneName(w) + " " + NomadPanel.stoneLeft(sim, w);
             graphics.setColor(Color.BLACK);
             graphics.drawString(text, (float) px + 8, (float) py + 5);
             graphics.setColor(colour);
             graphics.drawString(text, (float) px + 7, (float) py + 4);
+        }
+    }
+
+    /** A Wake: the ground each circle left in the last few minutes that still counts as it, as a faint wash. */
+    private static void drawWakes(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)
+    {
+        List<Circle> all = new java.util.ArrayList<>(sim.circles());
+        if (sim.twin() != null) all.add(sim.twin());
+        for (Circle c : all)
+        {
+            double[] w = c.wake();
+            if (w.length == 0) continue;
+            java.awt.geom.Area area = new java.awt.geom.Area();
+            for (int k = 0; k + 2 < w.length; k += 3)
+            {
+                double px = bounds.x + (w[k] - west) * zoom;
+                double py = bounds.y + bounds.height - (w[k + 1] - south) * zoom;
+                double pr = Math.max(2, w[k + 2] * zoom);
+                area.add(new java.awt.geom.Area(new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2)));
+            }
+            graphics.setColor(NomadPlugin.colour(c, 45));
+            graphics.fill(area);
+            graphics.setStroke(DASHED);
+            graphics.setColor(NomadPlugin.colour(c, 110));
+            graphics.draw(area);
         }
     }
 
@@ -675,6 +715,22 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setColor(colour);
             graphics.draw(new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2));
             outlined(graphics, "Lost half · " + NomadPanel.time(sim.ghostLeft()), (float) px, (float) (py - pr - 4), colour, true);
+        }
+        // A Lodestone's pull: a dotted line from your circle to the landmark it leans toward.
+        Circle yours = sim.bound();
+        com.wanderingnomad.sim.Tile lode = yours.lode();
+        if (lode != null)
+        {
+            double ax = bounds.x + (yours.x() - west) * zoom;
+            double ay = bounds.y + bounds.height - (yours.y() - south) * zoom;
+            double bx = bounds.x + (lode.x - west) * zoom;
+            double by = bounds.y + bounds.height - (lode.y - south) * zoom;
+            graphics.setStroke(DOTTED);
+            graphics.setColor(Moments.GOLD);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            String name = sim.lodestoneTo();
+            outlined(graphics, "Lodestone" + (name == null ? "" : ": " + name) + " · " + NomadPanel.time(yours.lodeLeft()),
+                (float) bx, (float) by - 6, Moments.GOLD, true);
         }
         Circle main = sim.main();
         String to = main.sailing() ? main.voyageTo() : main.portOfCall();

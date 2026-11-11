@@ -1174,6 +1174,32 @@ public final class NomadSim
         return keystoneLeft;
     }
 
+    /** The landmark your circle's Lodestone leans toward, or null. */
+    public String lodestoneTo()
+    {
+        Circle c = bound();
+        if (c.lodeLeft <= 0) return null;
+        for (Landmarks.Landmark l : Landmarks.ALL)
+        {
+            if (l.x == c.lodeX && l.y == c.lodeY) return l.name;
+        }
+        return null;
+    }
+
+    /** How many waystones have been shattered this run. */
+    public int shattered()
+    {
+        return shattered;
+    }
+
+    /** Testing: hands you a boon, if your hands aren't full. True if it was given. */
+    public boolean giveForTesting(String boon)
+    {
+        if (boons.size() >= BOONS_HELD) return false;
+        boons.add(boon);
+        return true;
+    }
+
     /** Shatter: the next waystone you claim (not a legendary one) is shattered instead, for a 50/50 at a rare boon. */
     public void setShatterNext(boolean on)
     {

@@ -92,12 +92,29 @@ class NomadMinimapOverlay extends Overlay
         List<Circle> halves = NomadPlugin.halves(sim);
         List<Path2D> rings = new ArrayList<>();
         for (Circle half : halves) rings.add(ring(view, half));
+        // A Wake's trail is still yours: it's left undimmed, with a faint wash of your circle's colour.
+        Area wake = new Area();
+        for (Circle half : halves)
+        {
+            double[] w = half.wake();
+            for (int k = 0; k + 2 < w.length; k += 3)
+            {
+                Path2D r = ring(view, w[k], w[k + 1], w[k + 2], 48);
+                if (r != null) wake.add(new Area(r));
+            }
+        }
         if (!rings.contains(null))
         {
             Area outside = new Area(minimap);
             for (Path2D r : rings) outside.subtract(new Area(r));
+            outside.subtract(wake);
             graphics.setColor(SHADE);
             graphics.fill(outside);
+        }
+        if (!wake.isEmpty())
+        {
+            graphics.setColor(NomadPlugin.colour(yours, 40));
+            graphics.fill(wake);
         }
         for (int j = 0; j < sim.circles().size(); j++)
         {
@@ -186,12 +203,17 @@ class NomadMinimapOverlay extends Overlay
     /** A circle's whole edge in minimap pixels, or null if any of it is too far off to place. */
     private Path2D ring(WorldView view, Circle c)
     {
-        int n = Math.max(96, (int) Math.ceil(Math.PI * 2 * c.radius() / 0.75));
+        return ring(view, c.x(), c.y(), c.radius(), Math.max(96, (int) Math.ceil(Math.PI * 2 * c.radius() / 0.75)));
+    }
+
+    /** A ring of radius {@code r} round (x, y) in {@code n} steps, in minimap pixels, or null if any of it is too far off to place. */
+    private Path2D ring(WorldView view, double x, double y, double r, int n)
+    {
         Path2D path = new Path2D.Float();
         for (int i = 0; i < n; i++)
         {
             double a = i * Math.PI * 2 / n;
-            Point p = toMinimap(view, c.x() + Math.cos(a) * c.radius(), c.y() + Math.sin(a) * c.radius());
+            Point p = toMinimap(view, x + Math.cos(a) * r, y + Math.sin(a) * r);
             if (p == null) return null;
             if (i == 0) path.moveTo(p.getX(), p.getY());
             else path.lineTo(p.getX(), p.getY());

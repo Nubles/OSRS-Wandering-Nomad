@@ -392,4 +392,30 @@ public interface NomadConfig extends Config
     {
         return false;
     }
+
+    @ConfigItem(
+        keyName = "vigil",
+        name = "Vigil",
+        description = "A waystone in the outer half of its circle only gives up its boon once you've stood on it for two "
+            + "minutes running.",
+        section = HOUSE_RULES,
+        position = 3
+    )
+    default boolean vigil()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "rites",
+        name = "Rites",
+        description = "Each waystone asks for a small rite before it gives up its boon: bow to it, eat beside it, light a "
+            + "fire beside it, or kill something near it. The sidebar says which.",
+        section = HOUSE_RULES,
+        position = 4
+    )
+    default boolean rites()
+    {
+        return false;
+    }
 }

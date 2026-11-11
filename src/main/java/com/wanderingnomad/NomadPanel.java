@@ -27,6 +27,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
@@ -64,6 +65,14 @@ class NomadPanel extends PluginPanel
     private BiConsumer<Integer, String> onHelm = (index, port) -> { };
     /** The ports a Helmsman could send Main to, as last shown. */
     private volatile List<String> helmPorts = Collections.emptyList();
+    /** Spends a Lodestone (by its index) on a landmark. */
+    private BiConsumer<Integer, String> onLode = (index, landmark) -> { };
+    /** The landmarks a Lodestone could point your circle at, as last shown. */
+    private volatile List<String> lodeTargets = Collections.emptyList();
+    /** Turns Shatter on or off for the next waystone you claim. */
+    private Consumer<Boolean> onShatter = on -> { };
+    private final JCheckBox shatter = new JCheckBox("Shatter the next waystone I claim");
+    private boolean fillingShatter;
     private final SidebarParts.Header header = new SidebarParts.Header();
     private final SidebarParts.MiniMap map = new SidebarParts.MiniMap();
     private final JLabel boonsTitle = heading("Boons");
@@ -110,6 +119,18 @@ class NomadPanel extends PluginPanel
         add(heading("Waystones"));
         add(gap(4));
         add(waystones);
+        add(gap(2));
+        shatter.setOpaque(false);
+        shatter.setFont(FontManager.getRunescapeSmallFont());
+        shatter.setForeground(Color.LIGHT_GRAY);
+        shatter.setToolTipText("Instead of taking its boon, break the stone: half the time it bursts into a rare boon, "
+            + "half the time it crumbles to nothing. Legendary stones can't be shattered.");
+        shatter.addActionListener(e ->
+        {
+            if (!fillingShatter) onShatter.accept(shatter.isSelected());
+        });
+        fix(shatter, 18);
+        add(shatter);
         add(gap(8));
         add(heading("Crossings"));
         add(gap(4));
@@ -240,9 +261,27 @@ class NomadPanel extends PluginPanel
         this.onHelm = onHelm;
     }
 
+    void onLode(BiConsumer<Integer, String> onLode)
+    {
+        this.onLode = onLode;
+    }
+
+    void onShatter(Consumer<Boolean> onShatter)
+    {
+        this.onShatter = onShatter;
+    }
+
     void display(View v)
     {
         helmPorts = v.helmPorts;
+        lodeTargets = v.lodeTargets;
+        if (shatter.isSelected() != v.shatterNext)
+        {
+            fillingShatter = true;
+            shatter.setSelected(v.shatterNext);
+            fillingShatter = false;
+        }
+        shatter.setEnabled(v.live);
         for (SidebarParts.Part p : drawn) p.show(v);
         boonsTitle.setText(("Boons " + v.held + "/" + NomadSim.BOONS_HELD).toUpperCase());
 
@@ -453,6 +492,19 @@ class NomadPanel extends PluginPanel
             port[0] = small("Port", "Choose the port Main sails to next", () -> portMenu(port[0], slot.index));
             side.add(port[0]);
         }
+        else if (NomadSim.LODESTONE.equals(slot.name))
+        {
+            JButton[] aim = new JButton[1];
+            aim[0] = small("Aim", "Choose the landmark your circle leans toward", () -> lodeMenu(aim[0], slot.index));
+            side.add(aim[0]);
+        }
+        else if (NomadSim.WARD.equals(slot.name))
+        {
+            JButton held = small("Held", "A Ward works while you hold it: the next time you step outside, it breaks and "
+                + "being outside costs nothing for " + NomadSim.WARD_MINUTES + " minutes", () -> { });
+            held.setEnabled(false);
+            side.add(held);
+        }
         else
         {
             side.add(small("Use", slot.description, () -> onBoon.accept(slot.index, 0)));
@@ -485,6 +537,30 @@ class NomadPanel extends PluginPanel
         }
         menu.show(under, 0, under.getHeight());
     }
+
+    /** The landmarks a Lodestone can point at, nearest first, as a menu under its button. */
+    private void lodeMenu(JComponent under, int index)
+    {
+        JPopupMenu menu = new JPopupMenu();
+        List<String> targets = lodeTargets;
+        for (int k = 0; k < Math.min(LODE_CHOICES, targets.size()); k++)
+        {
+            String landmark = targets.get(k);
+            JMenuItem item = new JMenuItem("Lean toward " + landmark);
+            item.addActionListener(e -> onLode.accept(index, landmark));
+            menu.add(item);
+        }
+        if (targets.isEmpty())
+        {
+            JMenuItem none = new JMenuItem("No landmark within " + NomadSim.LODE_REACH + " tiles");
+            none.setEnabled(false);
+            menu.add(none);
+        }
+        menu.show(under, 0, under.getHeight());
+    }
+
+    /** How many landmarks the Lodestone's menu offers, nearest first. */
+    private static final int LODE_CHOICES = 12;
 
     /** A crossing: the circle and how far off it is, with a Cross button once you can. */
     private JPanel crossRow(CrossRow c)
@@ -614,6 +690,19 @@ class NomadPanel extends PluginPanel
                 return "Pick a port: Main heads for the nearest dock and sails there";
             case NomadSim.GATHERING:
                 return "For 1 hour every kingdom's circle drifts toward Main";
+            case NomadSim.FORESIGHT:
+                return "See when the next fork comes and which ways its halves will go";
+            case NomadSim.WARD:
+                return "Held, not spent: the next time you step outside it breaks, and being outside costs nothing for "
+                    + NomadSim.WARD_MINUTES + " minutes";
+            case NomadSim.WAKE:
+                return "For 1 hour the ground your circle leaves stays yours for " + NomadSim.WAKE_TRAIL + " minutes after";
+            case NomadSim.LEAP:
+                return "Your circle jumps up to " + NomadSim.LEAP_TILES + " tiles the way it's heading, landing on land";
+            case NomadSim.LODESTONE:
+                return "Pick a landmark: for 3 hours your circle leans toward it";
+            case NomadSim.KEYSTONE:
+                return "At the next fork both halves live on for an hour, so you needn't choose at once";
             default:
                 return boon;
         }
@@ -627,6 +716,8 @@ class NomadPanel extends PluginPanel
         if (c.tailwindLeft() > 0) on.add("Tailwind " + time(c.tailwindLeft()));
         if (c.anchorLeft() > 0) on.add("Anchor " + time(c.anchorLeft()));
         if (c.crownLeft() > 0) on.add("Crown " + time(c.crownLeft()));
+        if (c.wakeLeft() > 0) on.add("Wake " + time(c.wakeLeft()));
+        if (c.lodeLeft() > 0) on.add("Lodestone " + time(c.lodeLeft()));
         return on.isEmpty() ? "" : "<br>" + String.join(" · ", on);
     }
 
@@ -639,7 +730,8 @@ class NomadPanel extends PluginPanel
     /** A waystone's boon, with "Pilgrim" or "Legendary" before it when it's one of those. */
     static String stoneName(Waystone w)
     {
-        return w.legendary() ? "Legendary " + w.boon() : w.pilgrim() ? "Pilgrim " + w.boon() : w.boon();
+        return w.legendary() ? "Legendary " + w.boon() : w.pilgrim() ? "Pilgrim " + w.boon()
+            : w.wanders() ? "Wandering " + w.boon() : w.boon();
     }
 
     /**
@@ -752,12 +844,29 @@ class NomadPanel extends PluginPanel
         final String name;
         final int left;
         final int total;
+        /** Said in place of the time left, for a boon that waits rather than runs down; null otherwise. */
+        final String note;
 
         ActiveBoon(String name, int left, int total)
         {
             this.name = name;
             this.left = left;
             this.total = Math.max(total, left);
+            this.note = null;
+        }
+
+        /** A boon that's armed, not running: its bar stays full. */
+        ActiveBoon(String name, String note)
+        {
+            this.name = name;
+            this.left = 1;
+            this.total = 1;
+            this.note = note;
+        }
+
+        String title()
+        {
+            return note != null ? name : name + " active";
         }
     }
 
@@ -838,6 +947,13 @@ class NomadPanel extends PluginPanel
         String homeward = "Ready";
         /** Ports a Helmsman could send Main to. */
         List<String> helmPorts = Collections.emptyList();
+        /** Landmarks a Lodestone could point at, nearest first. */
+        List<String> lodeTargets = Collections.emptyList();
+        /** Whether the next waystone you claim is shattered. */
+        boolean shatterNext;
+        /** The Unbroken road: played minutes in a row inside, and Footprint squares walked, for the Run card. */
+        String road = "-";
+        String squares = "-";
 
         int held;
         final List<BoonSlot> boons = new ArrayList<>();
@@ -876,6 +992,8 @@ class NomadPanel extends PluginPanel
             v.mood = (c.orbitLeft() > 0 ? "Orbiting" : c.moodName()) + (c.sailing() ? ", sailing to " + c.voyageTo()
                 : c.portOfCall() != null ? ", bound for " + c.portOfCall()
                     + (sim.helmsmanTo() != null && c.isMain() ? " to sail for " + sim.helmsmanTo() : "") : "");
+            String lode = sim.lodestoneTo();
+            if (lode != null) v.mood += ", leaning toward " + lode;
             if (c.isCaravan())
             {
                 v.mood = c.resting() > 0 ? "Resting at " + c.bankTown() + ", " + c.resting() + " min" : "On the road to " + c.bankTown();
@@ -975,6 +1093,11 @@ class NomadPanel extends PluginPanel
             {
                 v.forkLine = "Homing: Main leans back toward your last waystone, " + time(sim.homingLeft());
             }
+            else if (sim.foreseen() > sim.minutes())
+            {
+                v.forkLine = "Foreseen: a fork in ~" + time(sim.foreseen() - sim.minutes()) + ", " + NomadSim.compass(sim.foreseenAxis())
+                    + " / " + NomadSim.compass(sim.foreseenAxis() + Math.PI) + (sim.keystoneArmed() ? ", Keystone ready" : "");
+            }
             // Yours last, so it draws on top.
             v.circles.sort((a, b) -> Boolean.compare(a.yours, b.yours));
             for (Waystone w : sim.waystones())
@@ -1000,6 +1123,14 @@ class NomadPanel extends PluginPanel
             if (sim.calmLeft() > 0) v.active.add(new ActiveBoon(NomadSim.CALM, sim.calmLeft(), NomadSim.CALM_MINUTES));
             if (c.crownLeft() > 0) v.active.add(new ActiveBoon(NomadSim.CROWN, c.crownLeft(), NomadSim.CROWN_MINUTES));
             if (sim.gatherLeft() > 0) v.active.add(new ActiveBoon(NomadSim.GATHERING, sim.gatherLeft(), NomadSim.GATHER_MINUTES));
+            if (c.wakeLeft() > 0) v.active.add(new ActiveBoon(NomadSim.WAKE, c.wakeLeft(), NomadSim.WAKE_MINUTES));
+            if (c.lodeLeft() > 0) v.active.add(new ActiveBoon(NomadSim.LODESTONE, c.lodeLeft(), NomadSim.LODE_MINUTES));
+            if (sim.wardLeft() > 0) v.active.add(new ActiveBoon(NomadSim.WARD, sim.wardLeft(), NomadSim.WARD_MINUTES));
+            if (sim.keystoneLeft() > 0) v.active.add(new ActiveBoon(NomadSim.KEYSTONE, sim.keystoneLeft(), NomadSim.KEYSTONE_MINUTES));
+            if (sim.keystoneArmed()) v.active.add(new ActiveBoon(NomadSim.KEYSTONE, "armed for the next fork"));
+            if (sim.shatterNext()) v.active.add(new ActiveBoon("Shatter", "the next waystone you claim"));
+            v.shatterNext = sim.shatterNext();
+            if (sim.boons().contains(NomadSim.LODESTONE)) v.lodeTargets = sim.lodestoneTargets();
             v.homeward = sim.homewardLeft() > 0 ? time(sim.homewardLeft()) : "Ready";
             if (sim.boons().contains(NomadSim.HELMSMAN)) v.helmPorts = sim.helmsmanPorts();
 
@@ -1010,7 +1141,8 @@ class NomadPanel extends PluginPanel
                 s.tier = w.tier();
                 s.yours = w.circle() == sim.boundIndex();
                 s.colour = NomadPlugin.colour(sim.circles().get(w.circle()), 255);
-                s.where = w.landmark() + (s.yours ? "" : ", in " + sim.circles().get(w.circle()).name());
+                s.where = (w.wanders() ? "Wandering" : w.landmark()) + (s.yours ? "" : ", in " + sim.circles().get(w.circle()).name());
+                if (sim.ritesOn() && !w.riteDone()) s.where += " · rite: " + Waystone.riteText(w.rite());
                 s.left = stoneLeft(sim, w);
                 if (at != null)
                 {

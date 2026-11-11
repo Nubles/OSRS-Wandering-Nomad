@@ -508,8 +508,8 @@ final class SidebarParts
             Font small = FontManager.getRunescapeSmallFont();
             for (NomadPanel.ActiveBoon a : v.active)
             {
-                text(g, small, a.name + " active", 2, y + 10, Moments.GOLD);
-                String left = NomadPanel.time(a.left) + " left";
+                text(g, small, a.title(), 2, y + 10, Moments.GOLD);
+                String left = a.note != null ? a.note : NomadPanel.time(a.left) + " left";
                 text(g, small, left, SIDEBAR_WIDTH - g.getFontMetrics(small).stringWidth(left) - 2, y + 10, Color.LIGHT_GRAY);
                 g.setColor(new Color(255, 255, 255, 30));
                 g.fill(new RoundRectangle2D.Float(2, y + 13, SIDEBAR_WIDTH - 4, 4, 4, 4));
@@ -584,7 +584,7 @@ final class SidebarParts
 
         Stats()
         {
-            super(ROW * 5 + 10);
+            super(ROW * 6 + 10);
         }
 
         @Override
@@ -598,6 +598,7 @@ final class SidebarParts
                 {"Outside", v.timesOutside + (v.timesOutside == 1 ? " time" : " times")}, {"Seed", String.valueOf(v.seed)},
                 {"Guard", v.guardShort}, {"Diaries", v.diaryShort},
                 {"Quiet for", NomadPanel.time(v.quiet)}, {"Homeward", v.homeward},
+                {"Unbroken", v.road}, {"Squares", v.squares},
             };
             Font small = FontManager.getRunescapeSmallFont();
             FontMetrics sm = g.getFontMetrics(small);
