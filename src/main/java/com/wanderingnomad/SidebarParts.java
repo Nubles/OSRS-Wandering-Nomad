@@ -584,7 +584,7 @@ final class SidebarParts
 
         Stats()
         {
-            super(ROW * 6 + 10);
+            super(ROW * 7 + 10);
         }
 
         @Override
@@ -599,6 +599,7 @@ final class SidebarParts
                 {"Guard", v.guardShort}, {"Diaries", v.diaryShort},
                 {"Quiet for", NomadPanel.time(v.quiet)}, {"Homeward", v.homeward},
                 {"Unbroken", v.road}, {"Squares", v.squares},
+                {"Leyline", v.leyline}, {"Encore", v.encore + " min"},
             };
             Font small = FontManager.getRunescapeSmallFont();
             FontMetrics sm = g.getFontMetrics(small);

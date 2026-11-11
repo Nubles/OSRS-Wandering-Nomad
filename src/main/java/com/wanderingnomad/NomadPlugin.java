@@ -5,6 +5,7 @@ import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import com.wanderingnomad.journey.Bestiary;
 import com.wanderingnomad.journey.Curiosities;
+import com.wanderingnomad.journey.Holidays;
 import com.wanderingnomad.journey.Journey;
 import com.wanderingnomad.journey.JourneyChat;
 import com.wanderingnomad.journey.JourneyWatch;
@@ -17,10 +18,13 @@ import com.wanderingnomad.journey.Renown;
 import com.wanderingnomad.journey.RoadStones;
 import com.wanderingnomad.journey.Trial;
 import com.wanderingnomad.journey.Trials;
+import com.wanderingnomad.journey.WorldChat;
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Clues;
 import com.wanderingnomad.sim.Forecast;
 import com.wanderingnomad.sim.Geography;
 import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Plots;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Region;
 import com.wanderingnomad.sim.RunCode;
@@ -35,6 +39,7 @@ import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.image.BufferedImage;
+import java.time.LocalDate;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -54,9 +59,11 @@ import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
+import net.runelite.api.NPCComposition;
 import net.runelite.api.Player;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
@@ -68,13 +75,19 @@ import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClientTick;
 import net.runelite.api.events.CommandExecuted;
+import net.runelite.api.events.GameObjectDespawned;
+import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarPlayerID;
+import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
@@ -218,6 +231,29 @@ public class NomadPlugin extends Plugin
     private Tile jumpFrom;
     private Tile jumpTo;
     private boolean diariesRead;
+    /** Holiday weather: whether storms take the season's name. Any thread reads it. */
+    static volatile boolean holidays = true;
+    /** Rings and roots: the travel networks this account has unlocked, re-read every 10 minutes; -1 until read. */
+    private int networksMask = -1;
+    /** Second wind (Hardcore): the run's one death has happened. */
+    private boolean fallen;
+    /** Plot circles (a house rule), and whether one holds you now because you walked into it from your circle. */
+    private Plots plots = new Plots();
+    private boolean plotHeld;
+    private boolean lastInside;
+    /** Uninvited guest: the tick a random event was accepted from inside, and whether it has carried you off. */
+    private int guestTick = Integer.MIN_VALUE / 2;
+    private boolean kidnapped;
+    private static final int GUEST_TICKS = 50;
+    /** Coordinate tide: played minutes left before an unread clue's pull ebbs. */
+    private int tideLeft;
+    static final int TIDE_MINUTES = 180;
+    /** Starfall: the size of the star holding your circle as last seen (0 if not seen), and the tick it vanished. */
+    private int starSize;
+    private int starGoneTick = -1;
+    private int loadingTick = Integer.MIN_VALUE / 2;
+    /** Port of call: on a boat's deck at the last tick. */
+    private boolean aboard;
     private boolean loadPending;
     private final Deque<String> runLog = new ArrayDeque<>();
 
@@ -259,12 +295,14 @@ public class NomadPlugin extends Plugin
         panel.onHelm(this::helmFromPanel);
         panel.onLode(this::lodeFromPanel);
         panel.onShatter(this::shatterFromPanel);
+        panel.onEncore(this::encoreFromPanel);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
             panel.addTestButtons(
                 new String[]{"Moments", "Fork soon", "Skip warning", "Play 1 min", "Play 30 min", "Replay fade", "Waystone spots",
-                    "Comet soon", "Legendary stone", "Stampede soon", "Aurora soon", "Rift soon", "Flotsam soon", "Give a new boon"},
+                    "Comet soon", "Legendary stone", "Stampede soon", "Aurora soon", "Rift soon", "Flotsam soon", "Give a new boon",
+                    "Hop soon", "Log pop", "Superior here", "Star here"},
                 new Runnable[]{
                     () -> clientThread.invokeLater(() -> test("nomadmoments")),
                     () -> clientThread.invokeLater(() -> test("nomadfork")),
@@ -282,6 +320,10 @@ public class NomadPlugin extends Plugin
                     () -> clientThread.invokeLater(() -> test("nomadevent", "rift")),
                     () -> clientThread.invokeLater(() -> test("nomadevent", "flotsam")),
                     () -> clientThread.invokeLater(() -> test("nomadgive")),
+                    () -> clientThread.invokeLater(() -> test("nomadhop")),
+                    () -> clientThread.invokeLater(() -> test("nomadpop")),
+                    () -> clientThread.invokeLater(() -> test("nomadsuperior")),
+                    () -> clientThread.invokeLater(() -> test("nomadstar")),
                 });
         }
         navButton = NavigationButton.builder()
@@ -325,6 +367,7 @@ public class NomadPlugin extends Plugin
         GameState state = ev.getGameState();
         // A new scene drops what was placed in the old one; the next tick builds the edge again.
         if (state != GameState.LOGGED_IN) edgeWall.clear();
+        if (state == GameState.LOADING) loadingTick = tickCount;
         if (state == GameState.LOGGED_IN && sim == null)
         {
             // The account's profile may not be known yet; the first tick that knows it loads the run.
@@ -375,6 +418,10 @@ public class NomadPlugin extends Plugin
         delve();
         if (before != null && surface != null) stats.walked(surface.x - before.x, surface.y - before.y);
         homeward(before);
+        watchGuest();
+        watchPlots();
+        watchStar();
+        watchDock();
         readMilestones();
         watchJourney();
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
@@ -406,8 +453,13 @@ public class NomadPlugin extends Plugin
         if (jumpFrom == null) return;
         if (Math.abs(jumpTick - homeCastTick) > HOME_TICKS)
         {
-            // A jump with no Home Teleport near it, such as another teleport: forget it once it's old.
-            if (tickCount - jumpTick > HOME_TICKS) jumpFrom = null;
+            // A jump with no Home Teleport near it, such as another teleport: once it's old it's
+            // an obelisk or (with Leylines) a teleport, then forgotten.
+            if (tickCount - jumpTick > HOME_TICKS)
+            {
+                otherJump(jumpFrom, jumpTo);
+                jumpFrom = null;
+            }
             return;
         }
         Tile from = jumpFrom;
@@ -415,6 +467,115 @@ public class NomadPlugin extends Plugin
         jumpFrom = null;
         homeCastTick = Integer.MIN_VALUE / 2;
         String line = sim.homeward(from, to);
+        if (line == null) return;
+        report(java.util.Collections.singletonList(line));
+        save();
+        live.markDirty();
+        look();
+        forecast = null;
+        forecastSoon();
+    }
+
+    /**
+     * Uninvited guest: a random event that carries you off into its own little world, after you
+     * accepted it from inside your circle, counts as inside until you're back. Client thread.
+     */
+    private void watchGuest()
+    {
+        WorldView view = client.getTopLevelWorldView();
+        boolean instance = view != null && view.isInstance();
+        if (!kidnapped && instance && tickCount - guestTick <= GUEST_TICKS)
+        {
+            kidnapped = true;
+            guestTick = Integer.MIN_VALUE / 2;
+            report(java.util.Collections.singletonList("Carried off: a random event took you away. You count as inside until you're back."));
+        }
+        else if (kidnapped && !instance && client.getGameState() == GameState.LOGGED_IN)
+        {
+            kidnapped = false;
+            report(java.util.Collections.singletonList("Back from the random event: your own tile counts again."));
+        }
+    }
+
+    /**
+     * Plot circles (a house rule): a plot circle holds you while you walked into it straight from
+     * your circle (or from another plot circle that held you). Client thread, every tick.
+     */
+    private void watchPlots()
+    {
+        if (surface == null) return;
+        boolean inYours = sim.inYours(surface.x, surface.y);
+        boolean inPlot = config.plotCircles() && plots.contains(surface.x, surface.y);
+        plotHeld = !inYours && inPlot && lastInside;
+        lastInside = inYours || plotHeld;
+    }
+
+    /**
+     * Starfall: a crashed star that vanishes while you stand near it, and doesn't come back as a
+     * smaller one within two ticks, is mined out. Client thread, every tick.
+     */
+    private void watchStar()
+    {
+        if (starGoneTick < 0 || tickCount - starGoneTick < 2) return;
+        starGoneTick = -1;
+        Tile held = sim.star();
+        Player p = client.getLocalPlayer();
+        if (held == null || p == null || client.getGameState() != GameState.LOGGED_IN || tickCount - loadingTick < 5) return;
+        WorldPoint at = p.getWorldLocation();
+        if (at == null || Math.hypot(at.getX() - held.x, at.getY() - held.y) > 15) return;
+        String line = sim.starGone();
+        if (line == null) return;
+        starSize = 0;
+        report(java.util.Collections.singletonList(line));
+        save();
+        live.markDirty();
+        forecast = null;
+        forecastSoon();
+    }
+
+    /**
+     * Port of call: stepping off your own boat's deck onto a dock inside a kingdom's circle, while
+     * Main is yours, crosses you into it. A dock is by the water; a teleport off the deck usually
+     * isn't. Client thread, every tick.
+     */
+    private void watchDock()
+    {
+        Player p = client.getLocalPlayer();
+        if (p == null) return;
+        WorldView view = p.getWorldView();
+        boolean now = view != null && !view.isTopLevel();
+        boolean was = aboard;
+        aboard = now;
+        if (!was || now || surface == null || !byTheWater(surface)) return;
+        String line = sim.dockCross(surface);
+        if (line == null) return;
+        report(java.util.Collections.singletonList(line));
+        save();
+        live.markDirty();
+        look();
+        forecast = null;
+        forecastSoon();
+    }
+
+    /** Whether open water lies within a few tiles of a tile, as a dock's would. */
+    private static boolean byTheWater(Tile t)
+    {
+        for (int r = 3; r <= 9; r += 3)
+        {
+            for (int k = 0; k < 8; k++)
+            {
+                double a = k * Math.PI / 4;
+                if (!com.wanderingnomad.sim.Geography.onLand(t.x + Math.cos(a) * r, t.y + Math.sin(a) * r)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** A jump that wasn't Home Teleport: a Wilderness obelisk carries its circle, and with Leylines a teleport may cross you. */
+    private void otherJump(Tile from, Tile to)
+    {
+        String line = sim.obelisk(from, to);
+        if (line == null && config.leylines()) line = sim.leyline(from, to);
         if (line == null) return;
         report(java.util.Collections.singletonList(line));
         save();
@@ -433,18 +594,34 @@ public class NomadPlugin extends Plugin
         sim.setDeep(config.deepTime() && underground);
         sim.setVigil(config.vigil());
         sim.setRites(config.rites());
+        holidays = config.holidayWeather();
+        if (networksMask < 0 || sim.minutes() % 10 == 0) networksMask = WorldWays.networks(client);
+        sim.setNetworks(config.travelNetworks() ? networksMask : 0);
+        sim.setSpellbook(config.spellbookMoods() ? client.getVarbitValue(VarbitID.SPELLBOOK) + 1 : 0);
+        sim.setIntermission(config.intermission() && WorldWays.inMinigame(client));
+        List<String> lines = new ArrayList<>();
+        String crowns = sim.setCaTiers(Math.max(sim.caTiers(), WorldWays.caTiers(client)));
+        if (crowns != null) lines.add(crowns);
         int boundBefore = sim.boundIndex();
-        // Delving, you count as inside wherever the circle goes: the rules get no tile to judge.
-        List<String> lines = sim.step(delveLeft > 0 ? null : surface);
+        // Sheltered (delving, carried off, in a plot circle or an intermission), you count as inside
+        // wherever the circle goes: the rules get no tile to judge.
+        lines.addAll(sim.step(sheltered() ? null : surface));
         if (delveLeft > 0 && --delveLeft == 0)
         {
             delveWait = DELVE_MINUTES;
-            lines = new ArrayList<>(lines);
             lines.add("The delve ran out: you count where you went down again. Delve rests for an hour.");
         }
         else if (delveLeft == 0 && delveWait > 0)
         {
             delveWait--;
+        }
+        int ranOut = plots.minute();
+        if (ranOut > 0) lines.add(ranOut == 1 ? "A plot circle faded: its " + Plots.MINUTES / 60 + " hours are up."
+            : ranOut + " plot circles faded: their " + Plots.MINUTES / 60 + " hours are up.");
+        if (tideLeft > 0 && --tideLeft == 0 && sim.tide() != null)
+        {
+            sim.setTide(null);
+            lines.add("The coordinate tide ebbs: three hours went by without the clue being dug up.");
         }
         report(lines);
         for (Curiosities.Curio c : curiosities.spot(sim, surface, lines)) curio(c);
@@ -452,6 +629,7 @@ public class NomadPlugin extends Plugin
         if (born != null) report(java.util.Collections.singletonList(born + " is born: the half that lived carries Main's line on."));
         journey.minute(!outsideNow());
         for (RoadStones.Due due : RoadStones.due(journey)) summon(due.tier, due.why);
+        if (config.holidayWeather() && Holidays.easterStoneDue(journey, LocalDate.now())) summon(NomadSim.COMMON, "An Easter weekend day");
         String owed = Bestiary.due(journey, sim.minutes());
         if (owed != null) summon(owed, "A Bestiary milestone");
         journey.set(Trials.PLAYED, sim.minutes());
@@ -491,10 +669,141 @@ public class NomadPlugin extends Plugin
         if (sim == null || (ev.getType() != ChatMessageType.GAMEMESSAGE && ev.getType() != ChatMessageType.SPAM)) return;
         String line = Text.removeTags(ev.getMessage());
         if (JourneyChat.read(line, journey)) checkTrials();
+        worldChat(WorldChat.read(line));
         if (ev.getType() != ChatMessageType.GAMEMESSAGE) return;
         Matcher m = KILL_COUNT.matcher(line);
         if (!m.find() || !"1".equals(m.group(3).replace(",", ""))) return;
         summon(NomadSim.RARE, "Your first " + (m.group(1) != null ? m.group(1) : m.group(2)) + " kill");
+    }
+
+    /**
+     * The game's own lines the world's ways answer: a collection log slot, a music track, a
+     * superior and a planted patch count only inside your circle. Client thread.
+     */
+    private void worldChat(WorldChat.Kind kind)
+    {
+        boolean inside = surface != null && !outsideNow();
+        String line = null;
+        switch (kind)
+        {
+            case LOG_POP:
+                if (inside) line = sim.logPop();
+                break;
+            case MUSIC:
+                if (inside) line = sim.addEncore();
+                break;
+            case SUPERIOR:
+                if (inside) line = sim.superior(surface);
+                break;
+            case DEATH:
+                if (config.hardcore() && !fallen)
+                {
+                    fallen = true;
+                    report(java.util.Collections.singletonList("Second wind: your hardcore life is spent, but the run goes on as Fallen. "
+                        + "A rare waystone rises for the road back."));
+                    summon(NomadSim.RARE, "Second wind");
+                }
+                return;
+            case PLANTED:
+            {
+                Tile at = locate();
+                if (!config.plotCircles() || at == null || !sim.inYours(at.x, at.y)) return;
+                plots.plant(at);
+                line = "Plot circle: the patch you planted keeps a little circle of its own for up to " + Plots.MINUTES / 60
+                    + " hours, until you clear it.";
+                break;
+            }
+            case PATCH_EMPTY:
+                if (plots.clear(locate())) line = "The patch is clear, and its plot circle goes with it.";
+                break;
+            case TRAIL_DONE:
+                if (sim.tide() != null)
+                {
+                    sim.setTide(null);
+                    tideLeft = 0;
+                    line = "Treasure Trail done: the coordinate tide ebbs.";
+                }
+                break;
+            default:
+                return;
+        }
+        if (line == null) return;
+        report(java.util.Collections.singletonList(line));
+        save();
+        live.markDirty();
+        publish();
+    }
+
+    /** Coordinate tide: reading a coordinate clue sets your circle leaning toward its dig spot; any other clue calls it off. */
+    @Subscribe
+    public void onWidgetLoaded(WidgetLoaded ev)
+    {
+        if (ev.getGroupId() != InterfaceID.TRAIL_CLUETEXT) return;
+        clientThread.invokeLater(() ->
+        {
+            Widget text = client.getWidget(InterfaceID.TrailCluetext.TEXT);
+            if (sim == null || text == null) return;
+            Tile dig = Clues.digSpot(text.getText());
+            Tile before = sim.tide();
+            sim.setTide(dig);
+            tideLeft = dig == null ? 0 : TIDE_MINUTES;
+            if (dig != null && !dig.equals(before))
+            {
+                report(java.util.Collections.singletonList("Coordinate tide: your circle leans a tile a minute toward your clue's dig spot, "
+                    + "for up to " + TIDE_MINUTES / 60 + " hours."));
+            }
+            save();
+            publish();
+        });
+    }
+
+    /** Starfall: a crashed star appearing inside your circle holds it; the same star coming back smaller is a layer mined. */
+    @Subscribe
+    public void onGameObjectSpawned(GameObjectSpawned ev)
+    {
+        if (sim == null) return;
+        GameObject o = ev.getGameObject();
+        int size = WorldWays.starSize(o.getId());
+        if (size == 0) return;
+        WorldPoint wp = o.getWorldLocation();
+        if (wp == null) return;
+        Tile at = new Tile(wp.getX(), wp.getY());
+        Tile held = sim.star();
+        List<String> lines = new ArrayList<>();
+        if (held != null && held.equals(at))
+        {
+            starGoneTick = -1;
+            for (int k = size; starSize > 0 && k < starSize; k++)
+            {
+                String line = sim.starLayer();
+                if (line != null) lines.add(line);
+            }
+            starSize = size;
+        }
+        else if (held == null)
+        {
+            String line = sim.starfall(at);
+            if (line == null) return;
+            lines.add(line);
+            starSize = size;
+        }
+        if (lines.isEmpty()) return;
+        report(lines);
+        save();
+        live.markDirty();
+        look();
+        forecast = null;
+        forecastSoon();
+        publish();
+    }
+
+    @Subscribe
+    public void onGameObjectDespawned(GameObjectDespawned ev)
+    {
+        if (sim == null || WorldWays.starSize(ev.getGameObject().getId()) == 0) return;
+        WorldPoint wp = ev.getGameObject().getWorldLocation();
+        Tile held = sim.star();
+        if (held != null && wp != null && held.x == wp.getX() && held.y == wp.getY()) starGoneTick = tickCount;
     }
 
     /** Spends a boon from the sidebar; {@code side} turns a Rudder left (1) or right (-1). */
@@ -556,6 +865,24 @@ public class NomadPlugin extends Plugin
                 ? "Shatter: the next waystone you claim breaks open instead, for a 50/50 at a rare boon."
                 : "Shatter called off: the next waystone you claim gives its own boon."));
             save();
+            publish();
+        });
+    }
+
+    /** Spends the banked Encore minutes as Anchor, from the sidebar. */
+    private void encoreFromPanel()
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null) return;
+            String line = sim.useEncore();
+            if (line == null) return;
+            report(java.util.Collections.singletonList(line));
+            save();
+            live.markDirty();
+            look();
+            forecast = null;
+            forecastSoon();
             publish();
         });
     }
@@ -677,6 +1004,7 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onMenuOptionClicked(MenuOptionClicked ev)
     {
+        if (sim != null && config.uninvitedGuest() && "Talk-to".equals(ev.getMenuOption())) acceptGuest(ev.getMenuEntry().getNpc());
         if (sim == null || !config.ruleGuard() || !outsideNow()) return;
         MenuAction action = ev.getMenuAction();
         boolean take = action == MenuAction.GROUND_ITEM_FIRST_OPTION || action == MenuAction.GROUND_ITEM_SECOND_OPTION
@@ -685,6 +1013,24 @@ public class NomadPlugin extends Plugin
         if (!take || !"Take".equals(ev.getMenuOption())) return;
         report(java.util.Collections.singletonList(guard.pickUp(sim.minutes(), Text.removeTags(ev.getMenuTarget()))));
         saveGuard();
+    }
+
+    /**
+     * Uninvited guest: talking to your own random event (the one you could dismiss) from inside
+     * your circle makes Main forget its mood, and if the event carries you off you count as inside.
+     */
+    private void acceptGuest(NPC npc)
+    {
+        if (npc == null || surface == null || outsideNow()) return;
+        NPCComposition def = npc.getTransformedComposition() != null ? npc.getTransformedComposition() : npc.getComposition();
+        if (def == null || def.getActions() == null || !java.util.Arrays.asList(def.getActions()).contains("Dismiss")) return;
+        guestTick = tickCount;
+        String line = sim.uninvitedGuest();
+        if (line == null) return;
+        report(java.util.Collections.singletonList(line));
+        save();
+        live.markDirty();
+        publish();
     }
 
     NomadSim sim()
@@ -758,7 +1104,34 @@ public class NomadPlugin extends Plugin
     /** Standing outside your circle right now, by the surface tile you count as on. */
     boolean outsideNow()
     {
-        return sim != null && surface != null && delveLeft <= 0 && !sim.inYours(surface.x, surface.y);
+        return sim != null && surface != null && !sheltered() && !sim.inYours(surface.x, surface.y);
+    }
+
+    /** Counting as inside wherever your circle is: delving, carried off by a random event, held by a plot circle, or in an intermission. */
+    boolean sheltered()
+    {
+        return sim != null && (delveLeft > 0 || kidnapped || plotHeld || sim.intermission());
+    }
+
+    boolean kidnapped()
+    {
+        return kidnapped;
+    }
+
+    boolean plotHeld()
+    {
+        return plotHeld;
+    }
+
+    boolean fallen()
+    {
+        return fallen;
+    }
+
+    /** The plot circles, as x, y, minutes-left triples. Client thread; the maps take a copy. */
+    List<int[]> plots()
+    {
+        return plots.all();
     }
 
     /** Minutes left delving, 0 if not; and minutes until Delve works again. */
@@ -977,6 +1350,33 @@ public class NomadPlugin extends Plugin
                 reply("The next " + what + " comes at the next played minute" + ("flotsam".equals(what) ? ", if Main is at sea." : "."));
                 break;
             }
+            case "nomadhop":
+                // Testing: Main hops the next minute it can, if a stop of a network you've unlocked is inside it.
+                sim.hopSoonForTesting();
+                reply(sim.networks() == 0 ? "No travel networks are on: turn on Rings and roots, or unlock one."
+                    : "Main hops at the next minute it can, if a stop of a network you've unlocked is inside it.");
+                break;
+            case "nomadpop":
+                // Testing: as if a new collection log slot came in.
+                worldChat(WorldChat.Kind.LOG_POP);
+                break;
+            case "nomadsuperior":
+                // Testing: as if a superior appeared where you stand.
+                worldChat(WorldChat.Kind.SUPERIOR);
+                break;
+            case "nomadstar":
+            {
+                // Testing: as if a star crashed where you stand.
+                String line = surface == null ? null : sim.starfall(surface);
+                if (line == null)
+                {
+                    reply(sim.star() != null ? "A star already holds your circle." : "Stand inside your circle on the surface first.");
+                    break;
+                }
+                report(java.util.Collections.singletonList(line));
+                save();
+                break;
+            }
             case "nomadgive":
             {
                 // Testing: hands you one of the newer boons (or the one named), in turn.
@@ -988,7 +1388,7 @@ public class NomadPlugin extends Plugin
             }
             default:
                 reply("Nomad test commands: ::nomadmoments, ::nomadfork, ::nomadfork now, ::nomadstep <minutes>, ::nomadcomet, ::nomadlegend, "
-                    + "::nomadevent <stampede|aurora|rift|flotsam>, ::nomadgive [boon].");
+                    + "::nomadevent <stampede|aurora|rift|flotsam>, ::nomadgive [boon], ::nomadhop, ::nomadpop, ::nomadsuperior, ::nomadstar.");
                 break;
         }
     }
@@ -1034,6 +1434,13 @@ public class NomadPlugin extends Plugin
         stats = new RunStats();
         journey = new Journey();
         watch.reset();
+        plotHeld = false;
+        lastInside = false;
+        kidnapped = false;
+        guestTick = Integer.MIN_VALUE / 2;
+        starSize = 0;
+        starGoneTick = -1;
+        aboard = false;
     }
 
     Tile surface()
@@ -1103,6 +1510,8 @@ public class NomadPlugin extends Plugin
             surface = null;
             delveLeft = 0;
             delveWait = 0;
+            fallen = false;
+            plots = new Plots();
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, GUARD_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
@@ -1120,7 +1529,11 @@ public class NomadPlugin extends Plugin
             surface = run.surface;
             delveLeft = run.delveLeft;
             delveWait = run.delveWait;
+            fallen = run.fallen;
+            plots = new Plots(run.plots);
         }
+        tideLeft = sim.tide() != null ? TIDE_MINUTES : 0;
+        networksMask = -1;
         loadGuard();
         loadMilestones();
         loadStats();
@@ -1511,6 +1924,8 @@ public class NomadPlugin extends Plugin
         SavedRun run = new SavedRun(sim, surface);
         run.delveLeft = delveLeft;
         run.delveWait = delveWait;
+        run.fallen = fallen;
+        run.plots = plots.save();
         configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(run));
     }
 
@@ -1697,6 +2112,24 @@ public class NomadPlugin extends Plugin
             view.state = "Delving: inside for " + delveLeft + " min";
             view.stateColour = SidebarParts.IN;
         }
+        else if (sim != null && kidnapped)
+        {
+            view.state = "Carried off: inside until you're back";
+            view.stateColour = SidebarParts.IN;
+        }
+        else if (sim != null && sim.intermission())
+        {
+            view.state = "Intermission: your circle waits";
+            view.stateColour = SidebarParts.IN;
+        }
+        else if (sim != null && plotHeld)
+        {
+            view.state = "In a plot circle: counts as inside";
+            view.stateColour = SidebarParts.IN;
+        }
+        view.fallen = fallen;
+        if (sim != null && fallen) view.name += " · Fallen";
+        if (sim != null && !config.leylines()) view.leyline = "Off";
         if (sim != null && journey != null)
         {
             view.road = NomadPanel.time(journey.streak()) + "/" + RoadStones.ROAD_MINUTES / 60 + "h";
@@ -1732,6 +2165,12 @@ public class NomadPlugin extends Plugin
         g.fillOval(6, 6, 4, 4);
         g.dispose();
         return img;
+    }
+
+    /** A storm's name: Gale or Squall, or in season (with Holiday weather on) a Haunt or Snowfall one. */
+    static String stormName(boolean gale)
+    {
+        return holidays ? Holidays.storm(LocalDate.now(), gale) : gale ? "Gale" : "Squall";
     }
 
     static Color colour(Circle c, int alpha)

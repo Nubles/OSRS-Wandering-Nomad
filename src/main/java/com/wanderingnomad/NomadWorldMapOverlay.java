@@ -188,6 +188,8 @@ class NomadWorldMapOverlay extends Overlay
         }
         drawWaystones(graphics, sim, bounds, west, south, zoom);
         drawWanderings(graphics, sim, bounds, west, south, zoom, now);
+        drawWorldWays(graphics, sim, plugin.config().plotCircles() ? plugin.plots() : java.util.Collections.emptyList(), bounds, west, south,
+            zoom, now);
         if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
         drawOmen(graphics, bounds, west, south, zoom);
         drawRivals(graphics, bounds, west, south, zoom);
@@ -765,6 +767,81 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setColor(Color.WHITE);
             graphics.fill(new Ellipse2D.Double(ax - 5, ay - 5, 10, 10));
             outlined(graphics, k.flying() ? "Comet · " + k.flightLeft() + "m" : "Comet in " + k.warning() + "m", (float) ax + 8, (float) ay - 6, SKY, false);
+        }
+    }
+
+    private static final Color TRAVEL = new Color(0xA8E6A1);
+    private static final Color STAR = new Color(0xFFF1A8);
+    private static final Color PLOT = new Color(0x8FE0A2);
+
+    /**
+     * The world's own ways on the map: the travel hop Main is about to make, the coordinate
+     * tide's pull, the fallen star holding your circle, and your plot circles.
+     */
+    private static void drawWorldWays(Graphics2D graphics, NomadSim sim, List<int[]> plots, Rectangle bounds, int west, int south,
+        float zoom, long now)
+    {
+        com.wanderingnomad.sim.Networks.Node from = sim.hopFrom() == null ? null : com.wanderingnomad.sim.Networks.byName(sim.hopFrom());
+        com.wanderingnomad.sim.Networks.Node to = sim.hopTo() == null ? null : com.wanderingnomad.sim.Networks.byName(sim.hopTo());
+        if (from != null && to != null)
+        {
+            double ax = bounds.x + (from.x - west) * zoom;
+            double ay = bounds.y + bounds.height - (from.y - south) * zoom;
+            double bx = bounds.x + (to.x - west) * zoom;
+            double by = bounds.y + bounds.height - (to.y - south) * zoom;
+            graphics.setStroke(DOTTED);
+            graphics.setColor(TRAVEL);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            graphics.fill(new Ellipse2D.Double(bx - 4, by - 4, 8, 8));
+            outlined(graphics, "Hop by " + com.wanderingnomad.sim.Networks.NAMES[to.network] + " in " + sim.hopWarn() + "m: " + to.name,
+                (float) bx + 7, (float) by + 4, TRAVEL, false);
+        }
+        Circle yours = sim.bound();
+        com.wanderingnomad.sim.Tile tide = sim.tide();
+        if (tide != null)
+        {
+            double ax = bounds.x + (yours.x() - west) * zoom;
+            double ay = bounds.y + bounds.height - (yours.y() - south) * zoom;
+            double bx = bounds.x + (tide.x - west) * zoom;
+            double by = bounds.y + bounds.height - (tide.y - south) * zoom;
+            graphics.setStroke(DOTTED);
+            graphics.setColor(SEA);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            // An X marks the dig spot.
+            graphics.setStroke(THIN);
+            graphics.draw(new Line2D.Double(bx - 4, by - 4, bx + 4, by + 4));
+            graphics.draw(new Line2D.Double(bx - 4, by + 4, bx + 4, by - 4));
+            outlined(graphics, "Tide: your clue", (float) bx + 7, (float) by + 4, SEA, false);
+        }
+        com.wanderingnomad.sim.Tile star = sim.star();
+        if (star != null)
+        {
+            double px = bounds.x + (star.x - west) * zoom;
+            double py = bounds.y + bounds.height - (star.y - south) * zoom;
+            double pulse = 0.5 + 0.5 * Math.sin(now / 300.0);
+            double r = 4 + 2 * pulse;
+            Path2D.Double spark = new Path2D.Double();
+            for (int k = 0; k < 8; k++)
+            {
+                double a = k * Math.PI / 4;
+                double d = k % 2 == 0 ? r * 1.6 : r * 0.6;
+                if (k == 0) spark.moveTo(px + Math.cos(a) * d, py - Math.sin(a) * d);
+                else spark.lineTo(px + Math.cos(a) * d, py - Math.sin(a) * d);
+            }
+            spark.closePath();
+            graphics.setColor(STAR);
+            graphics.fill(spark);
+            outlined(graphics, "Fallen star · " + NomadPanel.time(yours.starHold()), (float) px + 9, (float) py + 4, STAR, false);
+        }
+        for (int[] p : plots)
+        {
+            double px = bounds.x + (p[0] - west) * zoom;
+            double py = bounds.y + bounds.height - (p[1] - south) * zoom;
+            double pr = Math.max(3, com.wanderingnomad.sim.Plots.RADIUS * zoom);
+            graphics.setStroke(THIN);
+            graphics.setColor(NomadSceneOverlay.alpha(PLOT, 200));
+            graphics.draw(new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2));
+            if (zoom >= 2) outlined(graphics, "Plot · " + NomadPanel.time(p[2]), (float) px, (float) (py - pr - 3), PLOT, true);
         }
     }
 

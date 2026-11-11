@@ -505,6 +505,8 @@ public final class NomadSim
     String hopTo;
     int hopWarn;
     int hopRest;
+    /** Testing only, never saved. */
+    private transient boolean hopSoon;
 
     public static NomadSim start(int seed)
     {
@@ -1591,6 +1593,13 @@ public final class NomadSim
         return hopWarn;
     }
 
+    /** Testing (Java only): Main hops the next minute it can, if a stop of a network you've unlocked is inside it. */
+    public void hopSoonForTesting()
+    {
+        hopSoon = true;
+        if (hopWarn == 0) hopRest = 0;
+    }
+
     /**
      * Rings and roots: near a stop of a network you've unlocked, Main now and then hops it, the way
      * it sails: a warning, then it's at another stop of the same network. On its own dice.
@@ -1632,7 +1641,7 @@ public final class NomadSim
             return;
         }
         Rng dice = new Rng(seed ^ ((minutes + 1) * 0x6B2E5A17));
-        if (dice.next() >= HOP_CHANCE) return;
+        if (dice.next() >= HOP_CHANCE && !hopSoon) return;
         // The stop nearest Main's middle, of those inside it.
         Networks.Node near = null;
         double best = m.radius;
@@ -1647,6 +1656,7 @@ public final class NomadSim
             }
         }
         if (near == null) return;
+        hopSoon = false;
         List<Networks.Node> stops = Networks.of(near.network);
         stops.remove(near);
         Networks.Node to = stops.get((int) (dice.next() * stops.size()));

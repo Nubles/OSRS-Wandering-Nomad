@@ -33,6 +33,91 @@ public interface NomadConfig extends Config
     )
     String HOUSE_RULES = "houseRules";
 
+    @ConfigSection(
+        name = "The world's own ways",
+        description = "How the game's own systems move your circles: travel networks, spellbooks, minigames, random events and the calendar",
+        position = 50,
+        closedByDefault = true
+    )
+    String WORLD_WAYS = "worldWays";
+
+    @ConfigItem(
+        keyName = "travelNetworks",
+        name = "Rings and roots",
+        description = "Main hops the travel networks you've unlocked (fairy rings, spirit trees, gliders, balloons, carpets, "
+            + "canoes and quetzals) the way it sails: a stop inside it, a 10-minute warning, then it's at another stop.",
+        section = WORLD_WAYS,
+        position = 0
+    )
+    default boolean travelNetworks()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "spellbookMoods",
+        name = "Spellbook temperament",
+        description = "Your spellbook nudges Main's moods: Standard roams, Ancients dash, Lunar loops and Arceuus lingers.",
+        section = WORLD_WAYS,
+        position = 1
+    )
+    default boolean spellbookMoods()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "intermission",
+        name = "Intermission",
+        description = "In a minigame's round your circle waits over the door for up to 20 minutes and you count as inside; "
+            + "afterwards it rushes to catch up.",
+        section = WORLD_WAYS,
+        position = 2
+    )
+    default boolean intermission()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "uninvitedGuest",
+        name = "Uninvited guest",
+        description = "Accepting a random event while inside reshuffles Main's mood, and a random event that carries you off "
+            + "counts as inside until you're back.",
+        section = WORLD_WAYS,
+        position = 3
+    )
+    default boolean uninvitedGuest()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "holidayWeather",
+        name = "Holiday weather",
+        description = "The real calendar flavours the storms: Haunts in late October, Snowfall in December, and a bonus "
+            + "waystone each day of the Easter weekend.",
+        section = WORLD_WAYS,
+        position = 4
+    )
+    default boolean holidayWeather()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "hardcore",
+        name = "Hardcore run",
+        description = "Play this run as HCUIM. Your first death doesn't end it: a rare waystone rises (Second wind) and the "
+            + "run carries on as Fallen.",
+        section = WORLD_WAYS,
+        position = 5
+    )
+    default boolean hardcore()
+    {
+        return false;
+    }
+
     @ConfigItem(
         keyName = "momentBanners",
         name = "Banners",
@@ -415,6 +500,32 @@ public interface NomadConfig extends Config
         position = 4
     )
     default boolean rites()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "leylines",
+        name = "Leylines",
+        description = "A teleport cast inside your circle that lands inside another circle you could cross into counts as "
+            + "that crossing. One charge, back every 3 hours.",
+        section = HOUSE_RULES,
+        position = 5
+    )
+    default boolean leylines()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "plotCircles",
+        name = "Plot circles",
+        description = "A farming patch you plant inside your circle keeps a tiny circle there until you clear it (8 hours at "
+            + "most, 6 at once). Walk into it from your circle and it counts as inside.",
+        section = HOUSE_RULES,
+        position = 6
+    )
+    default boolean plotCircles()
     {
         return false;
     }

@@ -2,6 +2,7 @@ package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Plots;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Waystone;
 import java.awt.Color;
@@ -333,7 +334,7 @@ final class Moments
         }
         else if (now == 2)
         {
-            out.add(new Banner(gale ? "Gale!" : "Squall!", gale ? "Main drifts three times as fast for " + sim.stormLeft() + " minutes."
+            out.add(new Banner(NomadPlugin.stormName(gale) + "!", gale ? "Main drifts three times as fast for " + sim.stormLeft() + " minutes."
                 : "Main shrinks to " + Math.round(sim.main().radius()) + " tiles for " + sim.stormLeft() + " minutes.",
                 STORM, Icon.EDGE, true, SoundEffectID.TELEPORT_VWOOP));
         }
@@ -476,6 +477,27 @@ final class Moments
         out.add(fromLine("Rite: to claim the waystone at Draynor Village, light a fire beside it."));
         out.add(fromLine("Vigil: stand your ground on the waystone at Draynor Village for a minute to claim it."));
         out.add(fromLine("You shattered the waystone at Draynor Village: it burst into Lodestone (rare)!"));
+        out.add(fromLine("Main is by the fairy ring at the Wizards' Tower (DIS): in 10 minutes it hops to Canifis (CKS)."));
+        out.add(fromLine("Main hopped by spirit tree from the Grand Exchange to Tree Gnome Village."));
+        out.add(fromLine("Obelisk roulette! The Wilderness circle went through the obelisk with you, to level 44."));
+        out.add(fromLine("Starfall! A star crashed inside your circle: it holds your circle still until it's mined out."));
+        out.add(fromLine("A layer of the star is mined: your circle is 2 tiles bigger for 2 hours."));
+        out.add(fromLine("The star is mined out: your circle drifts again."));
+        out.add(fromLine("Log pop! A new collection log slot: your circle is 1 tile bigger for 30 minutes."));
+        out.add(fromLine("Encore! A new music track banks a minute of Anchor: 3 minutes banked."));
+        out.add(fromLine("Encore: your circle holds still for 3 minutes."));
+        out.add(fromLine("Intermission: your circle waits for you while you play, up to 20 minutes."));
+        out.add(fromLine("Intermission over: your circle rushes 3x as fast for 12 minutes to catch up."));
+        out.add(fromLine("Leyline! Your teleport carried you from Main into Kandarin. The leyline's charge comes back in 3 hours."));
+        out.add(fromLine("Port of call: you docked your boat inside Karamja and crossed into it. The only way out is back into Main."));
+        out.add(fromLine("Superior surge! A waystone holding Tailwind (common) rose 14 tiles north-east of you."));
+        out.add(fromLine("An uninvited guest! Main forgets its mood and picks a new one."));
+        out.add(fromLine("Grand tier crowns: 2 Combat Achievement tiers done, so Main can grow to 34 tiles."));
+        out.add(fromLine("Coordinate tide: your circle leans a tile a minute toward your clue's dig spot, for up to 3 hours."));
+        out.add(fromLine("Plot circle: the patch you planted keeps a little circle of its own for up to 8 hours, until you clear it."));
+        out.add(fromLine("Carried off: a random event took you away. You count as inside until you're back."));
+        out.add(new Banner(NomadPlugin.stormName(true) + "!", "Main drifts three times as fast for 30 minutes.", STORM, Icon.EDGE, true,
+            SoundEffectID.TELEPORT_VWOOP));
         out.add(new Banner("Wandering stone risen", "Leap (rare), in your circle. It hops 8 tiles every 10 minutes: catch it.", GOLD,
             Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG));
         out.add(new Banner("Legendary waystone risen", NomadSim.CROWN + " at the Grand Exchange. It never fades.", SidebarParts.LEGEND,
@@ -875,6 +897,145 @@ final class Moments
                 SoundEffectID.TOWN_CRIER_BELL_DONG);
         }
         Banner boon = boonLine(line);
-        return boon != null ? boon : worldEvent(line);
+        if (boon != null) return boon;
+        Banner osrs = osrsLine(line);
+        return osrs != null ? osrs : worldEvent(line);
+    }
+
+    private static final Color TRAVEL = new Color(0xA8E6A1);
+    private static final Pattern HOP_SOON = Pattern.compile("^Main is by the (.+?) at (.+): in (\\d+) minutes it hops to (.+)\\.$");
+    private static final Pattern HOPPED = Pattern.compile("^Main hopped by (.+?) from (.+) to (.+)\\.$");
+    private static final Pattern OBELISK = Pattern.compile("^Obelisk roulette! .* to level (\\d+)\\.$");
+    private static final Pattern LAYER = Pattern.compile("^A layer of the star is mined: your circle is (\\d+) tiles? bigger");
+    private static final Pattern ENCORE_BANKED = Pattern.compile("^Encore! .*: (\\d+) minutes? banked\\.$");
+    private static final Pattern ENCORE_USED = Pattern.compile("^Encore: your circle holds still for (\\d+) minutes?\\.$");
+    private static final Pattern CATCH_UP = Pattern.compile("^Intermission over: your circle rushes (\\d+)x as fast for (\\d+) minutes");
+    private static final Pattern LEYLINE = Pattern.compile("^Leyline! Your teleport carried you from (.+) into (.+)\\. The leyline");
+    private static final Pattern PORT_OF_CALL = Pattern.compile("^Port of call: you docked your boat inside (.+) and crossed into it\\.");
+    private static final Pattern SURGE = Pattern.compile("^Superior surge! A waystone holding (.+) \\(common\\) rose (\\d+) tiles (.+) of you\\.$");
+    private static final Pattern CROWNS = Pattern.compile("^Grand tier crowns: (\\d+) Combat Achievement tiers? done, so Main can grow to (\\d+) tiles\\.$");
+
+    /**
+     * The real OSRS systems' lines as banners: travel hops, obelisks, stars, the collection log,
+     * music, minigames, leylines, ports of call, superiors, random events and Combat Achievements.
+     * Null for any other line.
+     */
+    static Banner osrsLine(String line)
+    {
+        Matcher m = HOP_SOON.matcher(line);
+        if (m.find())
+        {
+            return new Banner("A " + m.group(1) + " hop is coming", "In " + m.group(3) + " min Main hops from " + m.group(2) + " to " + m.group(4) + ".",
+                TRAVEL, Icon.CROSSING, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        m = HOPPED.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Main hopped by " + m.group(1), "From " + m.group(2) + " to " + m.group(3) + ".", TRAVEL, Icon.CROSSING, true,
+                SoundEffectID.TELEPORT_VWOOP);
+        }
+        m = OBELISK.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Obelisk roulette!", "The Wilderness circle went through the obelisk with you, to level " + m.group(1) + ".",
+                RIFT_VIOLET, Icon.CROSSING, true, SoundEffectID.TELEPORT_VWOOP);
+        }
+        if (line.startsWith("Starfall!"))
+        {
+            return new Banner("Starfall!", "A star crashed inside your circle. It holds your circle still until it's mined out.", SKY, Icon.STAR,
+                true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        m = LAYER.matcher(line);
+        if (m.find())
+        {
+            return new Banner("A layer of the star mined", "Your circle is " + m.group(1) + (m.group(1).equals("1") ? " tile" : " tiles")
+                + " bigger for " + NomadSim.STAR_MINUTES / 60 + " hours.", SKY, Icon.STAR, false, SoundEffectID.PRAYER_DEPLETE_TWINKLE);
+        }
+        if (line.startsWith("The star is mined out") || line.startsWith("The fallen star's hold has faded"))
+        {
+            return new Banner(line.startsWith("The star") ? "The star is mined out" : "The star's hold has faded", "Your circle drifts again.",
+                SKY.darker(), Icon.STAR, false, SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+        }
+        if (line.startsWith("Log pop!"))
+        {
+            return new Banner("Log pop!", line.substring("Log pop! ".length()), GOLD, Icon.RING, false, SoundEffectID.PRAYER_DEPLETE_TWINKLE);
+        }
+        m = ENCORE_BANKED.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Encore!", "A new music track: " + m.group(1) + " min of Anchor banked. Spend it from the sidebar.", GOLD, Icon.BOON,
+                false, SoundEffectID.UI_BOOP);
+        }
+        m = ENCORE_USED.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Encore", "Your circle holds still for " + m.group(1) + " min.", GOLD, Icon.BOON, true,
+                SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+        }
+        if (line.startsWith("Intermission:"))
+        {
+            return new Banner("Intermission", "Your circle waits for you while you play, up to " + NomadSim.INTERMISSION_MAX + " minutes.", IN,
+                Icon.RING, false, SoundEffectID.UI_BOOP);
+        }
+        if (line.startsWith("The intermission ran long"))
+        {
+            return new Banner("The intermission ran long", "Your circle drifts on, and catches up after.", WARM, Icon.EDGE, false,
+                SoundEffectID.TOWN_CRIER_BELL_DING);
+        }
+        m = CATCH_UP.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Intermission over", "Your circle rushes " + m.group(1) + "x as fast for " + m.group(2) + " min to catch up.", WARM,
+                Icon.MOOD, true, SoundEffectID.TELEPORT_VWOOP);
+        }
+        m = LEYLINE.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Leyline!", "Your teleport carried you into " + m.group(2) + ". Its charge comes back in " + NomadSim.LEY_WAIT / 60
+                + " hours.", RIFT_VIOLET, Icon.CROSSING, true, SoundEffectID.TELEPORT_VWOOP);
+        }
+        if (line.startsWith("The leyline has its charge back"))
+        {
+            return new Banner("The leyline is charged", "A teleport into a circle you could cross into counts as crossing.", RIFT_VIOLET.darker(),
+                Icon.CROSSING, false, SoundEffectID.UI_BOOP);
+        }
+        m = PORT_OF_CALL.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Port of call", "You docked inside " + m.group(1) + " and crossed into it.", SEA, Icon.CROSSING, true,
+                SoundEffectID.TELEPORT_VWOOP);
+        }
+        m = SURGE.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Superior surge!", "A waystone holding " + m.group(1) + " rose " + m.group(2) + " tiles " + m.group(3) + " of you.",
+                GOLD, Icon.WAYSTONE, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+        }
+        if (line.startsWith("An uninvited guest!"))
+        {
+            return new Banner("An uninvited guest!", "Main forgets its mood and picks a new one.", WARM, Icon.MOOD, false, SoundEffectID.UI_BOOP);
+        }
+        m = CROWNS.matcher(line);
+        if (m.find())
+        {
+            return new Banner("Grand tier crown", m.group(1) + " Combat Achievement " + (m.group(1).equals("1") ? "tier" : "tiers")
+                + " done: Main can grow to " + m.group(2) + " tiles.", GOLD, Icon.RING, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+        }
+        if (line.startsWith("Coordinate tide:"))
+        {
+            return new Banner("Coordinate tide", "Your circle leans a tile a minute toward your clue's dig spot.", SEA, Icon.MOOD, false,
+                SoundEffectID.UI_BOOP);
+        }
+        if (line.startsWith("Plot circle:"))
+        {
+            return new Banner("Plot circle", "The patch you planted keeps a little circle of its own, up to " + Plots.MINUTES / 60 + " hours.", IN,
+                Icon.RING, false, SoundEffectID.PRAYER_DEPLETE_TWINKLE);
+        }
+        if (line.startsWith("Carried off:"))
+        {
+            return new Banner("Carried off", "A random event took you away. You count as inside until you're back.", IN, Icon.RING, false,
+                SoundEffectID.UI_BOOP);
+        }
+        return null;
     }
 }

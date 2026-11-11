@@ -260,6 +260,31 @@ public final class Circle
         return stars == null ? 0 : stars.length;
     }
 
+    /** Minutes until the longest Log pop runs out, 0 if none. */
+    public int popLeft()
+    {
+        return longest(pops);
+    }
+
+    /** Minutes until the longest star layer's tile runs out, 0 if none. */
+    public int stardustLeft()
+    {
+        return longest(stars);
+    }
+
+    /** Minutes the fallen star still holds this circle, 0 if none does. */
+    public int starHold()
+    {
+        return starLeft;
+    }
+
+    private static int longest(int[] timers)
+    {
+        int best = 0;
+        if (timers != null) for (int t : timers) best = Math.max(best, t);
+        return best;
+    }
+
     /** Minutes left leaving a Wake. */
     public int wakeLeft()
     {

@@ -63,6 +63,11 @@ class NomadStatusOverlay extends OverlayPanel
             state = "Stranded";
             colour = STRANDED;
         }
+        else if (plugin.sheltered())
+        {
+            state = plugin.kidnapped() ? "Carried off" : sim.intermission() ? "Intermission" : plugin.plotHeld() ? "In a plot" : "Delving";
+            colour = INSIDE;
+        }
         else
         {
             state = "Inside";
@@ -86,9 +91,14 @@ class NomadStatusOverlay extends OverlayPanel
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Forked").right("pick a half").rightColor(FORK).build());
         }
+        if (sim.hopWarn() > 0)
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Hop in " + sim.hopWarn() + " min")
+                .right(sim.hopTo()).rightColor(FORK).build());
+        }
         if (sim.stormWarning() > 0 || sim.stormLeft() > 0)
         {
-            String kind = sim.stormKind() == NomadSim.GALE ? "Gale" : "Squall";
+            String kind = NomadPlugin.stormName(sim.stormKind() == NomadSim.GALE);
             panelComponent.getChildren().add(LineComponent.builder()
                 .left(sim.stormWarning() > 0 ? kind + " in " + sim.stormWarning() + " min" : kind)
                 .right(sim.stormWarning() > 0 ? "over Main" : sim.stormLeft() + " min left").rightColor(STORM).build());
@@ -133,6 +143,12 @@ class NomadStatusOverlay extends OverlayPanel
             if (sim.keystoneLeft() > 0) chips.add(NomadSim.KEYSTONE + " " + sim.keystoneLeft() + "m");
             else if (sim.keystoneArmed()) chips.add(NomadSim.KEYSTONE + " armed");
             if (sim.shatterNext()) chips.add("Shatter next");
+            if (c.pops() > 0) chips.add("Log pop +" + c.pops());
+            if (c.starHold() > 0) chips.add("Star hold " + NomadPanel.time(c.starHold()));
+            if (c.starTiles() > 0) chips.add("Stardust +" + c.starTiles());
+            if (sim.catchUp() > 0) chips.add("Catch-up " + sim.catchUp() + "m");
+            if (sim.encore() > 0) chips.add("Encore " + sim.encore() + "m");
+            if (sim.tide() != null) chips.add("Tide");
             if (!chips.isEmpty()) panelComponent.getChildren().add(chips);
         }
         panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").build());

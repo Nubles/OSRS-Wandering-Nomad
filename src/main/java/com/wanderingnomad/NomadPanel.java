@@ -72,6 +72,10 @@ class NomadPanel extends PluginPanel
     /** Turns Shatter on or off for the next waystone you claim. */
     private Consumer<Boolean> onShatter = on -> { };
     private final JCheckBox shatter = new JCheckBox("Shatter the next waystone I claim");
+    /** Encore: spends the banked minutes of Anchor. */
+    private Runnable onEncore = () -> { };
+    private final JButton encore = button("Spend Encore", "Every new music track banks a minute of Anchor: spend them all to hold "
+        + "your circle still that long", () -> onEncore.run());
     private boolean fillingShatter;
     private final SidebarParts.Header header = new SidebarParts.Header();
     private final SidebarParts.MiniMap map = new SidebarParts.MiniMap();
@@ -131,6 +135,9 @@ class NomadPanel extends PluginPanel
         });
         fix(shatter, 18);
         add(shatter);
+        encore.setVisible(false);
+        fix(encore, 24);
+        add(encore);
         add(gap(8));
         add(heading("Crossings"));
         add(gap(4));
@@ -271,6 +278,11 @@ class NomadPanel extends PluginPanel
         this.onShatter = onShatter;
     }
 
+    void onEncore(Runnable onEncore)
+    {
+        this.onEncore = onEncore;
+    }
+
     void display(View v)
     {
         helmPorts = v.helmPorts;
@@ -282,6 +294,8 @@ class NomadPanel extends PluginPanel
             fillingShatter = false;
         }
         shatter.setEnabled(v.live);
+        encore.setVisible(v.live && v.encore > 0);
+        encore.setText("Spend Encore: hold still " + v.encore + " min");
         for (SidebarParts.Part p : drawn) p.show(v);
         boonsTitle.setText(("Boons " + v.held + "/" + NomadSim.BOONS_HELD).toUpperCase());
 
@@ -951,6 +965,12 @@ class NomadPanel extends PluginPanel
         List<String> lodeTargets = Collections.emptyList();
         /** Whether the next waystone you claim is shattered. */
         boolean shatterNext;
+        /** Encore: minutes of Anchor banked from music tracks. */
+        int encore;
+        /** Leylines: "Ready", the charge's time left, or "Off". */
+        String leyline = "Off";
+        /** Second wind: a hardcore run's one death has happened. */
+        boolean fallen;
         /** The Unbroken road: played minutes in a row inside, and Footprint squares walked, for the Run card. */
         String road = "-";
         String squares = "-";
@@ -994,6 +1014,8 @@ class NomadPanel extends PluginPanel
                     + (sim.helmsmanTo() != null && c.isMain() ? " to sail for " + sim.helmsmanTo() : "") : "");
             String lode = sim.lodestoneTo();
             if (lode != null) v.mood += ", leaning toward " + lode;
+            if (sim.tide() != null) v.mood += ", tide pulls to your clue";
+            if (sim.star() != null) v.mood = "Held by a fallen star";
             if (c.isCaravan())
             {
                 v.mood = c.resting() > 0 ? "Resting at " + c.bankTown() + ", " + c.resting() + " min" : "On the road to " + c.bankTown();
@@ -1048,13 +1070,19 @@ class NomadPanel extends PluginPanel
             {
                 v.forkLine = "Forked: stand in the half you want";
             }
+            else if (sim.hopWarn() > 0)
+            {
+                com.wanderingnomad.sim.Networks.Node hop = com.wanderingnomad.sim.Networks.byName(sim.hopTo());
+                v.forkLine = "Main hops by " + (hop == null ? "travel" : com.wanderingnomad.sim.Networks.NAMES[hop.network]) + " to "
+                    + sim.hopTo() + " in " + sim.hopWarn() + " min";
+            }
             else if (sim.stormWarning() > 0)
             {
-                v.forkLine = (sim.stormKind() == NomadSim.GALE ? "Gale" : "Squall") + " over Main in " + sim.stormWarning() + " min";
+                v.forkLine = NomadPlugin.stormName(sim.stormKind() == NomadSim.GALE) + " over Main in " + sim.stormWarning() + " min";
             }
             else if (sim.stormLeft() > 0)
             {
-                v.forkLine = (sim.stormKind() == NomadSim.GALE ? "Gale: Main 3x fast" : "Squall: Main shrunk") + ", " + sim.stormLeft() + " min left";
+                v.forkLine = NomadPlugin.stormName(sim.stormKind() == NomadSim.GALE) + (sim.stormKind() == NomadSim.GALE ? ": Main 3x fast" : ": Main shrunk") + ", " + sim.stormLeft() + " min left";
             }
             else if (sim.ghost() != null)
             {
@@ -1130,6 +1158,14 @@ class NomadPanel extends PluginPanel
             if (sim.keystoneArmed()) v.active.add(new ActiveBoon(NomadSim.KEYSTONE, "armed for the next fork"));
             if (sim.shatterNext()) v.active.add(new ActiveBoon("Shatter", "the next waystone you claim"));
             v.shatterNext = sim.shatterNext();
+            v.encore = sim.encore();
+            v.leyline = sim.leyWait() > 0 ? time(sim.leyWait()) : "Ready";
+            if (c.pops() > 0) v.active.add(new ActiveBoon("Log pop +" + c.pops(), c.popLeft(), NomadSim.POP_MINUTES));
+            if (c.starHold() > 0) v.active.add(new ActiveBoon("Star hold", c.starHold(), NomadSim.STAR_HOLD));
+            if (c.starTiles() > 0) v.active.add(new ActiveBoon("Stardust +" + c.starTiles(), c.stardustLeft(), NomadSim.STAR_MINUTES));
+            if (sim.catchUp() > 0) v.active.add(new ActiveBoon("Catch-up", sim.catchUp(), NomadSim.INTERMISSION_MAX));
+            if (sim.encore() > 0) v.active.add(new ActiveBoon("Encore", sim.encore() + " min of Anchor banked"));
+            if (sim.leyWait() > 0) v.active.add(new ActiveBoon("Leyline charging", sim.leyWait(), NomadSim.LEY_WAIT));
             if (sim.boons().contains(NomadSim.LODESTONE)) v.lodeTargets = sim.lodestoneTargets();
             v.homeward = sim.homewardLeft() > 0 ? time(sim.homewardLeft()) : "Ready";
             if (sim.boons().contains(NomadSim.HELMSMAN)) v.helmPorts = sim.helmsmanPorts();
