@@ -25,6 +25,16 @@ import com.wanderingnomad.journey.RoadStones;
 import com.wanderingnomad.journey.Trial;
 import com.wanderingnomad.journey.Trials;
 import com.wanderingnomad.journey.Wagers;
+import com.wanderingnomad.social.Baton;
+import com.wanderingnomad.social.Bottle;
+import com.wanderingnomad.social.Codes;
+import com.wanderingnomad.social.Colours;
+import com.wanderingnomad.social.Dare;
+import com.wanderingnomad.social.Footprint;
+import com.wanderingnomad.social.Lodestar;
+import com.wanderingnomad.social.Salutes;
+import com.wanderingnomad.social.Tape;
+import com.wanderingnomad.social.Torch;
 import com.wanderingnomad.journey.WorldChat;
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.Clues;
@@ -278,6 +288,20 @@ public class NomadPlugin extends Plugin
     /** Outside at the last tick, for the shrunk comeback, and the circle size under which getting back in counts. */
     private boolean wasOutside;
     static final int BRINK_TILES = 15;
+    /** Fellowship: who waved, bowed or lit a fire nearby; fellows inside your circle at the last look (x, y); the Lodestar's state. */
+    private final Salutes salutes = new Salutes();
+    private volatile List<int[]> fellowsAt = java.util.Collections.emptyList();
+    private boolean lodestarTide;
+    private int lodestarWeek;
+    /** Torchbearer: passing armed from the sidebar, until this tick. */
+    private int torchArmedUntil = -1;
+    /** Baton: a new leg counts as inside until its runner first stands in the circle, or its grace runs out. */
+    private boolean batonGrace;
+    /** A baton taken from the sidebar, waiting for the new run to start. Client thread. */
+    private Baton batonPending;
+    static final int TORCH_ARM_TICKS = 200;
+    static final int GRAVE_RENOWN = 25;
+    static final int NEAR_TILES = 5;
     /** The ancestor ghosts have been asked for this run (they're built once, off the client thread). */
     private boolean ghostsAsked;
     /** Main's fork count at the last path sample. */
@@ -327,6 +351,7 @@ public class NomadPlugin extends Plugin
         panel.onShatter(this::shatterFromPanel);
         panel.onEncore(this::encoreFromPanel);
         panel.onLegacy(this::retireFromPanel, this::wagerFromPanel, this::sealFromPanel);
+        panel.onSocial(this::socialFromPanel);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
@@ -668,6 +693,7 @@ public class NomadPlugin extends Plugin
         if (born != null) report(java.util.Collections.singletonList(born + " is born: the half that lived carries Main's line on."));
         journey.minute(!outsideNow());
         legacyMinute();
+        fellowshipMinute();
         for (RoadStones.Due due : RoadStones.due(journey)) summon(due.tier, due.why);
         if (config.holidayWeather() && Holidays.easterStoneDue(journey, LocalDate.now())) summon(NomadSim.COMMON, "An Easter weekend day");
         String owed = Bestiary.due(journey, sim.minutes());
@@ -706,6 +732,7 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onChatMessage(ChatMessage ev)
     {
+        if (sim != null && ev.getType() == ChatMessageType.PUBLICCHAT) wellWisher(ev.getName(), ev.getMessage());
         if (sim == null || (ev.getType() != ChatMessageType.GAMEMESSAGE && ev.getType() != ChatMessageType.SPAM)) return;
         String line = Text.removeTags(ev.getMessage());
         if (JourneyChat.read(line, journey)) checkTrials();
@@ -737,6 +764,7 @@ public class NomadPlugin extends Plugin
                 break;
             case DEATH:
                 scar("death", "You died at " + NomadPanel.time(sim.minutes()) + ".");
+                if (surface != null) journey.died(surface.x, surface.y);
                 if (config.hardcore() && !fallen)
                 {
                     fallen = true;
@@ -947,8 +975,11 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onAnimationChanged(AnimationChanged ev)
     {
-        if (sim == null || !config.rites() || ev.getActor() != client.getLocalPlayer()) return;
+        if (sim != null && ev.getActor() instanceof Player) salute((Player) ev.getActor());
+        if (sim == null || ev.getActor() != client.getLocalPlayer()) return;
         int anim = ev.getActor().getAnimation();
+        if (anim == BOW_ANIMATION) graves();
+        if (!config.rites()) return;
         if (anim == BOW_ANIMATION) rite(Waystone.BOW);
         else if (anim == EAT_ANIMATION) rite(Waystone.EAT);
     }
@@ -975,6 +1006,7 @@ public class NomadPlugin extends Plugin
         // The first value per skill arrives at login; only later rises are gains.
         if (before != null && ev.getXp() > before && skill == Skill.FIREMAKING) rite(Waystone.FIRE);
         if (before != null && ev.getXp() > before && nearEdge()) edgeXp = true;
+        if (before != null && ev.getXp() > before && skill == Skill.FIREMAKING) sharedFire();
         if (before == null || sim == null || !config.ruleGuard() || !outsideNow()) return;
         guard.xp(skill.getName(), ev.getXp() - before);
     }
@@ -1152,7 +1184,7 @@ public class NomadPlugin extends Plugin
     /** Counting as inside wherever your circle is: delving, carried off by a random event, held by a plot circle, or in an intermission. */
     boolean sheltered()
     {
-        return sim != null && (delveLeft > 0 || kidnapped || plotHeld || sim.intermission());
+        return sim != null && (delveLeft > 0 || kidnapped || plotHeld || batonGrace || sim.intermission());
     }
 
     boolean kidnapped()
@@ -1502,6 +1534,11 @@ public class NomadPlugin extends Plugin
         aboard = false;
         ancestors = null;
         ghostsAsked = false;
+        salutes.clear();
+        fellowsAt = java.util.Collections.emptyList();
+        lodestarTide = false;
+        torchArmedUntil = -1;
+        batonGrace = false;
         outsideRun = 0;
         edgeXp = false;
         claimedSeen = -1;
@@ -1573,7 +1610,7 @@ public class NomadPlugin extends Plugin
         if (run == null || run.sim == null)
         {
             int seed = raceName != null ? raceSeed : seed();
-            sim = NomadSim.start(seed);
+            sim = batonPending != null ? batonPending.run.sim.ready() : NomadSim.start(seed);
             surface = null;
             delveLeft = 0;
             delveWait = 0;
@@ -1586,7 +1623,16 @@ public class NomadPlugin extends Plugin
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY);
             List<String> lines = new ArrayList<>();
-            lines.add("A new run started with seed " + seed + ". You're in the Main circle, centred on Lumbridge.");
+            if (batonPending != null)
+            {
+                lines.add("You take the baton of team " + batonPending.team + ": leg " + (batonPending.legs.size() + 1) + " starts with the "
+                    + "circles where " + batonPending.legs.get(batonPending.legs.size() - 1).name + " left them. You count as inside "
+                    + "until you first reach your circle, for up to " + Baton.GRACE_MINUTES / 60 + " hours.");
+            }
+            else
+            {
+                lines.add("A new run started with seed " + seed + ". You're in the Main circle, centred on Lumbridge.");
+            }
             if (raceName != null) lines.add("You're racing " + raceName + " on their seed: your circles start out the same, and part ways as you each play.");
             report(lines);
             save();
@@ -1602,6 +1648,7 @@ public class NomadPlugin extends Plugin
             plots = new Plots(run.plots);
             retired = run.retired;
             epithet = run.epithet;
+            batonGrace = run.batonGrace;
         }
         tideLeft = sim.tide() != null ? TIDE_MINUTES : 0;
         networksMask = -1;
@@ -1616,7 +1663,20 @@ public class NomadPlugin extends Plugin
         {
             renown.newRun();
             saveRenown();
-            ancestralStart();
+            if (batonPending != null)
+            {
+                Baton b = batonPending;
+                b.run = null;
+                journey.baton(b, sim.minutes());
+                batonGrace = true;
+                saveJourney();
+                save();
+            }
+            else
+            {
+                ancestralStart();
+            }
+            batonPending = null;
         }
         forksSampled = sim.forks();
         buildAncestors();
@@ -2104,6 +2164,636 @@ public class NomadPlugin extends Plugin
         });
     }
 
+    /** Your own name in the game, or null before login. */
+    private String myName()
+    {
+        Player me = client.getLocalPlayer();
+        return me == null || me.getName() == null ? null : Text.removeTags(me.getName());
+    }
+
+    /**
+     * Nomad's salute, any player's animation: a Wave then a Bow marks them. Yours inside your
+     * circle counts toward a trial (and, armed, passes the torch); another's while you're inside
+     * tags them as a Nomad. Client thread.
+     */
+    private void salute(Player p)
+    {
+        if (!config.salutes() || p.getName() == null) return;
+        String name = Text.removeTags(p.getName());
+        boolean done = salutes.animation(name, p.getAnimation(), tickCount);
+        salutes.prune(tickCount);
+        if (!done) return;
+        boolean inside = surface != null && !outsideNow();
+        if (p == client.getLocalPlayer())
+        {
+            if (!inside) return;
+            journey.add(Trials.SALUTED, 1);
+            if (journey.value(Trials.SALUTED) == 1)
+            {
+                report(java.util.Collections.singletonList("Nomad's salute: anyone with the plugin who sees you Wave then Bow will know you."));
+            }
+            if (tickCount <= torchArmedUntil) passTorch();
+            checkTrials();
+            return;
+        }
+        if (!inside) return;
+        if (journey.addTo(Trials.SALUTES, name))
+        {
+            show(Moments.nomad(name));
+            report(java.util.Collections.singletonList(name + " gave the Nomad's salute. Salute back: Wave, then Bow."));
+            saveJourney();
+        }
+    }
+
+    /** Whether a player has given the Nomad's salute this run, for the tags in the game world. Any thread. */
+    boolean nomad(String name)
+    {
+        Journey j = journey;
+        return name != null && j != null && config.salutes() && j.has(Trials.SALUTES, name);
+    }
+
+    /** Torchbearer: armed from the sidebar, your salute hands the torch to a saluting player beside you inside your circle. */
+    private void passTorch()
+    {
+        Player me = client.getLocalPlayer();
+        WorldView view = client.getTopLevelWorldView();
+        if (renown.torch() == null || me == null || view == null || me.getWorldLocation() == null) return;
+        WorldPoint at = me.getWorldLocation();
+        Player to = null;
+        for (Player p : view.players())
+        {
+            if (p == null || p == me || p.getName() == null || p.getWorldLocation() == null) continue;
+            WorldPoint them = p.getWorldLocation();
+            if (them.distanceTo(at) > NEAR_TILES || !sim.inYours(them.getX(), them.getY())) continue;
+            if (salutes.saluted(Text.removeTags(p.getName()), tickCount)) to = p;
+        }
+        if (to == null)
+        {
+            report(java.util.Collections.singletonList("No one beside you saluted back: the torch stays with you. They salute too, then you do."));
+            return;
+        }
+        torchArmedUntil = -1;
+        String name = Text.removeTags(to.getName());
+        Torch next = renown.passTorch(name, System.currentTimeMillis());
+        saveRenown();
+        String code = Codes.encode(Codes.TORCH, gson.toJson(next));
+        report(java.util.Collections.singletonList("The torch passes to " + name + ". Its code is copied: send it to them, and they take it "
+            + "from Fellowship in the sidebar."));
+        SwingUtilities.invokeLater(() -> Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(code), null));
+        publish();
+    }
+
+    /** Ancestor graves: a Bow beside a past run's grave, inside your circle, pays your respects. Client thread. */
+    private void graves()
+    {
+        if (surface == null || outsideNow()) return;
+        for (Legacy.Run run : renown.legacy())
+        {
+            if (run.grave == null || Math.abs(run.grave[0] - surface.x) > 3 || Math.abs(run.grave[1] - surface.y) > 3) continue;
+            if (!journey.addTo(Trials.GRAVES, String.valueOf(run.ended))) continue;
+            Rank up = renown.add(GRAVE_RENOWN);
+            journey.earn(GRAVE_RENOWN);
+            show(Moments.grave(run.title()));
+            report(java.util.Collections.singletonList("You pay your respects at the grave of " + run.title() + ". +" + GRAVE_RENOWN + " renown."));
+            if (up != null) show(Moments.rankUp(up));
+            applyPalette();
+            saveRenown();
+            saveJourney();
+            checkTrials();
+        }
+    }
+
+    /** Ancestor graves near your circle, as x, y and the run's title. Any thread. */
+    List<Object[]> graveMarks()
+    {
+        Renown r = renown;
+        NomadSim s = sim;
+        if (r == null || s == null) return java.util.Collections.emptyList();
+        List<Object[]> out = new ArrayList<>();
+        Circle c = s.bound();
+        for (Legacy.Run run : r.legacy())
+        {
+            if (run.grave == null || Math.hypot(run.grave[0] - c.x(), run.grave[1] - c.y()) > c.radius() + 50) continue;
+            out.add(new Object[]{run.grave[0], run.grave[1], run.title()});
+        }
+        return out;
+    }
+
+    /** Well-wishers: a stranger saying "safe travels" in public chat. Client thread. */
+    private void wellWisher(String from, String message)
+    {
+        if (!config.wellWishers() || from == null || message == null) return;
+        String name = Text.removeTags(from).replace('\u00A0', ' ').trim();
+        if (name.isEmpty() || name.equalsIgnoreCase(myName())) return;
+        if (!Text.removeTags(message).toLowerCase().contains("safe travels")) return;
+        if (!journey.addTo(Trials.WELLWISHERS, name.toLowerCase())) return;
+        int n = journey.value(Trials.WELLWISHERS);
+        show(Moments.wellWisher(name, n));
+        report(java.util.Collections.singletonList(name + " wished you safe travels. " + n + (n == 1 ? " well-wisher" : " well-wishers")
+            + " this run."));
+        saveJourney();
+        checkTrials();
+    }
+
+    /** Shared fire: your fire lit inside your circle while a Nomad who saluted lit one beside you. Client thread. */
+    private void sharedFire()
+    {
+        Player me = client.getLocalPlayer();
+        WorldView view = client.getTopLevelWorldView();
+        if (surface == null || outsideNow() || me == null || view == null || me.getWorldLocation() == null) return;
+        for (Player p : view.players())
+        {
+            if (p == null || p == me || p.getName() == null || p.getWorldLocation() == null) continue;
+            String name = Text.removeTags(p.getName());
+            if (p.getWorldLocation().distanceTo(me.getWorldLocation()) > 10 || !nomad(name) || !salutes.litFire(name, tickCount)) continue;
+            if (!journey.addTo(Trials.SHARED_FIRES, name)) continue;
+            Region where = Geography.regionAt(surface.x, surface.y);
+            show(Moments.sharedFire(name));
+            report(java.util.Collections.singletonList("A shared fire with " + name + (where == null ? "" : " in " + where.name)
+                + ", at " + NomadPanel.time(sim.minutes()) + "."));
+            saveJourney();
+            checkTrials();
+        }
+    }
+
+    /**
+     * Fellowship, every played minute: the Lodestar's pull, clan omens, fellow travellers, the dare
+     * under way, bottles reached, the clan atlas, the torch and a baton leg's grace. Client thread.
+     */
+    private void fellowshipMinute()
+    {
+        long now = System.currentTimeMillis();
+        int minute = sim.minutes();
+        boolean inside = surface != null && !outsideNow();
+        if (batonGrace && ((surface != null && sim.inYours(surface.x, surface.y)) || minute - journey.legStart() >= Baton.GRACE_MINUTES))
+        {
+            batonGrace = false;
+            report(java.util.Collections.singletonList("The baton's grace is over: from here your own tile counts."));
+        }
+        lodestarMinute(now, inside);
+        Omen dealt = Omens.clan(journey, sim, config.clanWord(), now);
+        if (dealt != null)
+        {
+            show(Moments.omen(dealt));
+            report(java.util.Collections.singletonList("A clan omen: " + dealt.title() + ". " + dealt.ask() + " Everyone with your clan word "
+                + "has the same one. You have " + NomadPanel.time(dealt.deadline() - minute) + "."));
+        }
+        fellowsAt = config.fellowTravellers() ? fellows() : java.util.Collections.emptyList();
+        int run = journey.fellows(inside ? fellowsAt.size() : 0);
+        if (run == 1 && inside) report(java.util.Collections.singletonList("Fellow travellers: " + fellowsAt.size()
+            + " friends or clanmates inside your circle. Keep together for 30 minutes."));
+        Dare d = journey.dare();
+        if (d != null)
+        {
+            Dare.Result r = d.settle(journey, minute);
+            if (r == Dare.Result.WON)
+            {
+                journey.add(Trials.DARES, 1);
+                Rank up = renown.add(d.renown());
+                journey.earn(d.renown());
+                show(Moments.dare(true, d));
+                report(java.util.Collections.singletonList("Dare done: " + d.ask() + ", for " + d.from + ". +" + d.renown()
+                    + " renown. Tell them you finished it in " + NomadPanel.time(minute - (d.deadline - Dare.HOURS * 60)) + "."));
+                if (up != null) show(Moments.rankUp(up));
+                applyPalette();
+                saveRenown();
+            }
+            else if (r == Dare.Result.LOST)
+            {
+                show(Moments.dare(false, d));
+                report(java.util.Collections.singletonList("The dare ran out: " + d.ask() + ", for " + d.from + "."));
+            }
+            if (r != Dare.Result.NONE) journey.dare(null);
+        }
+        if (inside)
+        {
+            for (Bottle b : new ArrayList<>(journey.bottles()))
+            {
+                if (!b.reached(surface.x, surface.y)) continue;
+                journey.opened(b);
+                journey.add(Trials.BOTTLES_FOUND, 1);
+                show(Moments.bottle(b.from));
+                report(java.util.Collections.singletonList("A bottle washed up at " + b.shore + ", from " + b.from + ": \"" + b.note + "\""));
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(panel, "A bottle washed up at " + b.shore + ", from " + b.from
+                    + ":\n\n" + b.note, "Nomad UIM: bottle post", JOptionPane.PLAIN_MESSAGE));
+            }
+        }
+        journey.set(Trials.CLAN_SQUARES, Footprint.union(renown.clanAtlas(), journey.items(Trials.SQUARES)).size());
+        journey.atLeast(Trials.TORCH, renown.torch() != null ? 1 : 0);
+    }
+
+    /** The Lodestar: while it shines, a Main within reach leans toward it, and reaching it raises a waystone. Client thread. */
+    private void lodestarMinute(long now, boolean inside)
+    {
+        Lodestar.Event e = Lodestar.next(now);
+        Tile star = new Tile(e.landmark.x, e.landmark.y);
+        boolean shining = config.lodestar() && e.shining(now);
+        Circle m = sim.main();
+        boolean near = shining && !m.sailing() && Math.hypot(m.x() - star.x, m.y() - star.y) <= Lodestar.REACH;
+        if (near && (sim.tide() == null || lodestarTide))
+        {
+            if (!lodestarTide) report(java.util.Collections.singletonList("The Lodestar shines at " + e.landmark.name + " for an hour: your circle "
+                + "leans toward it. Reach it for a waystone."));
+            sim.setTide(star);
+            lodestarTide = true;
+        }
+        else if (lodestarTide && !near)
+        {
+            if (star.equals(sim.tide()) || !shining) sim.setTide(null);
+            lodestarTide = false;
+        }
+        if (shining && lodestarWeek != e.week)
+        {
+            lodestarWeek = e.week;
+            show(Moments.lodestar(e.landmark.name, near));
+        }
+        if (shining && inside && Math.abs(surface.x - star.x) <= Lodestar.ARRIVED && Math.abs(surface.y - star.y) <= Lodestar.ARRIVED
+            && journey.addTo(Trials.LODESTAR, String.valueOf(e.week)))
+        {
+            summon(NomadSim.COMMON, "Reaching the Lodestar");
+            checkTrials();
+        }
+    }
+
+    /** The Lodestar to come (or shining), for the maps and sidebar; null when it's off. Any thread. */
+    Lodestar.Event lodestar()
+    {
+        return config.lodestar() ? Lodestar.next(System.currentTimeMillis()) : null;
+    }
+
+    /** Friends and clanmates standing inside your circle, as x, y. Client thread. */
+    private List<int[]> fellows()
+    {
+        WorldView view = client.getTopLevelWorldView();
+        Player me = client.getLocalPlayer();
+        if (view == null || me == null) return java.util.Collections.emptyList();
+        net.runelite.api.clan.ClanChannel clan = client.getClanChannel();
+        List<int[]> out = new ArrayList<>();
+        for (Player p : view.players())
+        {
+            if (p == null || p == me || p.getName() == null || p.getWorldLocation() == null) continue;
+            String name = Text.removeTags(p.getName());
+            boolean fellow = client.isFriended(name, false) || (clan != null && clan.findMember(name) != null);
+            WorldPoint at = p.getWorldLocation();
+            if (fellow && sim.inYours(at.getX(), at.getY())) out.add(new int[]{at.getX(), at.getY()});
+        }
+        return out;
+    }
+
+    /** Fellows inside your circle at the last look, as x, y, for the minimap's lanterns. Any thread. */
+    List<int[]> fellowsAt()
+    {
+        return fellowsAt;
+    }
+
+    /** Bottles waiting to be reached. Any thread. */
+    List<Bottle> bottles()
+    {
+        Journey j = journey;
+        return j == null ? java.util.Collections.emptyList() : j.bottles();
+    }
+
+    /** The clan atlas's squares other than your own, as region ids. Client thread (the world map renders there). */
+    java.util.Set<Integer> clanSquares()
+    {
+        Renown r = renown;
+        if (r == null || !config.clanAtlas() || r.clanAtlas().isEmpty()) return java.util.Collections.emptySet();
+        return Footprint.union(r.clanAtlas(), java.util.Collections.emptySet());
+    }
+
+    /** Shepherd: the followed rival whose circle is drawn in your game world, or null. Any thread. */
+    com.wanderingnomad.rival.Rival shepherd()
+    {
+        String name = config.shepherd().trim();
+        if (name.isEmpty()) return null;
+        for (com.wanderingnomad.rival.Rival r : rivals()) if (r.name.equalsIgnoreCase(name) && r.latest() != null) return r;
+        return null;
+    }
+
+    /** The sidebar's Fellowship lines: what's under way between you and other Nomads. Client thread. */
+    private List<String> fellowshipLines()
+    {
+        List<String> out = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        Lodestar.Event e = lodestar();
+        if (e != null)
+        {
+            if (e.shining(now)) out.add("Lodestar shining at " + e.landmark.name + " for " + ((e.rises + Lodestar.HOUR_MS - now) / 60000 + 1) + " min");
+            else out.add("Lodestar " + java.time.Instant.ofEpochMilli(e.rises).atZone(java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ofPattern("EEE HH:mm")) + " at " + e.landmark.name);
+        }
+        if (!config.clanWord().trim().isEmpty()) out.add("Clan omens: " + Codes.clean(config.clanWord(), 24));
+        if (!fellowsAt.isEmpty()) out.add(fellowsAt.size() + (fellowsAt.size() == 1 ? " fellow" : " fellows") + " in your circle");
+        Dare d = journey.dare();
+        if (d != null) out.add("Dare: " + d.ask() + " (" + d.progress(journey) + "/" + d.target + ", " + NomadPanel.time(Math.max(0,
+            d.deadline - sim.minutes())) + " left)");
+        for (Bottle b : journey.bottles()) out.add("Bottle from " + b.from + " at " + b.shore);
+        if (renown.torch() != null) out.add(renown.torch().line() + (tickCount <= torchArmedUntil ? ", ready to pass" : ""));
+        Baton baton = journey.baton();
+        if (baton != null) out.add("Team " + baton.team + ", leg " + (baton.legs.size() + 1) + (batonGrace ? " (grace: reach your circle)" : ""));
+        Colours worn = renown.worn(now);
+        if (worn != null) out.add("Flying " + worn.label());
+        int wished = journey.value(Trials.WELLWISHERS);
+        if (wished > 0) out.add(wished + (wished == 1 ? " well-wisher" : " well-wishers") + " this run");
+        return out;
+    }
+
+    /** Copies a code and says so. Client thread. */
+    private void handOver(String code, String said)
+    {
+        report(java.util.Collections.singletonList(said));
+        SwingUtilities.invokeLater(() ->
+        {
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(code), null);
+            JOptionPane.showMessageDialog(panel, said, "Nomad UIM", JOptionPane.INFORMATION_MESSAGE);
+        });
+    }
+
+    private void tell(String said)
+    {
+        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(panel, said, "Nomad UIM", JOptionPane.INFORMATION_MESSAGE));
+    }
+
+    /** A Fellowship action from the sidebar, with what was typed or pasted for it. */
+    private void socialFromPanel(String action, String input)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null)
+            {
+                tell("Log in first, so the plugin can load your run.");
+                return;
+            }
+            String me = myName();
+            String name = me == null ? "A Nomad" : me;
+            long now = System.currentTimeMillis();
+            switch (action)
+            {
+                case "bottle":
+                {
+                    if (surface == null || outsideNow() || !Bottle.coastal(surface.x, surface.y))
+                    {
+                        tell("Stand on a coast inside your circle to throw a bottle.");
+                        return;
+                    }
+                    Bottle b = Bottle.thrown(name, input, now);
+                    if (b.note.isEmpty()) return;
+                    journey.add(Trials.BOTTLES_THROWN, 1);
+                    checkTrials();
+                    handOver(Codes.encode(Codes.BOTTLE, gson.toJson(b)), "Your bottle is in the sea. Its code is copied: whoever pastes it "
+                        + "finds it washed up somewhere their circle must reach.");
+                    break;
+                }
+                case "open-bottle":
+                {
+                    Bottle b = read(Codes.BOTTLE, input, Bottle.class);
+                    if (b == null || !b.land())
+                    {
+                        tell("That's not a bottle code.");
+                        return;
+                    }
+                    if (!journey.bottle(b))
+                    {
+                        tell("That bottle is already on its way to you, or too many are.");
+                        return;
+                    }
+                    report(java.util.Collections.singletonList("A bottle from " + b.from + " is drifting toward " + b.shore
+                        + ". Reach it inside your circle to read it."));
+                    break;
+                }
+                case "dare":
+                {
+                    String[] parts = input.split("\\|");
+                    int size = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+                    Dare d = Dare.send(name, parts[0], size, now);
+                    handOver(Codes.encode(Codes.DARE, gson.toJson(d)), "Dare made: " + d.ask() + " (" + Dare.SIZES[d.size]
+                        + "), within " + Dare.HOURS + " played hours. Its code is copied: send it to your rival.");
+                    break;
+                }
+                case "take-dare":
+                {
+                    if (journey.dare() != null)
+                    {
+                        tell("A dare is already under way: finish it, let it run out, or give it up first.");
+                        return;
+                    }
+                    Dare d = read(Codes.DARE, input, Dare.class);
+                    if (d == null || !d.take(journey, sim))
+                    {
+                        tell("That's not a dare code.");
+                        return;
+                    }
+                    journey.dare(d);
+                    show(Moments.dareTaken(d));
+                    report(java.util.Collections.singletonList("Dare taken from " + d.from + ": " + d.ask() + " within " + Dare.HOURS
+                        + " played hours, for " + d.renown() + " renown."));
+                    break;
+                }
+                case "give-up-dare":
+                {
+                    Dare d = journey.dare();
+                    if (d == null) return;
+                    if (!renown.giveUpDare(LocalDate.now().toEpochDay()))
+                    {
+                        tell("You've already given up a dare today: this one has to run its course.");
+                        return;
+                    }
+                    journey.dare(null);
+                    saveRenown();
+                    report(java.util.Collections.singletonList("You gave up " + d.from + "'s dare."));
+                    break;
+                }
+                case "baton":
+                {
+                    if (retired)
+                    {
+                        tell("This run has been laid down already.");
+                        return;
+                    }
+                    Baton.Leg leg = new Baton.Leg(name, sim.minutes() - journey.legStart(), stats.tilesWalked, journey.value(Trials.REGIONS),
+                        stats.claimed);
+                    Baton b = Baton.hand(journey.baton(), input, leg, new SavedRun(sim, null));
+                    journey.add(Trials.BATON, 1);
+                    checkTrials();
+                    Legacy.Run run = writeEpilogue();
+                    retired = true;
+                    save();
+                    show(Moments.epilogue(run.title()));
+                    publish();
+                    handOver(Codes.encode(Codes.BATON, gson.toJson(b)), "The baton is handed on: " + String.join(" ", b.lines())
+                        + " Its code is copied: the next runner takes it from Fellowship in the sidebar.");
+                    break;
+                }
+                case "take-baton":
+                {
+                    Baton b = read(Codes.BATON, input, Baton.class);
+                    if (b == null || !b.valid())
+                    {
+                        tell("That's not a baton code.");
+                        return;
+                    }
+                    if (sim != null && !retired && sim.minutes() >= EPILOGUE_MINUTES) writeEpilogue();
+                    batonPending = b;
+                    configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY);
+                    sim = null;
+                    runLog.clear();
+                    forget();
+                    load();
+                    break;
+                }
+                case "gift":
+                case "stake":
+                {
+                    if (!renown.unlocked().contains(input) || input.contains("'s "))
+                    {
+                        tell("Only a colour you've unlocked can be given, and gifts can't be passed on.");
+                        return;
+                    }
+                    String was = renown.paletteName(now);
+                    renown.pick(input);
+                    int colour = renown.paletteColour(now);
+                    renown.pick(was);
+                    Colours c = Colours.make(action, name, input, colour, now);
+                    handOver(Codes.encode(Codes.COLOURS, gson.toJson(c)), "gift".equals(action)
+                        ? "Your " + input + " colours are copied as a gift: your rival can fly them for one run."
+                        : "Your " + input + " colours are copied as a stake: whoever loses the race flies the winner's colours for a week.");
+                    break;
+                }
+                case "wear":
+                {
+                    Colours c = read(Codes.COLOURS, input, Colours.class);
+                    if (c == null || !renown.wear(c, now))
+                    {
+                        tell("Those colours can't be worn: it's not a colours code, or a staked week is still running.");
+                        return;
+                    }
+                    applyPalette();
+                    saveRenown();
+                    report(java.util.Collections.singletonList("You fly " + c.label() + (Colours.STAKE.equals(c.kind)
+                        ? " for a week: the race was theirs." : " this run: a gift.")));
+                    break;
+                }
+                case "light-torch":
+                {
+                    if (renown.torch() != null)
+                    {
+                        tell("You already hold a torch.");
+                        return;
+                    }
+                    String clan = Codes.clean(input, Torch.CLAN_MAX);
+                    if (clan.isEmpty()) return;
+                    renown.holdTorch(Torch.light(clan, name, now));
+                    saveRenown();
+                    report(java.util.Collections.singletonList("You light the torch of " + clan + ". Pass it on only side by side: both "
+                        + "salute inside your circle."));
+                    break;
+                }
+                case "pass-torch":
+                    if (renown.torch() == null)
+                    {
+                        tell("You don't hold a torch.");
+                        return;
+                    }
+                    torchArmedUntil = tickCount + TORCH_ARM_TICKS;
+                    report(java.util.Collections.singletonList("Ready to pass the torch: stand beside them inside your circle. They salute "
+                        + "(Wave, then Bow), then you do, within two minutes."));
+                    break;
+                case "take-torch":
+                {
+                    Torch t = read(Codes.TORCH, input, Torch.class);
+                    if (t == null || !t.forMe(me))
+                    {
+                        tell("That torch isn't yours to take: it names someone else, or it's not a torch code.");
+                        return;
+                    }
+                    renown.holdTorch(t);
+                    saveRenown();
+                    show(Moments.torch(t.clan));
+                    report(java.util.Collections.singletonList("You carry the torch now. " + t.line() + "."));
+                    break;
+                }
+                case "reclaim-torch":
+                {
+                    Torch back = renown.reclaimTorch(name, now);
+                    if (back == null)
+                    {
+                        tell("Only a torch you passed a week or more ago, and don't hold now, can be reclaimed.");
+                        return;
+                    }
+                    saveRenown();
+                    report(java.util.Collections.singletonList("The torch comes back to you: a week went by with no word. " + back.line() + "."));
+                    break;
+                }
+                case "footprint":
+                    handOver(Codes.encode(Codes.FOOTPRINT, gson.toJson(Footprint.of(name, journey.items(Trials.SQUARES), now))),
+                        "Your footprint code is copied: " + journey.items(Trials.SQUARES).size() + " map squares. Clanmates paste it into "
+                            + "their clan atlas.");
+                    break;
+                case "atlas":
+                {
+                    int added = 0;
+                    for (String line : input.split("\\s+"))
+                    {
+                        Footprint f = read(Codes.FOOTPRINT, line, Footprint.class);
+                        if (f != null && f.valid() && renown.addFootprint(f)) added++;
+                    }
+                    saveRenown();
+                    report(java.util.Collections.singletonList(added == 0 ? "No new footprints in that." : added + (added == 1 ? " footprint" : " footprints")
+                        + " added to your clan atlas: " + Footprint.union(renown.clanAtlas(), journey.items(Trials.SQUARES)).size() + " squares lit."));
+                    break;
+                }
+                case "tape":
+                {
+                    String[] codes = input.trim().split("\\s+");
+                    SavedRun a = codes.length > 0 ? runFromCode(codes[0]) : null;
+                    SavedRun b = codes.length > 1 ? runFromCode(codes[1]) : runFromCode(runCode());
+                    if (a == null || b == null)
+                    {
+                        tell("Paste one or two run codes (N1.…). With one, it's set against your own run.");
+                        return;
+                    }
+                    List<Tape.Row> rows = Tape.compare(a, b);
+                    SwingUtilities.invokeLater(() -> panel.showTape(rows, codes.length > 1));
+                    return;
+                }
+                default:
+                    return;
+            }
+            saveJourney();
+            publish();
+        });
+    }
+
+    /** A pasted code of one kind, read; null if it isn't one. */
+    private <T> T read(String kind, String code, Class<T> type)
+    {
+        String json = Codes.decode(kind, code);
+        if (json == null) return null;
+        try
+        {
+            return gson.fromJson(json, type);
+        }
+        catch (JsonParseException e)
+        {
+            return null;
+        }
+    }
+
+    private SavedRun runFromCode(String code)
+    {
+        try
+        {
+            SavedRun run = gson.fromJson(RunCode.decode(code.trim(), Codes.MAX_BYTES), SavedRun.class);
+            if (run == null || run.sim == null) return null;
+            run.sim.ready();
+            return run;
+        }
+        catch (RuntimeException e)
+        {
+            return null;
+        }
+    }
+
     /** Pays out every trial now done: a banner, a chat line and its renown, and a rank up if it's earned. */
     private void checkTrials()
     {
@@ -2302,6 +2992,7 @@ public class NomadPlugin extends Plugin
         run.plots = plots.save();
         run.retired = retired;
         run.epithet = epithet;
+        run.batonGrace = batonGrace;
         configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(run));
     }
 
@@ -2548,6 +3239,7 @@ public class NomadPlugin extends Plugin
                 view.journey.wagerAgainst = NomadSim.compass(sim.forkAxis() + Math.PI);
             }
             if (journey.wager() != 0) view.journey.wagered = NomadSim.compass(Wagers.called(journey));
+            view.journey.fellowship = fellowshipLines();
         }
         if (sim != null)
         {

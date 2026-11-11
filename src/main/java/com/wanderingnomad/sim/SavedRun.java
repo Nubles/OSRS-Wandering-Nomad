@@ -16,6 +16,8 @@ public final class SavedRun
     public boolean retired;
     /** The run's epithet so far, such as "the Seaborn", for rivals to read; null if none yet. */
     public String epithet;
+    /** Baton: a relay leg's runner counts as inside until they first reach their circle. */
+    public boolean batonGrace;
 
     public SavedRun()
     {

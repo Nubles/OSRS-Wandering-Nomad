@@ -67,6 +67,23 @@ public final class Trials
     public static final String SECRET_SEED = "secret:seed";
     /** Minutes with XP gained within 2 tiles of the edge, inside (the Edgewalker omen), and monster species killed inside. */
     public static final String EDGE_XP = "edgexp";
+    /** Fellow Nomads: Lodestars reached, your own salutes, Nomads seen saluting, bottles thrown and found, clan omens met,
+     *  the longest walk with three fellows, dares won, torches carried, fires shared, graves honoured, well-wishers, relay legs
+     *  and the clan atlas's squares. */
+    public static final String LODESTAR = "lodestar";
+    public static final String SALUTED = "saluted";
+    public static final String SALUTES = "salutes";
+    public static final String BOTTLES_THROWN = "bottles:thrown";
+    public static final String BOTTLES_FOUND = "bottles:found";
+    public static final String CLAN_OMENS = "clanomens";
+    public static final String FELLOWS_TRAVEL = "fellows:run";
+    public static final String DARES = "dares";
+    public static final String TORCH = "torch";
+    public static final String SHARED_FIRES = "sharedfires";
+    public static final String GRAVES = "graves";
+    public static final String WELLWISHERS = "wellwishers";
+    public static final String BATON = "baton";
+    public static final String CLAN_SQUARES = "clansquares";
     /** The trials a run can swear as its oath: the long goals a whole run is built around. */
     public static final List<String> OATHS = Collections.unmodifiableList(java.util.Arrays.asList(
         "diary-all", "harbours-all", "landmarks-all", "total-max", "bosses-50", "regions-all"));
@@ -151,6 +168,31 @@ public final class Trials
         t.add(trial("rendezvous-1", FELLOWS, "Rendezvous", "Stand inside a rival's circle while they stand inside yours.",
             RENDEZVOUS, 1, Tier.SILVER));
         t.add(trial("rendezvous-3", FELLOWS, "Caravan", "Meet 3 different rivals inside each other's circles.", RENDEZVOUS, 3, Tier.GOLD));
+        t.add(trial("lodestar-1", FELLOWS, "Drawn to the Lodestar", "Reach the week's Lodestar while it shines.", LODESTAR, 1, Tier.SILVER));
+        t.add(trial("salute-1", FELLOWS, "Nomad's salute", "Wave, then Bow, inside your circle.", SALUTED, 1, Tier.BRONZE));
+        t.add(trial("salutes-1", FELLOWS, "Kindred", "See another player give the Nomad's salute while you're inside your circle.",
+            SALUTES, 1, Tier.SILVER));
+        t.add(trial("bottle-thrown", FELLOWS, "Message in a bottle", "Throw a bottle from a coast inside your circle.", BOTTLES_THROWN, 1,
+            Tier.BRONZE));
+        t.add(trial("bottle-found", FELLOWS, "Washed up", "Reach a bottle someone threw.", BOTTLES_FOUND, 1, Tier.SILVER));
+        t.add(trial("clanomens-3", FELLOWS, "One voice", "Meet 3 clan omens.", CLAN_OMENS, 3, Tier.SILVER));
+        t.add(trial("fellows-30", FELLOWS, "Fellow travellers", "Travel 30 minutes in a row with 3 friends or clanmates inside your circle.",
+            FELLOWS_TRAVEL, 30, Tier.GOLD));
+        t.add(trial("dares-1", FELLOWS, "Dare accepted", "Finish a rival's dare in time.", DARES, 1, Tier.SILVER));
+        t.add(trial("dares-5", FELLOWS, "Gauntlet runner", "Finish 5 dares in time.", DARES, 5, Tier.GOLD));
+        t.add(trial("torch-1", FELLOWS, "Torchbearer", "Carry your clan's torch.", TORCH, 1, Tier.SILVER));
+        t.add(trial("fire-1", FELLOWS, "Shared fire", "Light a fire beside a Nomad who saluted, inside your circle.", SHARED_FIRES, 1,
+            Tier.SILVER));
+        t.add(trial("grave-1", FELLOWS, "Paying respects", "Bow at an ancestor's grave inside your circle.", GRAVES, 1, Tier.SILVER));
+        t.add(trial("wellwishers-1", FELLOWS, "Safe travels", "Have a stranger wish you safe travels.", WELLWISHERS, 1, Tier.BRONZE));
+        t.add(trial("wellwishers-10", FELLOWS, "Well wished", "Have 10 strangers wish you safe travels.", WELLWISHERS, 10, Tier.SILVER));
+        t.add(trial("wellwishers-100", FELLOWS, "Blessed by 100 strangers", "Have 100 strangers wish you safe travels.", WELLWISHERS, 100,
+            Tier.LEGEND));
+        t.add(trial("baton-1", FELLOWS, "Relay runner", "Run a leg of a relay and hand the baton on.", BATON, 1, Tier.SILVER));
+        t.add(new Trial("clanatlas-250", FELLOWS, "Clan cartographers", "Light 250 map squares in your clan atlas.", CLAN_SQUARES, 250,
+            Tier.SILVER, true));
+        t.add(new Trial("clanatlas-1000", FELLOWS, "Mapped by many", "Light 1,000 map squares in your clan atlas.", CLAN_SQUARES, 1000,
+            Tier.GOLD, true));
         t.add(trial("crossings-25", FATE, "Border hopper", "Cross between circles 25 times.", CROSSINGS, 25, Tier.SILVER));
 
         t.add(trial("regions-3", KINGDOMS, "Three crowns", "Be inside 3 different region circles.", REGIONS, 3, Tier.BRONZE));

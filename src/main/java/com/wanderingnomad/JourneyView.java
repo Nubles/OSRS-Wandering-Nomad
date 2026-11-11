@@ -108,6 +108,8 @@ final class JourneyView
     String wagerWith;
     String wagerAgainst;
     String wagered;
+    /** Fellowship, set by the plugin: a line for each thing under way between you and other Nomads. */
+    List<String> fellowship = Collections.emptyList();
     /** Ended runs on the account, newest first. */
     List<Legacy.Run> legacy = Collections.emptyList();
 

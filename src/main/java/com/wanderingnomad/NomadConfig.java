@@ -49,6 +49,101 @@ public interface NomadConfig extends Config
     )
     String LEGACY = "legacy";
 
+    @ConfigSection(
+        name = "Fellowship",
+        description = "Meeting other Nomads with no server: the Lodestar, salutes, clan omens, fellow travellers and a shepherd's view",
+        position = 57,
+        closedByDefault = true
+    )
+    String FELLOWSHIP = "fellowship";
+
+    @ConfigItem(
+        keyName = "lodestar",
+        name = "The Lodestar",
+        description = "Once a week, at an hour and landmark worked out from the date, the Lodestar shines for an hour: every Main within "
+            + "400 tiles leans toward it, and reaching it raises a waystone. Everyone's plugin picks the same one.",
+        section = FELLOWSHIP,
+        position = 0
+    )
+    default boolean lodestar()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "clanWord",
+        name = "Clan word",
+        description = "Everyone who types the same word here is dealt the same clan omen in the same hour, in place of one of their own. "
+            + "Leave empty for none.",
+        section = FELLOWSHIP,
+        position = 1
+    )
+    default String clanWord()
+    {
+        return "";
+    }
+
+    @ConfigItem(
+        keyName = "salutes",
+        name = "Nomad's salute",
+        description = "Wave then Bow to mark yourself as a Nomad. Players nearby who do the same are tagged in the game world.",
+        section = FELLOWSHIP,
+        position = 2
+    )
+    default boolean salutes()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "fellowTravellers",
+        name = "Fellow travellers",
+        description = "Friends and clanmates inside your circle show as lanterns on the minimap's edge, toward a trial for travelling with three.",
+        section = FELLOWSHIP,
+        position = 3
+    )
+    default boolean fellowTravellers()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "wellWishers",
+        name = "Well-wishers",
+        description = "A stranger saying \"safe travels\" in public chat near you adds them to your run's well-wishers.",
+        section = FELLOWSHIP,
+        position = 4
+    )
+    default boolean wellWishers()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "shepherd",
+        name = "Shepherd",
+        description = "The name of a rival you follow (see Rivals): their circle is drawn in your game world and minimap too, so you "
+            + "can scout its edge with them. Leave empty for none.",
+        section = FELLOWSHIP,
+        position = 5
+    )
+    default String shepherd()
+    {
+        return "";
+    }
+
+    @ConfigItem(
+        keyName = "clanAtlas",
+        name = "Clan atlas on the map",
+        description = "Light the map squares from your clan's pasted footprint codes on the world map, beside your own.",
+        section = FELLOWSHIP,
+        position = 6
+    )
+    default boolean clanAtlas()
+    {
+        return true;
+    }
+
     @ConfigItem(
         keyName = "ancestorGhosts",
         name = "Ancestor ghosts",

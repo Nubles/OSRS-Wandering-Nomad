@@ -89,6 +89,12 @@ class NomadPanel extends PluginPanel
     private final JButton prophecies = small("Prophecies", "Seal three prophecies in a run's first hour; they're revealed at 100 hours",
         this::showProphecies);
     private final JButton layDown = new JButton("Lay down the staff");
+    /** Fellowship: an action and what was typed or pasted for it; the lines shown, and the menu's button. */
+    private BiConsumer<String, String> onSocial = (action, input) -> { };
+    private final JLabel fellowship = note(" ");
+    private List<String> shownFellowship;
+    private final JButton fellowshipMenu = small("Fellowship...", "Bottles, dares, the clan torch, relays, colours, the clan atlas and the "
+        + "tale of the tape", this::showFellowshipMenu);
     private final SidebarParts.Header header = new SidebarParts.Header();
     private final SidebarParts.MiniMap map = new SidebarParts.MiniMap();
     private final JLabel boonsTitle = heading("Boons");
@@ -207,6 +213,14 @@ class NomadPanel extends PluginPanel
         rivals.setAlignmentX(LEFT_ALIGNMENT);
         add(rivals);
         add(gap(10));
+        add(heading("Fellowship"));
+        add(gap(4));
+        fellowship.setAlignmentX(LEFT_ALIGNMENT);
+        add(fellowship);
+        add(gap(4));
+        fix(fellowshipMenu, 24);
+        add(fellowshipMenu);
+        add(gap(10));
         add(heading("Moments"));
         add(gap(4));
         JScrollPane scroll = new JScrollPane(timeline, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -317,6 +331,11 @@ class NomadPanel extends PluginPanel
         this.onEncore = onEncore;
     }
 
+    void onSocial(BiConsumer<String, String> onSocial)
+    {
+        this.onSocial = onSocial;
+    }
+
     void onLegacy(Runnable onRetire, Consumer<Boolean> onWager, Consumer<String[]> onSeal)
     {
         this.onRetire = onRetire;
@@ -391,6 +410,16 @@ class NomadPanel extends PluginPanel
             revalidate();
         }
         layDown.setEnabled(v.live && !jv.retired);
+        if (!jv.fellowship.equals(shownFellowship))
+        {
+            shownFellowship = jv.fellowship;
+            StringBuilder html = new StringBuilder("<html>");
+            if (shownFellowship.isEmpty()) html.append("Nothing under way. Wave, then Bow, to greet other Nomads.");
+            for (int i = 0; i < shownFellowship.size(); i++) html.append(i == 0 ? "" : "<br>").append(escape(shownFellowship.get(i)));
+            fellowship.setText(html.append("</html>").toString());
+            fix(fellowship, 4 + 14 * Math.max(1, shownFellowship.size()));
+            revalidate();
+        }
         prophecies.setText(jv.prophecyOpen ? "Seal prophecies" : "Prophecies");
         if (!v.journey.rivals.equals(shownRivals))
         {
@@ -504,6 +533,117 @@ class NomadPanel extends PluginPanel
     private static String escape(String text)
     {
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /** The Fellowship menu: every code Nomads hand each other, and the tale of the tape. */
+    private void showFellowshipMenu()
+    {
+        JPopupMenu menu = new JPopupMenu();
+        item(menu, "Throw a bottle...", "Stand on a coast inside your circle", () ->
+        {
+            String note = JOptionPane.showInputDialog(this, "Your note, up to " + com.wanderingnomad.social.Bottle.NOTE_MAX + " characters. "
+                + "Whoever pastes the code finds it washed up somewhere their circle must reach.", "Throw a bottle", JOptionPane.PLAIN_MESSAGE);
+            if (note != null && !note.trim().isEmpty()) onSocial.accept("bottle", note);
+        });
+        item(menu, "Open a bottle...", "Paste a bottle code someone threw", () -> paste("open-bottle", "Paste a bottle code."));
+        menu.addSeparator();
+        item(menu, "Dare a rival...", "Make a dare for a rival to finish in 24 played hours", this::makeDare);
+        item(menu, "Take a dare...", "Paste a rival's dare code", () -> paste("take-dare", "Paste a dare code. You'll have 24 played hours."));
+        item(menu, "Give up the dare", "Once a day", () -> onSocial.accept("give-up-dare", ""));
+        menu.addSeparator();
+        item(menu, "Light a clan torch...", "Your clan's one torch, passed hand to hand", () ->
+        {
+            String clan = JOptionPane.showInputDialog(this, "Your clan's name. Only one torch per clan, so agree who lights it.",
+                "Light a clan torch", JOptionPane.PLAIN_MESSAGE);
+            if (clan != null && !clan.trim().isEmpty()) onSocial.accept("light-torch", clan);
+        });
+        item(menu, "Pass the torch", "Then stand beside them inside your circle: they salute, then you do", () -> onSocial.accept("pass-torch", ""));
+        item(menu, "Take a torch...", "Paste a torch code that names you", () -> paste("take-torch", "Paste the torch code you were sent."));
+        item(menu, "Reclaim the torch", "A torch you passed a week ago that went no further", () -> onSocial.accept("reclaim-torch", ""));
+        menu.addSeparator();
+        item(menu, "Hand on the baton...", "End your leg of a relay and pass the circles on", () ->
+        {
+            String team = JOptionPane.showInputDialog(this, "This ends your leg: the run is laid down, and the code carries its circles to "
+                + "the next runner. Team name (kept from the last leg if this run is one):", "Hand on the baton", JOptionPane.PLAIN_MESSAGE);
+            if (team != null) onSocial.accept("baton", team);
+        });
+        item(menu, "Take a baton...", "Start the relay's next leg where the last runner left the circles", () ->
+        {
+            int ok = JOptionPane.showConfirmDialog(this, "Taking a baton replaces your current run with the relay's next leg. Continue?",
+                "Nomad UIM", JOptionPane.OK_CANCEL_OPTION);
+            if (ok == JOptionPane.OK_OPTION) paste("take-baton", "Paste the baton code.");
+        });
+        menu.addSeparator();
+        item(menu, "Gift a colour...", "An unlocked edge colour a rival can fly for one run", () -> colours("gift"));
+        item(menu, "Stake a colour...", "The loser of a race flies the winner's colour for a week", () -> colours("stake"));
+        item(menu, "Wear colours...", "Paste a gift or a stake you lost", () -> paste("wear", "Paste a colours code."));
+        menu.addSeparator();
+        item(menu, "Copy my footprint", "The map squares you've walked inside your circle, for a clan atlas", () -> onSocial.accept("footprint", ""));
+        item(menu, "Add to clan atlas...", "Paste clanmates' footprint codes", () -> paste("atlas", "Paste one or more footprint codes."));
+        item(menu, "Tale of the tape...", "Two runs side by side", () -> paste("tape", "Paste a run code to set against yours, or two to compare."));
+        menu.show(fellowshipMenu, 0, fellowshipMenu.getHeight());
+    }
+
+    private static void item(JPopupMenu menu, String label, String tip, Runnable action)
+    {
+        JMenuItem item = new JMenuItem(label);
+        item.setToolTipText(tip);
+        item.addActionListener(e -> action.run());
+        menu.add(item);
+    }
+
+    /** Asks for a pasted code (or several), then hands it on. */
+    private void paste(String action, String prompt)
+    {
+        JTextArea area = new JTextArea(4, 28);
+        area.setLineWrap(true);
+        JScrollPane scroll = new JScrollPane(area);
+        int ok = JOptionPane.showConfirmDialog(this, new Object[]{prompt, scroll}, "Nomad UIM", JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE);
+        if (ok == JOptionPane.OK_OPTION && !area.getText().trim().isEmpty()) onSocial.accept(action, area.getText().trim());
+    }
+
+    private static final String[] DARE_KINDS = {"Walk tiles", "Claim waystones", "Cross between circles", "Kill new kinds of monster",
+        "Stand at landmarks", "Walk new map squares"};
+
+    private void makeDare()
+    {
+        JComboBox<String> kind = new JComboBox<>(DARE_KINDS);
+        JComboBox<String> size = new JComboBox<>(com.wanderingnomad.social.Dare.SIZES);
+        int ok = JOptionPane.showConfirmDialog(this, new Object[]{"What to dare them:", kind, "How big:", size}, "Dare a rival",
+            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (ok != JOptionPane.OK_OPTION) return;
+        onSocial.accept("dare", com.wanderingnomad.social.Dare.KINDS[kind.getSelectedIndex()] + "|" + size.getSelectedIndex());
+    }
+
+    private void colours(String kind)
+    {
+        List<String> mine = new ArrayList<>();
+        for (String p : lastJourney.palettes) if (!p.contains("'s ")) mine.add(p);
+        if (mine.isEmpty()) return;
+        JComboBox<String> pick = new JComboBox<>(mine.toArray(new String[0]));
+        int ok = JOptionPane.showConfirmDialog(this, new Object[]{"gift".equals(kind) ? "The colour to give for one run:"
+            : "The colour you stake on the race:", pick}, "gift".equals(kind) ? "Gift a colour" : "Stake a colour",
+            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (ok == JOptionPane.OK_OPTION) onSocial.accept(kind, (String) pick.getSelectedItem());
+    }
+
+    /** Tale of the tape: two runs side by side, each line's winner in gold. */
+    void showTape(List<com.wanderingnomad.social.Tape.Row> rows, boolean two)
+    {
+        StringBuilder html = new StringBuilder("<html><table cellspacing=4><tr><th></th><th>" + (two ? "First" : "Theirs") + "</th><th>"
+            + (two ? "Second" : "Yours") + "</th></tr>");
+        for (com.wanderingnomad.social.Tape.Row r : rows)
+        {
+            html.append("<tr><td>").append(escape(r.label)).append("</td><td>").append(cell(r.left, r.winner == 1)).append("</td><td>")
+                .append(cell(r.right, r.winner == 2)).append("</td></tr>");
+        }
+        JOptionPane.showMessageDialog(this, html.append("</table></html>").toString(), "Nomad UIM: tale of the tape", JOptionPane.PLAIN_MESSAGE);
+    }
+
+    private static String cell(String text, boolean won)
+    {
+        return won ? "<b style='color:#ffd54f'>" + escape(text) + "</b>" : escape(text);
     }
 
     /** "north-east" as "NE". */

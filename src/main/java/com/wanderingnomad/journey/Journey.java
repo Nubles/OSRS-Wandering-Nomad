@@ -87,6 +87,20 @@ public final class Journey
     List<Scar> scars = new ArrayList<>();
     /** Where each claimed waystone stood. */
     List<int[]> cairns = new ArrayList<>();
+    /** Bottle post: bottles pasted and waiting to be reached. */
+    List<com.wanderingnomad.social.Bottle> bottles = new ArrayList<>();
+    /** The Gauntlet: the dare under way, or null. */
+    com.wanderingnomad.social.Dare dare;
+    /** Baton: the relay this run is a leg of (its team and the legs before), and the played minute this leg began. */
+    com.wanderingnomad.social.Baton baton;
+    int legStart;
+    /** Clan omens: the real hour (since the epoch) the last was dealt. */
+    long clanHour = -1;
+    /** Where you last died this run (x, y), for an ancestor's grave; null if you haven't. */
+    int[] grave;
+    /** Fellow travellers: played minutes in a row with three or more friends or clanmates inside your circle. */
+    int fellowsRun;
+    public static final int BOTTLES_MAX = 20;
     /** Set by the plugin: a monster species not yet killed this run is near you. Never saved. */
     public transient boolean strangerNear;
 
@@ -176,6 +190,7 @@ public final class Journey
         if (truth == null || truth.length != 3) truth = new String[3];
         if (scars == null) scars = new ArrayList<>();
         if (cairns == null) cairns = new ArrayList<>();
+        if (bottles == null) bottles = new ArrayList<>();
         return this;
     }
 
@@ -257,6 +272,71 @@ public final class Journey
             closestCall = words;
             closestScore = score;
         }
+    }
+
+    /** A pasted bottle to reach; false if it's already waiting or there are too many. */
+    public boolean bottle(com.wanderingnomad.social.Bottle b)
+    {
+        for (com.wanderingnomad.social.Bottle w : bottles) if (w.id.equals(b.id)) return false;
+        if (bottles.size() >= BOTTLES_MAX) return false;
+        bottles.add(b);
+        return true;
+    }
+
+    public List<com.wanderingnomad.social.Bottle> bottles()
+    {
+        return java.util.Collections.unmodifiableList(bottles);
+    }
+
+    /** Takes a reached bottle off the list. */
+    public void opened(com.wanderingnomad.social.Bottle b)
+    {
+        bottles.remove(b);
+    }
+
+    public com.wanderingnomad.social.Dare dare()
+    {
+        return dare;
+    }
+
+    public void dare(com.wanderingnomad.social.Dare d)
+    {
+        dare = d;
+    }
+
+    public com.wanderingnomad.social.Baton baton()
+    {
+        return baton;
+    }
+
+    /** Makes this run a leg of a relay, beginning now. */
+    public void baton(com.wanderingnomad.social.Baton b, int now)
+    {
+        baton = b;
+        legStart = now;
+    }
+
+    public int legStart()
+    {
+        return legStart;
+    }
+
+    public void died(int x, int y)
+    {
+        grave = new int[]{x, y};
+    }
+
+    public int[] grave()
+    {
+        return grave;
+    }
+
+    /** A played minute with {@code fellows} friends or clanmates inside your circle; returns the run in a row. */
+    public int fellows(int fellows)
+    {
+        fellowsRun = fellows >= 3 ? fellowsRun + 1 : 0;
+        atLeast(Trials.FELLOWS_TRAVEL, fellowsRun);
+        return fellowsRun;
     }
 
     public String closestCall()

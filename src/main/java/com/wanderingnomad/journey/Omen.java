@@ -27,6 +27,13 @@ public final class Omen
     /** The metric's value when it began, and how much more it asks for. */
     int base;
     int target;
+    /** A clan omen: dealt to everyone with the same clan word at the same hour. */
+    boolean clan;
+
+    public boolean clan()
+    {
+        return clan;
+    }
 
     public String kind()
     {

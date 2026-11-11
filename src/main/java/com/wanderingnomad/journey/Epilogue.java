@@ -84,6 +84,7 @@ public final class Epilogue
         run.endX = (int) Math.round(sim.main().x());
         run.endY = (int) Math.round(sim.main().y());
         run.ended = System.currentTimeMillis();
+        run.grave = j.grave() == null ? null : j.grave().clone();
         List<String> lines = run.lines;
         lines.add(run.title() + ": " + Acts.hours(sim.minutes()) + " played on seed " + sim.seed() + ".");
         lines.addAll(Acts.lines(j, sim.minutes()));

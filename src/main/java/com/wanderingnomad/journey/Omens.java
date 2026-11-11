@@ -123,9 +123,70 @@ public final class Omens
         if (met)
         {
             j.add(Trials.OMENS, 1);
+            if (o.clan) j.add(Trials.CLAN_OMENS, 1);
             return Result.MET;
         }
         return Result.MISSED;
+    }
+
+    /** Clan omens: a real hour's length, and how late into a clan hour its omen can still be dealt. */
+    public static final long HOUR_MS = 60 * 60 * 1000L;
+    static final long CLAN_LATE_MS = 10 * 60 * 1000L;
+    static final String[] CLAN_KINDS = {Omen.HOLD_FAST, Omen.WANDERLUST, Omen.HUNT, Omen.EDGEWALKER};
+
+    /** Whether a clan word deals an omen in this real hour (counted from the epoch): about one hour in four. */
+    public static boolean clanHour(String word, long hour)
+    {
+        return Math.floorMod(clanMix(word, hour), 4L) == 0;
+    }
+
+    private static long clanMix(String word, long hour)
+    {
+        long z = word.trim().toLowerCase().hashCode() * 0x9E3779B97F4A7C15L + hour * 0xC2B2AE3D27D4EB4FL;
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        return z ^ (z >>> 31);
+    }
+
+    /**
+     * Clan omens: in the first minutes of a clan hour, everyone with the same clan word is dealt the
+     * same omen, which takes the place of any of their own under way. Returns it, or null if none
+     * is due. {@code nowMs} is the real time.
+     */
+    public static Omen clan(Journey j, NomadSim sim, String word, long nowMs)
+    {
+        if (word == null || word.trim().isEmpty()) return null;
+        long hour = Math.floorDiv(nowMs, HOUR_MS);
+        if (nowMs - hour * HOUR_MS > CLAN_LATE_MS || j.clanHour == hour || !clanHour(word, hour)) return null;
+        j.clanHour = hour;
+        int now = sim.minutes();
+        Omen o = new Omen();
+        o.kind = CLAN_KINDS[(int) Math.floorMod(clanMix(word, hour) >>> 8, (long) CLAN_KINDS.length)];
+        o.start = now;
+        o.clan = true;
+        switch (o.kind)
+        {
+            case Omen.HOLD_FAST:
+                o.deadline = now + HOLD_MINUTES;
+                break;
+            case Omen.WANDERLUST:
+                o.base = j.value(Trials.WALKED);
+                o.target = WANDER_TILES;
+                o.deadline = now + WANDER_MINUTES;
+                break;
+            case Omen.EDGEWALKER:
+                o.base = j.value(Trials.EDGE_XP);
+                o.target = EDGE_MINUTES;
+                o.deadline = now + EDGE_TIME;
+                break;
+            default:
+                o.base = trophies(j);
+                o.target = 1;
+                o.deadline = now + HUNT_MINUTES;
+                break;
+        }
+        j.omen = o;
+        return o;
     }
 
     /** What an omen counts right now, for its progress bar. */

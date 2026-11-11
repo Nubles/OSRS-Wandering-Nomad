@@ -99,6 +99,7 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setColor(new Color(0, 0, 0, Math.min(255, focus * 255 / 100)));
             graphics.fill(bounds);
         }
+        drawClanAtlas(graphics, bounds, west, south, zoom);
         if (plugin.config().footprint()) drawFootprint(graphics, sim, bounds, west, south, zoom);
         List<Circle> circles = sim.circles();
         Forecast forecast = plugin.forecast();
@@ -195,6 +196,7 @@ class NomadWorldMapOverlay extends Overlay
         if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
         drawOmen(graphics, bounds, west, south, zoom);
         drawRivals(graphics, bounds, west, south, zoom);
+        drawFellowship(graphics, bounds, west, south, zoom);
         drawPointers(graphics, sim, rings, bounds);
         drawHover(graphics, sim, rings, bounds);
         graphics.setFont(font);
@@ -549,6 +551,104 @@ class NomadWorldMapOverlay extends Overlay
         java.awt.FontMetrics fm = graphics.getFontMetrics();
         graphics.setColor(Color.BLACK);
         graphics.drawString(initial, (float) (x - fm.stringWidth(initial) / 2.0), (float) (y + 4));
+    }
+
+    /** Clan atlas: the squares your clan's footprints have lit, a pale wash under your own. */
+    private void drawClanAtlas(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        java.util.Set<Integer> squares = plugin.clanSquares();
+        if (squares.isEmpty()) return;
+        graphics.setColor(new Color(255, 230, 168, 34));
+        double size = 64 * zoom;
+        for (int region : squares)
+        {
+            int x0 = (region >> 8) << 6;
+            int y0 = (region & 0xFF) << 6;
+            double px = bounds.x + (x0 - west) * zoom;
+            double py = bounds.y + bounds.height - (y0 + 64 - south) * zoom;
+            if (px > bounds.getMaxX() || py > bounds.getMaxY() || px + size < bounds.x || py + size < bounds.y) continue;
+            graphics.fill(new java.awt.geom.Rectangle2D.Double(px, py, size, size));
+        }
+    }
+
+    private static final Color LODESTAR = new Color(0xFFD54F);
+    private static final Color BOTTLE = new Color(0x9FE0D0);
+    private static final Color GRAVE = new Color(0xC9C2B0);
+
+    /** The Lodestar when it's near or shining, bottles drifting your way, and ancestors' graves near your circle. */
+    private void drawFellowship(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        long now = System.currentTimeMillis();
+        com.wanderingnomad.social.Lodestar.Event e = plugin.lodestar();
+        if (e != null && (e.shining(now) || e.rises - now < 24 * com.wanderingnomad.social.Lodestar.HOUR_MS))
+        {
+            double px = bounds.x + (e.landmark.x - west) * zoom;
+            double py = bounds.y + bounds.height - (e.landmark.y - south) * zoom;
+            if (bounds.contains(px, py))
+            {
+                boolean shining = e.shining(now);
+                drawStar(graphics, px, py, shining ? 9 : 6, shining ? LODESTAR : new Color(255, 213, 79, 150));
+                String when = shining ? "Lodestar, shining" : "Lodestar, " + java.time.Instant.ofEpochMilli(e.rises)
+                    .atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("EEE HH:mm"));
+                outlined(graphics, when, (float) px + 12, (float) py + 4, LODESTAR, false);
+                if (shining)
+                {
+                    double r = com.wanderingnomad.social.Lodestar.REACH * zoom;
+                    graphics.setStroke(GHOST);
+                    graphics.setColor(new Color(255, 213, 79, 70));
+                    graphics.draw(new Ellipse2D.Double(px - r, py - r, 2 * r, 2 * r));
+                }
+            }
+        }
+        for (com.wanderingnomad.social.Bottle b : plugin.bottles())
+        {
+            double px = bounds.x + (b.x - west) * zoom;
+            double py = bounds.y + bounds.height - (b.y - south) * zoom;
+            if (!bounds.contains(px, py)) continue;
+            graphics.setColor(Color.BLACK);
+            graphics.fill(new java.awt.geom.RoundRectangle2D.Double(px - 3.5, py - 7.5, 7, 13, 4, 4));
+            graphics.setColor(BOTTLE);
+            graphics.fill(new java.awt.geom.RoundRectangle2D.Double(px - 2.5, py - 6.5, 5, 11, 3, 3));
+            outlined(graphics, "Bottle from " + b.from, (float) px + 8, (float) py + 4, BOTTLE, false);
+        }
+        for (Object[] g : plugin.graveMarks())
+        {
+            double px = bounds.x + ((int) g[0] - west) * zoom;
+            double py = bounds.y + bounds.height - ((int) g[1] - south) * zoom;
+            if (!bounds.contains(px, py)) continue;
+            Path2D.Double stone = new Path2D.Double();
+            stone.moveTo(px - 4, py + 5);
+            stone.lineTo(px - 4, py - 2);
+            stone.quadTo(px - 4, py - 6, px, py - 6);
+            stone.quadTo(px + 4, py - 6, px + 4, py - 2);
+            stone.lineTo(px + 4, py + 5);
+            stone.closePath();
+            graphics.setColor(Color.BLACK);
+            graphics.setStroke(new BasicStroke(2f));
+            graphics.draw(stone);
+            graphics.setColor(GRAVE);
+            graphics.fill(stone);
+            if (zoom >= 2) outlined(graphics, "Grave: " + g[2], (float) px + 8, (float) py + 4, GRAVE, false);
+        }
+    }
+
+    /** A five-pointed star. */
+    private static void drawStar(Graphics2D graphics, double x, double y, double r, Color colour)
+    {
+        Path2D.Double star = new Path2D.Double();
+        for (int k = 0; k < 10; k++)
+        {
+            double a = -Math.PI / 2 + k * Math.PI / 5;
+            double rr = k % 2 == 0 ? r : r * 0.45;
+            if (k == 0) star.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+            else star.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+        }
+        star.closePath();
+        graphics.setColor(Color.BLACK);
+        graphics.setStroke(new BasicStroke(2f));
+        graphics.draw(star);
+        graphics.setColor(colour);
+        graphics.fill(star);
     }
 
     private void drawFootprint(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)

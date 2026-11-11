@@ -176,6 +176,7 @@ class NomadSceneOverlay extends Overlay
         if (config.tideLine()) drawTide(graphics, view, at);
         drawBeacons(graphics, view, sim, now);
         drawComet(graphics, view, sim, at, now, config.compass());
+        drawFellowship(graphics, view, at, now, config.compass());
         if (plugin.spots().on()) drawSpots(graphics, view);
         if (config.compass())
         {
@@ -957,6 +958,55 @@ class NomadSceneOverlay extends Overlay
      * The fork's lost half, while it drifts on: its edge tiles near you, faint and dashed. If Main
      * touches it again they merge.
      */
+    private static final Color NOMAD = new Color(0xFFE6A8);
+    private static final Color GRAVE = new Color(0xC9C2B0);
+
+    /**
+     * Fellowship in the game world: a tag over every Nomad who saluted, the circle of a rival you
+     * shepherd, ancestors' graves near you and, while it shines, an arrow to the Lodestar.
+     */
+    private void drawFellowship(Graphics2D graphics, WorldView view, WorldPoint at, long now, boolean arrow)
+    {
+        for (Player p : view.players())
+        {
+            if (p == null || p == client.getLocalPlayer() || p.getName() == null) continue;
+            if (!plugin.nomad(net.runelite.client.util.Text.removeTags(p.getName()))) continue;
+            Point text = p.getCanvasTextLocation(graphics, "Nomad", p.getLogicalHeight() + 60);
+            if (text != null) OverlayUtil.renderTextLocation(graphics, text, "Nomad", NOMAD);
+        }
+        com.wanderingnomad.rival.Rival shepherd = plugin.shepherd();
+        if (shepherd != null)
+        {
+            Color colour = new Color(shepherd.colour);
+            BasicStroke dashed = new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3f, 3f}, 0f);
+            for (Tile t : EdgeTiles.near(shepherd.latest().sim.bound(), at.getX(), at.getY(), REACH))
+            {
+                LocalPoint local = LocalPoint.fromWorld(view, t.x, t.y);
+                if (local == null) continue;
+                Polygon poly = Perspective.getCanvasTilePoly(client, local);
+                if (poly != null) OverlayUtil.renderPolygon(graphics, poly, alpha(colour, 200), alpha(colour, 25), dashed);
+            }
+        }
+        for (Object[] g : plugin.graveMarks())
+        {
+            int gx = (int) g[0];
+            int gy = (int) g[1];
+            if (Math.abs(gx - at.getX()) > REACH || Math.abs(gy - at.getY()) > REACH) continue;
+            LocalPoint local = LocalPoint.fromWorld(view, gx, gy);
+            if (local == null) continue;
+            Polygon poly = Perspective.getCanvasTilePoly(client, local);
+            if (poly != null) OverlayUtil.renderPolygon(graphics, poly, GRAVE, alpha(GRAVE, 40), new BasicStroke(1.5f));
+            String label = "Grave of " + g[2];
+            Point text = Perspective.getCanvasTextLocation(client, graphics, local, label, 0);
+            if (text != null) OverlayUtil.renderTextLocation(graphics, text, label, GRAVE);
+        }
+        com.wanderingnomad.social.Lodestar.Event e = plugin.lodestar();
+        if (arrow && e != null && e.shining(now) && Math.hypot(e.landmark.x - at.getX(), e.landmark.y - at.getY()) <= com.wanderingnomad.social.Lodestar.REACH)
+        {
+            drawArrow(graphics, view, at, new double[]{e.landmark.x, e.landmark.y}, GOLD, GOLD, "Lodestar");
+        }
+    }
+
     private void drawGhost(Graphics2D graphics, WorldView view, Circle ghost, WorldPoint at)
     {
         Color colour = NomadPlugin.colour(ghost, 255);

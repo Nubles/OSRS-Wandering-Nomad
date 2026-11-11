@@ -128,6 +128,32 @@ class NomadMinimapOverlay extends Overlay
         {
             glow(graphics, arcs(view, sim.twin()), NomadPlugin.colour(sim.twin(), 255), 0.6);
         }
+        // Shepherd: a rival's circle you're scouting, dotted in their colour.
+        com.wanderingnomad.rival.Rival shepherd = plugin.shepherd();
+        if (shepherd != null)
+        {
+            Circle c = shepherd.latest().sim.bound();
+            Path2D r = Math.hypot(c.x() - at.getX(), c.y() - at.getY()) > c.radius() + 40 ? null : ring(view, c);
+            if (r != null)
+            {
+                Color col = new Color(shepherd.colour);
+                boolean fresh = shepherd.fresh(System.currentTimeMillis());
+                graphics.setStroke(GHOST);
+                graphics.setColor(new Color(col.getRed(), col.getGreen(), col.getBlue(), fresh ? 220 : 110));
+                graphics.draw(r);
+            }
+        }
+        // Fellow travellers: a lantern on your edge toward each friend or clanmate inside your circle.
+        for (int[] f : plugin.fellowsAt())
+        {
+            double a = Math.atan2(f[1] - yours.y(), f[0] - yours.x());
+            Point p = toMinimap(view, yours.x() + Math.cos(a) * yours.radius(), yours.y() + Math.sin(a) * yours.radius());
+            if (p == null) continue;
+            graphics.setColor(new Color(255, 214, 120, 90));
+            graphics.fill(new java.awt.geom.Ellipse2D.Double(p.getX() - 6, p.getY() - 6, 12, 12));
+            graphics.setColor(new Color(0xFFE6A8));
+            graphics.fill(new java.awt.geom.Ellipse2D.Double(p.getX() - 2.5, p.getY() - 2.5, 5, 5));
+        }
         // Ancestor ghosts nearby: past runs' Main circles, faint and dotted.
         com.wanderingnomad.journey.Ancestors ancestors = plugin.ancestors();
         if (ancestors != null)

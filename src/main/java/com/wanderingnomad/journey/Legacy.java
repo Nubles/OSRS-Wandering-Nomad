@@ -35,6 +35,8 @@ public final class Legacy
         public int endX;
         public int endY;
         public long ended;
+        /** Where you last died in the run (x, y), its grave for later runs; null if you never did. */
+        public int[] grave;
 
         /** "Generation 3, Gertrude III the Seaborn". */
         public String title()

@@ -497,6 +497,64 @@ final class Moments
             SoundEffectID.TOWN_CRIER_BELL_DONG);
     }
 
+    /** Fellowship's own colour: lantern light. */
+    static final Color FELLOW = new Color(0xFFE6A8);
+
+    static Banner nomad(String name)
+    {
+        return new Banner(name + " is a Nomad", "They gave the salute. Wave, then Bow, to answer.", FELLOW, Icon.STAR, false,
+            SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+    }
+
+    static Banner grave(String title)
+    {
+        return new Banner("Paying respects", "At the grave of " + title + ".", LEGACY, Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
+    static Banner wellWisher(String name, int count)
+    {
+        return new Banner("Safe travels", name + " wished you well. " + count + (count == 1 ? " well-wisher" : " well-wishers") + " this run.",
+            FELLOW, Icon.STAR, false, SoundEffectID.GE_COIN_TINKLE);
+    }
+
+    static Banner sharedFire(String name)
+    {
+        return new Banner("A shared fire", "You and " + name + " lit fires side by side.", WARM, Icon.STAR, true,
+            SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
+    static Banner lodestar(String landmark, boolean near)
+    {
+        return new Banner("The Lodestar shines", "At " + landmark + " for an hour." + (near ? " Your circle leans toward it." : ""), GOLD,
+            Icon.STAR, near, SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner dareTaken(com.wanderingnomad.social.Dare d)
+    {
+        return new Banner("Dare from " + d.from, d.ask() + " within " + com.wanderingnomad.social.Dare.HOURS + " played hours.", FELLOW,
+            Icon.STAR, false, SoundEffectID.TOWN_CRIER_BELL_DING);
+    }
+
+    static Banner dare(boolean won, com.wanderingnomad.social.Dare d)
+    {
+        return won ? new Banner("Dare done!", d.ask() + ", for " + d.from + ". +" + d.renown() + " renown.", GOLD, Icon.STAR, true,
+                SoundEffectID.TOWN_CRIER_BELL_DONG)
+            : new Banner("The dare ran out", d.ask() + ", for " + d.from + ".", FELLOW.darker(), Icon.STAR, false,
+                SoundEffectID.PRAYER_DEACTIVE_VWOOP);
+    }
+
+    static Banner bottle(String from)
+    {
+        return new Banner("A bottle washed up", "From " + from + ". Read it in the run log.", FELLOW, Icon.STAR, true,
+            SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+    }
+
+    static Banner torch(String clan)
+    {
+        return new Banner("You carry the torch", "The torch of " + clan + " is yours, until you pass it on.", WARM, Icon.STAR, true,
+            SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
     /** One of every kind of banner, for trying them out with ::nomadmoments. */
     static List<Banner> samples(NomadSim sim)
     {
@@ -571,6 +629,14 @@ final class Moments
         out.add(comeback("Photo finish!", "You stepped into the half you kept 4 seconds before the fork parted."));
         out.add(scar("Ten minutes outside, at 12h 40m."));
         out.add(epilogue("Generation 4, Gertrude IV the Wayward"));
+        out.add(nomad("Zezima"));
+        out.add(lodestar("Varrock Square", true));
+        out.add(wellWisher("Zezima", 3));
+        out.add(sharedFire("Zezima"));
+        out.add(bottle("Zezima"));
+        out.add(dare(true, com.wanderingnomad.social.Dare.send("Zezima", com.wanderingnomad.social.Dare.CLAIM, 1, 0)));
+        out.add(torch("the Wanderers"));
+        out.add(grave("Generation 2, Main the Seaborn"));
         out.add(new Banner("Waystone risen", "Tailwind at Draynor Village, in your circle.", GOLD, Icon.WAYSTONE, false,
             SoundEffectID.PRAYER_DEPLETE_TWINKLE));
         out.add(new Banner("Rare waystone risen", "Bridge at the Grand Exchange, in your circle.", GOLD, Icon.WAYSTONE, true,
