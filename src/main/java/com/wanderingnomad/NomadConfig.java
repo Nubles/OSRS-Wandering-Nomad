@@ -67,6 +67,69 @@ public interface NomadConfig extends Config
     )
     String STREAMING = "streaming";
 
+    @ConfigSection(
+        name = "Website",
+        description = "What the plugin may send to the Nomad UIM relay for the website's shared pages: the lobby, "
+            + "the graveyard and the atlas of wandering. All off by default; each sends only what it says.",
+        position = 59,
+        closedByDefault = true
+    )
+    String WEBSITE = "website";
+
+    @ConfigItem(
+        keyName = "lobby",
+        name = "Join the Nomad lobby",
+        description = "While Share live is on, your run also shows on the website's lobby map of live runs, "
+            + "as a small circle others can click to watch. Off by default.",
+        warning = "Your live run will be listed on a public page anyone can open. Turn it on?",
+        section = WEBSITE,
+        position = 70
+    )
+    default boolean lobby()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "lobbyName",
+        name = "Lobby name",
+        description = "The name shown on your lobby circle and grave. Leave empty to stay anonymous; it need not be your RSN.",
+        section = WEBSITE,
+        position = 71
+    )
+    default String lobbyName()
+    {
+        return "";
+    }
+
+    @ConfigItem(
+        keyName = "graveyard",
+        name = "Rest in the Graveyard",
+        description = "When you die, a tombstone goes on the website's shared Graveyard: where, when, the circle and an epitaph "
+            + "from your ledger. Nothing is ranked. Off by default.",
+        warning = "Your deaths (tile, played time and an epitaph) will go on a public page. Turn it on?",
+        section = WEBSITE,
+        position = 72
+    )
+    default boolean graveyard()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "atlasShare",
+        name = "Add to the atlas of wandering",
+        description = "Every hour, sends which kingdoms and map regions your circle has taken you to (no tiles, no times) "
+            + "to the website's shared heatmap. Off by default.",
+        warning = "Which kingdoms and map regions you've walked will be added to a public heatmap. Turn it on?",
+        section = WEBSITE,
+        position = 73
+    )
+    default boolean atlasShare()
+    {
+        return false;
+    }
+
     @ConfigItem(
         keyName = "closeCalls",
         name = "Close calls",

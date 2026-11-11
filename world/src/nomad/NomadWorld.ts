@@ -23,7 +23,42 @@ export const SPEEDS = [
 ];
 export const DEFAULT_SPEED = 1;
 
-export type Mode = "seed" | "run" | "live";
+export type Mode = "seed" | "run" | "live" | "grave";
+
+/**
+ * Tombstone in 3D: a death from the website's Graveyard. The tile, the pile's item count, the
+ * played minute, and the circle as it was (its middle and radius), shown as a fading wall.
+ */
+export interface Grave {
+    x: number;
+    y: number;
+    items: number;
+    minutes: number;
+    cx: number;
+    cy: number;
+    r: number;
+    name?: string;
+}
+
+/** Reads "x,y,items,minutes,cx,cy,r" from ?grave=, with &name= for the stone's name. */
+export function parseGrave(value: string | null, name: string | null): Grave | undefined {
+    if (!value) return undefined;
+    const n = value.split(",").map(Number);
+    if (n.length < 2 || n.slice(0, 7).some((v) => !Number.isFinite(v))) return undefined;
+    const [x, y, items = 0, minutes = 0, cx = x, cy = y, r = 12] = n;
+    if (x < 0 || y < 0 || x > 16000 || y > 16000) return undefined;
+    const clean = (name ?? "").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 12).trim();
+    return {
+        x: x | 0,
+        y: y | 0,
+        items: Math.max(0, Math.min(100, items | 0)),
+        minutes: Math.max(0, minutes | 0),
+        cx: cx | 0,
+        cy: cy | 0,
+        r: Math.max(1, Math.min(600, r | 0)),
+        name: clean || undefined,
+    };
+}
 
 /** One circle as drawn this frame: eased between the last two played minutes. */
 export interface DrawnCircle {
@@ -35,6 +70,8 @@ export interface DrawnCircle {
     radius: number;
     yours: boolean;
     sailing: boolean;
+    /** How faint the wall is, 1 full; a grave's circle fades in and out. */
+    fade?: number;
 }
 
 /** A circle that just pulsed (grew or shrank in a burst), and when it was seen, in ms. */
@@ -75,6 +112,7 @@ export class NomadWorld {
     error?: string;
     liveCode?: string;
     runCode?: string;
+    grave?: Grave;
     /** When the live run was last sent, and whether its player is still playing. */
     liveAt = 0;
     liveOnline = false;
@@ -101,8 +139,14 @@ export class NomadWorld {
         const live = params.get("live");
         const run = params.get("run");
         const seed = params.get("seed");
+        this.grave = parseGrave(params.get("grave"), params.get("name"));
         try {
-            if (live) {
+            if (this.grave) {
+                // A grave stands still: a quiet world with only the circle as it was.
+                this.mode = "grave";
+                this.use(NomadSim.start(geo, this.grave.minutes | 1), null);
+                this.speed = 0;
+            } else if (live) {
                 if (!LIVE_CODE_RE.test(live))
                     throw new Error(
                         "That live link is not complete. Copy it again from the plugin.",
@@ -137,6 +181,13 @@ export class NomadWorld {
 
     /** The link parameters that bring this run back. */
     params(): Record<string, string> {
+        if (this.mode === "grave" && this.grave) {
+            const g = this.grave;
+            return {
+                grave: [g.x, g.y, g.items, g.minutes, g.cx, g.cy, g.r].join(","),
+                ...(g.name ? { name: g.name } : {}),
+            };
+        }
         if (this.mode === "live" && this.liveCode) return { live: this.liveCode };
         if (this.mode === "run" && this.runCode) return { run: this.runCode };
         return this.sim ? { seed: String(this.sim.state.seed) } : {};
@@ -144,6 +195,7 @@ export class NomadWorld {
 
     /** This run on the website's 2D map. */
     siteLink(): string {
+        if (this.mode === "grave") return `${SITE}#/graveyard`;
         if (this.mode === "live" && this.liveCode) return `${SITE}#/live/${this.liveCode}`;
         if (this.mode === "run" && this.runCode) return `${SITE}#/run/${this.runCode}`;
         return `${SITE}#/map${this.sim ? `?seed=${this.sim.state.seed}` : ""}`;
@@ -183,6 +235,22 @@ export class NomadWorld {
     circles(): DrawnCircle[] {
         const sim = this.sim;
         if (!sim) return [];
+        if (this.grave) {
+            const g = this.grave;
+            return [
+                {
+                    index: 0,
+                    name: `${g.name ?? "A Nomad"} fell here · ${g.items} ${g.items === 1 ? "item" : "items"}`,
+                    colour: 0xb8b2a6,
+                    x: g.cx,
+                    y: g.cy,
+                    radius: g.r,
+                    yours: true,
+                    sailing: false,
+                    fade: 0.35 + 0.3 * Math.sin(performance.now() / 1400),
+                },
+            ];
+        }
         const t = Math.min(this.owed, 1);
         const out: DrawnCircle[] = [];
         sim.circles.forEach((c: CircleState, i: number) => {
@@ -215,7 +283,7 @@ export class NomadWorld {
         const sim = this.sim;
         if (!sim) return [];
         const yours = drawn.find((c) => c.yours);
-        if (!yours) return [];
+        if (!yours || this.grave) return [];
         const out: [DrawnCircle, DrawnCircle][] = [];
         for (const c of drawn) {
             if (!sim.linked(c.index)) continue;
@@ -226,6 +294,7 @@ export class NomadWorld {
     }
 
     volcanoOpen(): boolean {
+        if (this.grave) return false;
         return this.sim?.volcanoOpen() ?? false;
     }
 

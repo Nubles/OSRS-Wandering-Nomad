@@ -22,6 +22,8 @@ import com.wanderingnomad.journey.Prophecy;
 import com.wanderingnomad.journey.Rank;
 import com.wanderingnomad.journey.Renown;
 import com.wanderingnomad.journey.RoadStones;
+import com.wanderingnomad.journey.Shares;
+import com.wanderingnomad.journey.Stories;
 import com.wanderingnomad.journey.Trial;
 import com.wanderingnomad.journey.Trials;
 import com.wanderingnomad.journey.Wagers;
@@ -94,6 +96,7 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.NPCComposition;
@@ -119,6 +122,7 @@ import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
@@ -435,6 +439,7 @@ public class NomadPlugin extends Plugin
         panel.onSocial(this::socialFromPanel);
         panel.onStream(this::streamFromPanel);
         panel.onBlackBox(() -> SwingUtilities.invokeLater(() -> panel.showBlackBox(blackBox.frames())));
+        panel.onCardLink(this::copyCardLink);
         sight = config.clearSight().ordinal();
         desk = new StreamDesk(this, gson, executor, this::show, this::chat);
         keyManager.registerKeyListener(markerHotkey);
@@ -537,7 +542,7 @@ public class NomadPlugin extends Plugin
             // The next login may be another account, with a run of its own.
             if (!retired) desk.loggedOut(sim, surface, journey, outsideNow());
             save();
-            if (config.liveShare()) live.offline(liveCode(), liveToken(), runCode());
+            if (config.liveShare()) live.offline(liveCode(), liveToken(), runCode(), lobbyJson());
             sim = null;
             surface = null;
             loadPending = false;
@@ -803,7 +808,9 @@ public class NomadPlugin extends Plugin
         // wherever the circle goes: the rules get no tile to judge.
         double before = desk.margin();
         java.util.Set<String> had = config.gainsLosses() ? amenities.inside(sim.bound()) : null;
+        int forksBefore = sim.forks();
         lines.addAll(sim.step(sheltered() ? null : surface));
+        if (sim.forks() > forksBefore && sim.ghost() != null) journey.parted(sim.minutes(), sim.ghost(), sim.main());
         trails.sample(sim);
         if (delveLeft > 0 && --delveLeft == 0)
         {
@@ -856,7 +863,11 @@ public class NomadPlugin extends Plugin
         if (config.liveShare())
         {
             if (!lines.isEmpty()) live.markDirty();
-            live.minute(liveCode(), liveToken(), runCode());
+            live.minute(liveCode(), liveToken(), runCode(), lobbyJson());
+        }
+        if (config.atlasShare() && sim.minutes() % 60 == 0)
+        {
+            live.share("/a/", liveCode(), liveToken(), gson.toJson(Shares.atlas(journey)));
         }
         publish();
     }
@@ -907,6 +918,11 @@ public class NomadPlugin extends Plugin
             case DEATH:
                 scar("death", "You died at " + NomadPanel.time(sim.minutes()) + ".");
                 if (surface != null) journey.died(surface.x, surface.y);
+                if (config.graveyard() && surface != null)
+                {
+                    live.share("/g/", liveCode(), liveToken(), gson.toJson(Shares.grave(config.lobbyName(), sim, journey,
+                        surface.x, surface.y, config.hardcore(), carried())));
+                }
                 desk.died();
                 if (!blackBox.frames().isEmpty())
                 {
@@ -1499,6 +1515,11 @@ public class NomadPlugin extends Plugin
             saveStats();
         }
         if (b.quiet) return;
+        if (b.big && sim != null && journey != null)
+        {
+            Tile at = surface != null ? surface : new Tile((int) Math.round(sim.main().x()), (int) Math.round(sim.main().y()));
+            journey.moment(sim.minutes(), at.x, at.y, b.title, b.subtitle);
+        }
         alert(b);
         if (sight == NomadConfig.Sight.ALL.ordinal()) chat(b.title + ": " + b.subtitle);
         boolean ceremonyPlays = false;
@@ -2236,6 +2257,7 @@ public class NomadPlugin extends Plugin
         journey.sample(now, m.x(), m.y(), m.sailing(), forked, inside ? Integer.valueOf(surface.x) : null,
             inside ? Integer.valueOf(surface.y) : null);
         Region over = surface == null ? null : Geography.regionAt(surface.x, surface.y);
+        journey.tally(now, sim, over == null ? null : over.name, inside, surface);
         Acts.minute(journey, over == null ? null : over.id, now);
         Acts.Opening act = Acts.check(journey, now);
         if (act != null)
@@ -3531,6 +3553,34 @@ public class NomadPlugin extends Plugin
         });
     }
 
+    /**
+     * Link cards: with live sharing on, the relay's card for the live run (it shows LIVE while you
+     * play); otherwise a card for the run as it is now.
+     */
+    private void copyCardLink()
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null)
+            {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(panel,
+                    "Log in first, so the plugin can load your run.", "Nomad UIM", JOptionPane.INFORMATION_MESSAGE));
+                return;
+            }
+            boolean on = config.liveShare();
+            String url = on ? LiveShare.RELAY + "/c/" + liveCode() : LiveShare.RELAY + "/r/" + runCode();
+            if (on) live.markDirty();
+            SwingUtilities.invokeLater(() ->
+            {
+                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(url), null);
+                JOptionPane.showMessageDialog(panel, on
+                        ? "Card link copied. Pasted in Discord it shows your circles with a LIVE badge while you play."
+                        : "Card link copied: it shows your run as it is now. Turn on Share live for a card that keeps up.",
+                    "Nomad UIM", JOptionPane.INFORMATION_MESSAGE);
+            });
+        });
+    }
+
     /** This account's live code, made the first time it's needed and kept with the run. */
     private String liveCode()
     {
@@ -3553,11 +3603,36 @@ public class NomadPlugin extends Plugin
         return value;
     }
 
+    /** The lobby circle to send with a live share, or null when the player hasn't joined the lobby. */
+    private String lobbyJson()
+    {
+        return config.lobby() && sim != null ? gson.toJson(Shares.lobby(config.lobbyName(), sim)) : null;
+    }
+
+    /** How many slots of inventory and worn items you carry: a tombstone's pile size. */
+    private int carried()
+    {
+        int n = 0;
+        for (int id : new int[]{InventoryID.INV, InventoryID.WORN})
+        {
+            ItemContainer c = client.getItemContainer(id);
+            if (c != null) n += c.count();
+        }
+        return n;
+    }
+
     private String runCode()
+    {
+        return runCode(false);
+    }
+
+    /** The run as a code; {@code story} adds its story for the website's Saga, report card and side-by-side. */
+    private String runCode(boolean story)
     {
         SavedRun run = new SavedRun(sim, surface);
         run.epithet = epithet;
         run.retired = retired;
+        if (story && journey != null) run.story = Stories.of(sim, journey, config.hardcore());
         return RunCode.encode(gson.toJson(run));
     }
 
@@ -3572,7 +3647,7 @@ public class NomadPlugin extends Plugin
                     "Log in first, so the plugin can load your run.", "Nomad UIM", JOptionPane.INFORMATION_MESSAGE));
                 return;
             }
-            String code = runCode();
+            String code = runCode(true);
             SwingUtilities.invokeLater(() -> use.accept(code));
         });
     }

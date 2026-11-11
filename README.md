@@ -94,6 +94,18 @@ The pure parts live in `look/` (with tests); the drawing is in the overlays, `Ed
 - **Boons and timers** can show as RuneLite infoboxes, in the status box, or both.
 - **Clear sight:** one accessibility setting. Colour safe swaps in a colour-blind-safe palette, high contrast makes edges thick and patterned by kind (Main solid, kingdoms dashed, the caravan dotted), and All does both and tells every banner in chat too.
 
+### The website
+
+The site (`web/`) is playable with no account and no server; the shared pages read the relay only when someone opted in.
+
+- **Your run:** a run code copied from the sidebar now carries the run's **story**: an hourly track, hours by kingdom and mood, the smallest circle, each fork's lost half, the acts and the big moments. **The Saga** (`#/saga`) turns it into chapters with a little map each, folding quiet stretches into a line, with a one-screen **report card**, a **footprint sigil** (a pixel crest from the map regions you walked, coloured by the seed) and **the other forks** (the halves you didn't keep, still drifting). The map page draws the lost halves too.
+- **What's in my circle** (`#/circle`): every bank, deposit box, altar, furnace, anvil, range, fairy ring, spinning wheel, loom, potter's wheel, fishing spot, mining site, rare tree, farming patch and dungeon entrance inside a circle right now. `web/scripts/build_places.py` reads them from the game cache and RuneLite's world map tables into `web/public/places.json`.
+- **Side by side** (`#/compare`): up to four run codes on one map, aligned by played hour, with one scrubber.
+- **Wishlist pings:** star landmarks on the map page; on a live run, the tab pings you when the Radar sees your circle reach one in the next 15 minutes.
+- **Together:** the **Nomad lobby** (`#/lobby`, live runs as breathing circles), **the Graveyard** (`#/graveyard`, tombstones with an epitaph from the ledger, each one visitable in the 3D world viewer with `world/?grave=`), the **atlas of wandering** (`#/atlas`, a heatmap of regions walked and the land no Nomad has stood on) and the **Hall of firsts** (`#/firsts`, curated in `web/public/firsts.json`; claims come in as GitHub issues). Each is opt-in in the plugin's **Website** settings, off by default.
+- **Play:** the **Circle Guesser** (`#/guess`, five circles a day, the 3D view turning inside each, a shareable grid), **Seed prophecy** (`#/prophecy`, one vague line about a seed's opening hours, as a card) and the **living rulebook** (each law on the Rules page has a demo to poke).
+- **Link cards:** the sidebar's **Copy Discord card link** gives a relay link that unfurls as a picture of your circles with Main's mood and size and a LIVE badge, cached for an hour.
+
 Not yet:
 
 - Campfire (the fourth-circle boon), Forks, Passport, the hash-chained run log and Season mode.
@@ -135,4 +147,6 @@ npx wrangler@latest deploy
 ```
 
 If the workers.dev URL isn't `https://nomad-relay.fatelocked.workers.dev`, update `LiveShare.RELAY` in the plugin and set `VITE_RELAY_URL` for the website build.
+
+The same worker serves the website's shared pages, each written only by players who turned it on: `GET /lobby` (live runs that joined the lobby, read from the live runs' own metadata, so it costs no extra write), `POST /g/<code>` and `GET /g` (tombstones, listed without their codes), `POST /a/<code>` and `GET /a` (kingdoms and map regions walked, summed), and the link cards `GET /c/<live code>` and `GET /r/<run code>` (a page with Open Graph tags, and `/card.png`, drawn in the worker with no image library). Redeploy after pulling so the new routes go live.
 

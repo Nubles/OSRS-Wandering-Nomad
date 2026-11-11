@@ -6,6 +6,16 @@ import { contains, MAIN, NomadSim, touches } from '../engine/sim';
 import { MAP } from '../mapBounds';
 import { loadMapImage } from '../useGeography';
 
+/** What a page's own marks get to draw with: the canvas, tile-to-screen, the zoom and the time. */
+export interface MapDraw {
+  ctx: CanvasRenderingContext2D;
+  at: (x: number, y: number) => readonly [number, number];
+  /** Screen pixels per tile. */
+  scale: number;
+  t: number;
+  text: (text: string, x: number, y: number, colour: string, font?: 'RS' | 'RSBold' | 'RSSmall') => void;
+}
+
 export interface MapScene {
   sim: NomadSim;
   player: Tile | null;
@@ -14,6 +24,12 @@ export interface MapScene {
   fog: boolean;
   /** Keep the camera on your circle. */
   follow: boolean;
+  /** Only the map and the page's own marks: no circles, ports, fog or player. */
+  bare?: boolean;
+  /** Where the camera follows instead of your circle. */
+  focus?: Tile | null;
+  /** The page's own marks, drawn over the circles (or alone, when bare). */
+  extra?: (d: MapDraw) => void;
 }
 
 interface Props {
@@ -72,11 +88,12 @@ export function MapCanvas({ scene, zoom = 1, interactive = true, onPick, classNa
       if (!s || w === 0) return;
       const sim = s.sim;
       const yours = sim.bound;
-      if (!view.current) view.current = { cx: yours.x, cy: yours.y, scale: zoom };
+      const target = s.focus ?? yours;
+      if (!view.current) view.current = { cx: target.x, cy: target.y, scale: zoom };
       const v = view.current;
       if (s.follow) {
-        v.cx += (yours.x - v.cx) * 0.08;
-        v.cy += (yours.y - v.cy) * 0.08;
+        v.cx += (target.x - v.cx) * 0.08;
+        v.cy += (target.y - v.cy) * 0.08;
       }
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -86,6 +103,19 @@ export function MapCanvas({ scene, zoom = 1, interactive = true, onPick, classNa
         const [ix, iy] = toScreen(v, MAP.x0, MAP.yTop);
         ctx.imageSmoothingEnabled = v.scale < 2;
         ctx.drawImage(img, ix, iy, (MAP.x1 - MAP.x0) * v.scale, (MAP.yTop - MAP.yBottom) * v.scale);
+      }
+
+      const extra = () =>
+        s.extra?.({
+          ctx,
+          at: (x, y) => toScreen(v, x, y),
+          scale: v.scale,
+          t,
+          text: (text, x, y, colour, font = 'RS') => rsText(ctx, text, x, y, colour, font),
+        });
+      if (s.bare) {
+        extra();
+        return;
       }
 
       // Fog: everything outside your circle dims.
@@ -229,6 +259,8 @@ export function MapCanvas({ scene, zoom = 1, interactive = true, onPick, classNa
         ctx.stroke();
         rsText(ctx, w.boon, wx, wy - 11, colour, 'RSSmall');
       }
+
+      extra();
 
       if (s.player) {
         const [px, py] = toScreen(v, s.player.x, s.player.y);

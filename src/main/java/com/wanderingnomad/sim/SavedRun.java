@@ -18,6 +18,8 @@ public final class SavedRun
     public String epithet;
     /** Baton: a relay leg's runner counts as inside until they first reach their circle. */
     public boolean batonGrace;
+    /** The run's story, only in a code made for the website; null in the save and in live shares. */
+    public Story story;
 
     public SavedRun()
     {

@@ -57,27 +57,58 @@ final class LiveShare
         dirty = true;
     }
 
-    /** Called once a played minute with the current run code. */
-    void minute(String code, String token, String runCode)
+    /**
+     * Called once a played minute with the current run code; {@code lobby} is the run's lobby
+     * circle as JSON when the player joined the lobby, else null.
+     */
+    void minute(String code, String token, String runCode, String lobby)
     {
         long now = System.currentTimeMillis();
         long since = now - lastSent;
-        if (since >= QUIET_INTERVAL_MS || (dirty && since >= EVENT_INTERVAL_MS)) send(code, token, runCode, true);
+        if (since >= QUIET_INTERVAL_MS || (dirty && since >= EVENT_INTERVAL_MS)) send(code, token, runCode, true, lobby);
     }
 
     /** Logging out: one last send so the page shows the run as offline. */
-    void offline(String code, String token, String runCode)
+    void offline(String code, String token, String runCode, String lobby)
     {
-        send(code, token, runCode, false);
+        send(code, token, runCode, false, lobby);
     }
 
-    private void send(String code, String token, String runCode, boolean online)
+    /**
+     * A one-off send to another of the relay's shared pages: a tombstone ({@code /g/}) or the
+     * atlas ({@code /a/}), under the same live code and token.
+     */
+    void share(String path, String code, String token, String json)
+    {
+        Request request = new Request.Builder()
+            .url(RELAY + path + code)
+            .header("Authorization", "Bearer " + token)
+            .post(RequestBody.create(JSON, json))
+            .build();
+        http.newCall(request).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                log.debug("Nomad share to {} failed", path, e);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                if (!response.isSuccessful()) log.debug("Nomad share to {} refused: {}", path, response.code());
+                response.close();
+            }
+        });
+    }
+
+    private void send(String code, String token, String runCode, boolean online, String lobby)
     {
         if (inFlight) return;
         inFlight = true;
         lastSent = System.currentTimeMillis();
         dirty = false;
-        String body = "{\"run\":\"" + runCode + "\",\"online\":" + online + "}";
+        String body = "{\"run\":\"" + runCode + "\",\"online\":" + online + (lobby != null ? ",\"lobby\":" + lobby : "") + "}";
         Request request = new Request.Builder()
             .url(RELAY + "/n/" + code)
             .header("Authorization", "Bearer " + token)

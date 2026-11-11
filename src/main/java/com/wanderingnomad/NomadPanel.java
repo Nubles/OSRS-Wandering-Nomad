@@ -105,6 +105,7 @@ class NomadPanel extends PluginPanel
     private final JLabel almanac = note(" ");
     private List<String> shownAlmanac;
     private Runnable onBlackBox = () -> { };
+    private Runnable onCardLink = () -> { };
     private final JButton blackBoxButton = small("Replay the black box", "The last 3 minutes of you and your circle's edge, "
         + "as a fast animation from above", () -> onBlackBox.run());
     private final SidebarParts.Header header = new SidebarParts.Header();
@@ -281,6 +282,8 @@ class NomadPanel extends PluginPanel
         buttons.add(button("Copy run code", "Copies a code you can paste on the website or share", onCopyRunCode));
         buttons.add(button("View on website", "Opens your circles on the Nomad UIM website, exactly where they are now", onViewOnWebsite));
         buttons.add(button("Copy live link", "A link that follows your run as you play (turn on Share live in the plugin's settings)", onCopyLiveLink));
+        buttons.add(button("Copy Discord card link", "A link that unfurls in Discord as a card: the map, Main's mood and size, "
+            + "and a LIVE badge while you play. Opens the website when clicked.", () -> onCardLink.run()));
         JButton newRun = new JButton("Start a new run");
         newRun.addActionListener(e ->
         {
@@ -364,6 +367,11 @@ class NomadPanel extends PluginPanel
     void onStream(BiConsumer<String, String> onStream)
     {
         this.onStream = onStream;
+    }
+
+    void onCardLink(Runnable onCardLink)
+    {
+        this.onCardLink = onCardLink;
     }
 
     void onBlackBox(Runnable onBlackBox)

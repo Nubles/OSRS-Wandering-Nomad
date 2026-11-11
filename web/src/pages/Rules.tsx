@@ -1,6 +1,11 @@
+import { useState } from 'react';
+import { RuleDemo } from '../components/RuleDemo';
+import type { Geography } from '../engine/geography';
 import { GROWTH, LAWS } from './laws';
 
-export function Rules() {
+/** The rulebook, each law with a tiny live demo to poke (the living rulebook). */
+export function Rules({ geo }: { geo: Geography | null }) {
+  const [open, setOpen] = useState<string | null>(null);
   return (
     <article className="page prose">
       <div className="osrs-win window">
@@ -33,6 +38,12 @@ export function Rules() {
                 <strong>{l.short}</strong>
               </p>
               <p>{l.long}</p>
+              {geo && (
+                <button type="button" className="btn btn-small" aria-expanded={open === l.name} onClick={() => setOpen(open === l.name ? null : l.name)}>
+                  {open === l.name ? 'Hide the demo' : 'Show me'}
+                </button>
+              )}
+              {geo && open === l.name && <RuleDemo key={l.name} geo={geo} law={l.name} />}
             </dd>
           </div>
         ))}
@@ -54,10 +65,10 @@ export function Rules() {
         <li>On either, you may never reclaim a death pile.</li>
       </ul>
 
-      <h2>Coming soon</h2>
+      <h2>Waystones</h2>
       <p>
-        <strong>Waystones.</strong> Milestones like total level, quest points and first boss kills summon a waystone somewhere in the world.
-        Reach it to claim a one-use boon, such as an extra circle, a bigger radius or a burst of speed.
+        Milestones like total level, quest points and first boss kills summon a waystone somewhere in the world. Reach it, inside its
+        circle, to claim a one-use boon, such as a bigger radius, a burst of speed or a nudge of the wheel. You hold three at most.
       </p>
       </div>
       </div>

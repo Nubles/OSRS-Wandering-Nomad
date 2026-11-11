@@ -12,6 +12,10 @@ interface Props {
   scene: React.RefObject<MapScene | null>;
   onPick?: (tile: Tile) => void;
   className?: string;
+  /** A slow turn around your circle, for the Circle Guesser. */
+  spin?: boolean;
+  /** How far out the camera may pull, in tiles; the Guesser keeps it close. */
+  reach?: number;
 }
 
 /** Hills are real heights from the game, stretched so they read from a distance. */
@@ -48,7 +52,7 @@ const WALL_FRAGMENT = /* glsl */ `
   }
 `;
 
-export function Map3D({ scene, onPick, className }: Props) {
+export function Map3D({ scene, onPick, className, spin = false, reach = 2600 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const followRef = useRef<() => void>(() => undefined);
@@ -190,9 +194,14 @@ export function Map3D({ scene, onPick, className }: Props) {
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 40;
-    controls.maxDistance = 2600;
+    controls.maxDistance = reach;
     controls.maxPolarAngle = Math.PI * 0.46;
     controls.screenSpacePanning = false;
+    if (spin) {
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.5;
+      controls.enablePan = false;
+    }
     controls.addEventListener('start', () => {
       if (scene.current) scene.current.follow = false;
     });
@@ -231,7 +240,8 @@ export function Map3D({ scene, onPick, className }: Props) {
 
       if (!placed) {
         controls.target.set(sx(yours.x), yoursGround, sz(yours.y));
-        camera.position.set(sx(yours.x) - 60, yoursGround + 230, sz(yours.y) + 230);
+        const back = Math.min(230, reach * 0.55);
+        camera.position.set(sx(yours.x) - back * 0.26, yoursGround + back, sz(yours.y) + back);
         placed = true;
       }
       if (s.follow) {
@@ -347,7 +357,7 @@ export function Map3D({ scene, onPick, className }: Props) {
       renderer.domElement.remove();
       labelHost.replaceChildren();
     };
-  }, [scene]);
+  }, [scene, spin, reach]);
 
   if (failed) {
     return (

@@ -1,5 +1,8 @@
 package com.wanderingnomad.journey;
 
+import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Tile;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -101,6 +104,22 @@ public final class Journey
     /** Fellow travellers: played minutes in a row with three or more friends or clanmates inside your circle. */
     int fellowsRun;
     public static final int BOTTLES_MAX = 20;
+    /**
+     * The run's story, for the website's Saga, report card and side-by-side: an hourly track
+     * (minute, Main's x, y and radius, where you stood or -1, the circle you were bound to),
+     * played minutes by the kingdom you stood in and by Main's mood, the smallest your circle got
+     * with you inside it, each fork's lost half (minute, x, y, heading in thousandths, radius, the
+     * kept half's x and y) and the run's big moments.
+     */
+    List<int[]> hours = new ArrayList<>();
+    Map<String, Integer> kingdomMinutes = new HashMap<>();
+    Map<String, Integer> moodMinutes = new HashMap<>();
+    int smallest;
+    List<int[]> partings = new ArrayList<>();
+    List<Moment> moments = new ArrayList<>();
+    static final int HOURS_MAX = 1200;
+    static final int PARTINGS_MAX = 60;
+    static final int MOMENTS_MAX = 150;
     /** Set by the plugin: a monster species not yet killed this run is near you. Never saved. */
     public transient boolean strangerNear;
 
@@ -171,6 +190,34 @@ public final class Journey
         {
             return line;
         }
+
+        public int minute()
+        {
+            return minute;
+        }
+    }
+
+    /** A big moment of the run, for the Saga: when, where you stood (or Main's middle), its title and line. */
+    public static final class Moment
+    {
+        public int minute;
+        public int x;
+        public int y;
+        public String title;
+        public String line;
+
+        Moment()
+        {
+        }
+
+        Moment(int minute, int x, int y, String title, String line)
+        {
+            this.minute = minute;
+            this.x = x;
+            this.y = y;
+            this.title = title;
+            this.line = line;
+        }
     }
 
     /** Gson leaves fields null when an older save lacks them. */
@@ -191,6 +238,11 @@ public final class Journey
         if (scars == null) scars = new ArrayList<>();
         if (cairns == null) cairns = new ArrayList<>();
         if (bottles == null) bottles = new ArrayList<>();
+        if (hours == null) hours = new ArrayList<>();
+        if (kingdomMinutes == null) kingdomMinutes = new HashMap<>();
+        if (moodMinutes == null) moodMinutes = new HashMap<>();
+        if (partings == null) partings = new ArrayList<>();
+        if (moments == null) moments = new ArrayList<>();
         return this;
     }
 
@@ -218,6 +270,86 @@ public final class Journey
             if (i % 2 == 0 || i >= list.size() / 2) kept.add(p);
             // A dropped sample's fork mark carries onto the one kept before it.
             else if (p.length > 2 && !kept.isEmpty()) kept.get(kept.size() - 1)[2] |= p[2] & FORKED;
+        }
+        list.clear();
+        list.addAll(kept);
+    }
+
+    /**
+     * The story's tally for one played minute: {@code kingdom} is the kingdom you stood in (null at
+     * sea or unknown), {@code inside} whether you were inside your circle, {@code you} where you
+     * stood or null.
+     */
+    public void tally(int minute, NomadSim sim, String kingdom, boolean inside, Tile you)
+    {
+        if (kingdom != null) kingdomMinutes.merge(kingdom, 1, Integer::sum);
+        Circle m = sim.main();
+        moodMinutes.merge(m.moodName(), 1, Integer::sum);
+        if (inside)
+        {
+            int r = (int) Math.round(sim.bound().radius());
+            if (smallest == 0 || r < smallest) smallest = Math.max(1, r);
+        }
+        if (minute % 60 == 0)
+        {
+            hours.add(new int[]{minute, (int) Math.round(m.x()), (int) Math.round(m.y()), (int) Math.round(m.radius()),
+                you == null ? -1 : you.x, you == null ? -1 : you.y, sim.boundIndex()});
+            if (hours.size() > HOURS_MAX) thinPlain(hours);
+        }
+    }
+
+    /** A fork parted: {@code gone} is the half that faded, {@code kept} the one that lives on as Main. */
+    public void parted(int minute, Circle gone, Circle kept)
+    {
+        partings.add(new int[]{minute, (int) Math.round(gone.x()), (int) Math.round(gone.y()), (int) Math.round(gone.heading() * 1000),
+            (int) Math.round(gone.radius()), (int) Math.round(kept.x()), (int) Math.round(kept.y())});
+        if (partings.size() > PARTINGS_MAX) partings.remove(0);
+    }
+
+    /** A big moment, for the Saga. */
+    public void moment(int minute, int x, int y, String title, String line)
+    {
+        moments.add(new Moment(minute, x, y, title, line == null ? "" : line));
+        if (moments.size() > MOMENTS_MAX) moments.remove(0);
+    }
+
+    public List<int[]> hours()
+    {
+        return java.util.Collections.unmodifiableList(hours);
+    }
+
+    public Map<String, Integer> kingdomMinutes()
+    {
+        return java.util.Collections.unmodifiableMap(kingdomMinutes);
+    }
+
+    public Map<String, Integer> moodMinutes()
+    {
+        return java.util.Collections.unmodifiableMap(moodMinutes);
+    }
+
+    public int smallest()
+    {
+        return smallest;
+    }
+
+    public List<int[]> partings()
+    {
+        return java.util.Collections.unmodifiableList(partings);
+    }
+
+    public List<Moment> moments()
+    {
+        return java.util.Collections.unmodifiableList(moments);
+    }
+
+    /** Keeps every other old sample, with no flags to carry. */
+    private static void thinPlain(List<int[]> list)
+    {
+        List<int[]> kept = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++)
+        {
+            if (i % 2 == 0 || i >= list.size() / 2) kept.add(list.get(i));
         }
         list.clear();
         list.addAll(kept);

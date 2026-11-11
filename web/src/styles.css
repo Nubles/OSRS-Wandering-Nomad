@@ -333,3 +333,52 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .split { grid-template-columns: minmax(0, 1fr); }
   .law-list > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 }
+
+/* ── Explore and the run pages ─────────────────────────────────────────── */
+.explore-card { display: block; text-decoration: none; color: inherit; }
+.explore-card:hover h3, .explore-card:focus-visible h3 { color: var(--osrs-yellow); }
+.run-code-box { margin: 6px 0 10px; }
+.run-code-box .input { min-width: 0; }
+.page-map-split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 8px; min-height: 560px; height: calc(100vh - 96px); }
+.page-map-split .map-frame { min-height: 0; height: 100%; }
+.page-map-split .panel { padding: 10px 12px; }
+.kind-list { list-style: none; margin: 0; padding: 0; }
+.kind-list li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.kind-list .count { margin-left: auto; color: var(--osrs-yellow); font-family: 'RSSmall', sans-serif; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.bar { height: 10px; background: var(--osrs-well); box-shadow: inset 0 0 0 1px #000; }
+.bar > span { display: block; height: 100%; background: var(--osrs-orange); }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.stat { padding: 8px 10px; }
+.stat .big { font: 28px/26px 'RSBold', sans-serif; color: var(--osrs-yellow); }
+.saga-chapter { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; align-items: start; }
+.saga-chapter canvas { width: 220px; height: 220px; display: block; image-rendering: auto; }
+.saga-lines { list-style: none; margin: 0; padding: 0; }
+.saga-lines li { padding: 3px 0; }
+.saga-lines .quiet { color: var(--osrs-text-dim); font-style: italic; }
+.saga-lines .death { color: var(--osrs-red); }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+.sigil-canvas { width: 256px; height: 256px; image-rendering: pixelated; background: var(--osrs-well); box-shadow: inset 0 0 0 1px #000; }
+.scrubber { width: 100%; }
+.guess-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; height: min(70vh, 640px); min-height: 420px; }
+.guess-stage .map-canvas { height: 100%; }
+.guess-stage .map3d-labels { display: none; }
+.grid-share { font-size: 28px; letter-spacing: 2px; }
+.demo-box { margin: 8px 0 14px; }
+.demo-box .map-canvas { height: 260px; }
+.prophecy-line { font: 22px/26px 'RSBold', sans-serif; color: var(--osrs-yellow); margin: 10px 0; }
+.firsts-table { width: 100%; border-collapse: collapse; }
+.firsts-table th, .firsts-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--osrs-well); }
+
+@media (max-width: 899px) {
+  .page-map-split { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .page-map-split .map-frame { height: 56vh; }
+  .saga-chapter { grid-template-columns: minmax(0, 1fr); }
+  .guess-stage { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .guess-stage > * { height: 46vh; }
+}
+.panel > .input, .panel > select.input { flex: none; }
+.osrs-chat a { color: #0000ff; }
+.firsts-table { table-layout: fixed; }
+.firsts-table th:nth-child(1) { width: 55%; }
+.firsts-table th:nth-child(3) { width: 90px; }

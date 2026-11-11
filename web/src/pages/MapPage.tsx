@@ -2,10 +2,12 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { MapCanvas, MapScene } from '../components/MapCanvas';
 import type { Geography, Tile } from '../engine/geography';
 import { forecast } from '../engine/forecast';
+import { LANDMARKS } from '../engine/landmarks';
 import { decodeRun, encodeRun } from '../engine/runcode';
 import { BOONS_HELD, COMMON, contains, MAIN, NomadSim, RARE, RUDDER } from '../engine/sim';
 import { ago, fetchLive, isLive, LIVE_CODE_RE, LiveRun, POLL_MS } from '../live';
 import type { Route } from '../router';
+import { ghostPath } from '../story';
 
 const Map3D = lazy(() => import('../components/Map3D'));
 const VIEW_KEY = 'nomad.view';
@@ -24,6 +26,20 @@ const SPEEDS = [
   { label: '1 h/s', perSecond: 60 },
 ];
 const LOG_LIMIT = 80;
+const WISH_KEY = 'nomad.wishlist';
+/** The Radar's reach: how far ahead the wishlist looks, in played minutes. */
+const RADAR = 15;
+/** A wish pings at most this often. */
+const PING_EVERY_MS = 60 * 60_000;
+
+function savedWishes(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(WISH_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 interface Props {
   geo: Geography;
@@ -51,6 +67,19 @@ export function MapPage({ geo, route }: Props) {
   const chatRef = useRef<HTMLOListElement>(null);
   const fogRef = useRef(fog);
   fogRef.current = fog;
+  // The other fork: the lost halves of a loaded run's parted forks, drifting on.
+  const partingsRef = useRef<number[][]>([]);
+  const [showForks, setShowForks] = useState(true);
+  const showForksRef = useRef(showForks);
+  const ghostEnds = useRef<{ minute: number; ends: Tile[] }>({ minute: -1, ends: [] });
+  showForksRef.current = showForks;
+  // Wishlist pings: starred landmarks, and the ones the Radar says your circle reaches soon.
+  const [wishes, setWishes] = useState<string[]>(savedWishes);
+  const [wishPick, setWishPick] = useState('');
+  const [soon, setSoon] = useState<{ name: string; minutes: number }[]>([]);
+  const [notify, setNotify] = useState(() => typeof Notification !== 'undefined' && Notification.permission === 'granted');
+  const pinged = useRef(new Map<string, number>());
+  const lastRadar = useRef(-1);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
@@ -126,10 +155,12 @@ export function MapPage({ geo, route }: Props) {
         clearTimeout(timer);
       };
     }
+    partingsRef.current = [];
     if (route.run) {
       decodeRun(route.run)
         .then((run) => {
           if (!live) return;
+          partingsRef.current = run.story?.partings ?? [];
           scene.current = {
             sim: new NomadSim(geo, run.sim),
             player: run.surface ?? null,
@@ -219,6 +250,69 @@ export function MapPage({ geo, route }: Props) {
 
   const s = scene.current;
   const sim = s?.sim;
+
+  if (s) {
+    s.extra = ({ ctx, at, scale, t, text }) => {
+      if (!showForksRef.current || !partingsRef.current.length) return;
+      // The lost halves move once a played minute, so their places are worked out once a minute.
+      const minute = s.sim.state.minutes;
+      if (ghostEnds.current.minute !== minute || ghostEnds.current.ends.length !== partingsRef.current.length) {
+        ghostEnds.current = { minute, ends: partingsRef.current.map((p) => ghostPath(geo, p, minute).pop()!) };
+      }
+      partingsRef.current.forEach((p, i) => {
+        const end = ghostEnds.current.ends[i];
+        const [x, y] = at(end.x, end.y);
+        const breathe = 0.5 + 0.5 * Math.sin(t / 800 + p[0]);
+        ctx.beginPath();
+        ctx.arc(x, y, p[4] * scale, 0, Math.PI * 2);
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = `rgba(201,166,255,${0.45 + breathe * 0.25})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (scale > 0.5) text('A lost half', x, y - p[4] * scale - 5, '#c9a6ff', 'RSSmall');
+      });
+    };
+  }
+
+  // The wishlist's Radar: where your circle reaches in the next quarter hour, checked once a played minute.
+  const minuteNow = sim?.state.minutes ?? -1;
+  useEffect(() => {
+    const sc = scene.current;
+    if (!sc || !wishes.length || minuteNow === lastRadar.current) return;
+    if (loaded !== 'live' && Math.abs(minuteNow - lastRadar.current) < 5) return;
+    lastRadar.current = minuteNow;
+    const wanted = LANDMARKS.filter((l) => wishes.includes(l.name));
+    const ahead = sc.sim.clone();
+    const found = new Map<string, number>();
+    for (let m = 0; m <= RADAR; m++) {
+      if (m > 0) ahead.step(sc.player);
+      for (const l of wanted) if (!found.has(l.name) && contains(ahead.bound, l.x, l.y)) found.set(l.name, m);
+    }
+    const list = [...found.entries()].map(([name, minutes]) => ({ name, minutes }));
+    setSoon(list);
+    if (loaded === 'live' && notify && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      const now = Date.now();
+      for (const w of list) {
+        if (now - (pinged.current.get(w.name) ?? 0) < PING_EVERY_MS) continue;
+        pinged.current.set(w.name, now);
+        new Notification('Nomad UIM', {
+          body: w.minutes === 0 ? `${w.name} is inside the circle now.` : `The circle reaches ${w.name} in about ${w.minutes} minutes.`,
+          tag: `nomad-wish-${w.name}`,
+        });
+      }
+    }
+  }, [minuteNow, wishes, loaded, notify]);
+
+  const saveWishes = (next: string[]) => {
+    setWishes(next);
+    lastRadar.current = -1;
+    try {
+      localStorage.setItem(WISH_KEY, JSON.stringify(next));
+    } catch {
+      /* private mode: kept for this visit only */
+    }
+  };
 
   const pick = useCallback(
     (tile: Tile) => {
@@ -556,6 +650,68 @@ export function MapPage({ geo, route }: Props) {
             />{' '}
             Sailing unlocked (Main can sail from any port to any port)
           </label>
+        </section>
+
+        {partingsRef.current.length > 0 && (
+          <section>
+            <h3>The other forks</h3>
+            <label className="check">
+              <input type="checkbox" checked={showForks} onChange={(e) => setShowForks(e.target.checked)} /> Show the{' '}
+              {partingsRef.current.length} lost {partingsRef.current.length === 1 ? 'half' : 'halves'}, still drifting as if they'd been
+              kept
+            </label>
+          </section>
+        )}
+
+        <section>
+          <h3>Wishlist</h3>
+          <p className="muted small">
+            Star places you need. {loaded === 'live' ? 'While this tab stays open, it' : 'On a live run, the page'} pings you when the
+            Radar sees your circle reach one in the next {RADAR} minutes.
+          </p>
+          <div className="row">
+            <select className="input grow" aria-label="A place to star" value={wishPick} onChange={(e) => setWishPick(e.target.value)}>
+              <option value="">Pick a place…</option>
+              {LANDMARKS.filter((l) => !wishes.includes(l.name))
+                .map((l) => l.name)
+                .sort()
+                .map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+            </select>
+            <button type="button" className="btn" disabled={!wishPick} onClick={() => (saveWishes([...wishes, wishPick]), setWishPick(''))}>
+              Star
+            </button>
+          </div>
+          {wishes.length > 0 && (
+            <ul className="crossings">
+              {wishes.map((w) => {
+                const hit = soon.find((x) => x.name === w);
+                return (
+                  <li key={w}>
+                    <span className="grow name">
+                      ★ {w}
+                      {hit && <span className="ok small"> · {hit.minutes === 0 ? 'inside now' : `in ~${hit.minutes} min`}</span>}
+                    </span>
+                    <button type="button" className="btn btn-small" onClick={() => saveWishes(wishes.filter((x) => x !== w))}>
+                      Remove
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {wishes.length > 0 && typeof Notification !== 'undefined' && !notify && (
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => Notification.requestPermission().then((p) => setNotify(p === 'granted'))}
+            >
+              Turn on notifications
+            </button>
+          )}
         </section>
 
         <section>
