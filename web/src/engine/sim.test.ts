@@ -66,6 +66,22 @@ describe('the TypeScript sim matches the plugin', () => {
           else if (e.kind === 'vigil') sim.setVigil(e.args[0] as boolean);
           else if (e.kind === 'rites') sim.setRites(e.args[0] as boolean);
           else if (e.kind === 'rite') line = sim.performRite(e.args[0] as string, { x: e.args[1] as number, y: e.args[2] as number });
+          else if (e.kind === 'networks') sim.setNetworks(e.args[0] as number);
+          else if (e.kind === 'book') sim.setSpellbook(e.args[0] as number);
+          else if (e.kind === 'ca') line = sim.setCaTiers(e.args[0] as number);
+          else if (e.kind === 'pop') line = sim.logPop();
+          else if (e.kind === 'guest') line = sim.uninvitedGuest();
+          else if (e.kind === 'superior') line = sim.superior({ x: e.args[0] as number, y: e.args[1] as number });
+          else if (e.kind === 'star') line = sim.starfall({ x: e.args[0] as number, y: e.args[1] as number });
+          else if (e.kind === 'layer') line = sim.starLayer();
+          else if (e.kind === 'stargone') line = sim.starGone();
+          else if (e.kind === 'tide') sim.setTide(e.args.length ? { x: e.args[0] as number, y: e.args[1] as number } : null);
+          else if (e.kind === 'encore') line = sim.addEncore();
+          else if (e.kind === 'useencore') line = sim.useEncore();
+          else if (e.kind === 'intermission') sim.setIntermission(e.args[0] as boolean);
+          else if (e.kind === 'dockcross') line = sim.dockCross({ x: e.args[0] as number, y: e.args[1] as number });
+          else if (e.kind === 'leyline') line = sim.leyline({ x: e.args[0] as number, y: e.args[1] as number }, { x: e.args[2] as number, y: e.args[3] as number });
+          else if (e.kind === 'obelisk') line = sim.obelisk({ x: e.args[0] as number, y: e.args[1] as number }, { x: e.args[2] as number, y: e.args[3] as number });
           else throw new Error(`unknown event ${e.kind}`);
           if (line != null) log.push([minute, line]);
         }

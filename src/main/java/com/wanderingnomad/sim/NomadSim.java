@@ -314,6 +314,42 @@ public final class NomadSim
     /** Rites (a setting): how close a kill has to be to count for a waystone's rite, and the other rites. */
     public static final int RITE_KILL_REACH = 10;
     public static final int RITE_REACH = CLAIM_REACH + 2;
+    /** Spellbook temperament: each book's name, and the mood it makes Main twice as likely to pick (0 is no book known). */
+    public static final String[] BOOKS = {"", "Standard", "Ancient", "Lunar", "Arceuus"};
+    private static final int[] BOOK_MOOD = {-1, Temperament.ROAM, Temperament.DASH, Temperament.LOOP, Temperament.LINGER};
+    static final double BOOK_WEIGHT = 2;
+    /** Deep wilds: the Wilderness circle's size at the ditch and deepest in, as a share of its own, over this many tiles north. */
+    static final double WILD_LOW = 0.6;
+    static final double WILD_HIGH = 1.4;
+    static final int WILD_DITCH = 3520;
+    static final double WILD_DEPTH = 440;
+    /** Grand tier crowns: tiles each Combat Achievement tier adds to Main's largest size. */
+    public static final int CA_TIER_TILES = 2;
+    public static final int CA_TIERS = 6;
+    /** Log pop: each new collection log slot adds a tile for this long, up to this many at once. */
+    public static final int POP_MINUTES = 30;
+    public static final int POP_MAX = 10;
+    /** Starfall: how long a crashed star can hold a circle, and each mined layer's extra tile. */
+    public static final int STAR_HOLD = 180;
+    public static final int STAR_MINUTES = 120;
+    public static final int STAR_MAX = 5;
+    /** Coordinate tide: tiles a minute your circle leans toward a coordinate clue's dig spot. */
+    static final double TIDE_STEP = 1;
+    /** Encore: the most Anchor minutes new music tracks can bank. */
+    public static final int ENCORE_MAX = 60;
+    /** Intermission: the longest a minigame holds your circle, and how much faster it catches up after. */
+    public static final int INTERMISSION_MAX = 20;
+    static final int CATCH_UP = 3;
+    /** Leylines (a setting): minutes before the leyline's one charge comes back. */
+    public static final int LEY_WAIT = 180;
+    /** Rings and roots: the chance a minute Main hops from a stop inside it, the warning, and the rest after. */
+    static final double HOP_CHANCE = 0.03;
+    public static final int HOP_WARN = 10;
+    static final int HOP_REST = 180;
+    /** Superior surge: a waystone rises this far from where a superior appeared. */
+    public static final String SUPERIOR = "the superior's lair";
+    static final int SUPERIOR_NEAR = 10;
+    static final int SUPERIOR_FAR = 20;
     static final int CARAVAN_LOOKAHEAD = 8;
     static final int CARAVAN_ARRIVE = 4;
     static final int CARAVAN_CHOICES = 3;
@@ -446,6 +482,29 @@ public final class NomadSim
     String vigilAt;
     boolean rites;
     String riteAt;
+    /** Spellbook temperament: your book (an index into BOOKS, 0 if not known). */
+    int book;
+    /** Grand tier crowns: Combat Achievement tiers done, each adding to Main's largest size. */
+    int caTiers;
+    /** Superior surge: superiors that have raised a waystone (each one's dice come from the seed and this). */
+    int superiors;
+    /** Coordinate tide: the dig spot your circle leans toward, 0 when you hold no coordinate clue. */
+    int tideX;
+    int tideY;
+    /** Encore: Anchor minutes banked by new music tracks. */
+    int encore;
+    /** Intermission: whether you're in a minigame, minutes your circle has held for it, and minutes left catching up. */
+    boolean intermission;
+    int interHeld;
+    int catchUp;
+    /** Leylines: minutes until the leyline's charge comes back, 0 when it's ready. */
+    int leyWait;
+    /** Rings and roots: the networks you've unlocked (a bit per Networks index), the hop under way, and the rest after one. */
+    int networks;
+    String hopFrom;
+    String hopTo;
+    int hopWarn;
+    int hopRest;
 
     public static NomadSim start(int seed)
     {
@@ -580,6 +639,21 @@ public final class NomadSim
         s.vigilAt = vigilAt;
         s.rites = rites;
         s.riteAt = riteAt;
+        s.book = book;
+        s.caTiers = caTiers;
+        s.superiors = superiors;
+        s.tideX = tideX;
+        s.tideY = tideY;
+        s.encore = encore;
+        s.intermission = intermission;
+        s.interHeld = interHeld;
+        s.catchUp = catchUp;
+        s.leyWait = leyWait;
+        s.networks = networks;
+        s.hopFrom = hopFrom;
+        s.hopTo = hopTo;
+        s.hopWarn = hopWarn;
+        s.hopRest = hopRest;
         return s;
     }
 
@@ -1200,6 +1274,389 @@ public final class NomadSim
         return true;
     }
 
+    /** Spellbook temperament: your spellbook, by its index in {@link #BOOKS} (0 if not known). */
+    public void setSpellbook(int book)
+    {
+        this.book = book < 0 || book >= BOOKS.length ? 0 : book;
+    }
+
+    public int spellbook()
+    {
+        return book;
+    }
+
+    /** Uninvited guest: accepting a random event while inside makes Main forget its mood. Null at sea. */
+    public String uninvitedGuest()
+    {
+        Circle m = main();
+        if (m.voyage != null) return null;
+        m.moodLeft = 0;
+        m.orbitLeft = 0;
+        if (m.port == null) m.wx = m.wy = 0;
+        return "An uninvited guest! Main forgets its mood and picks a new one.";
+    }
+
+    /** Grand tier crowns: each Combat Achievement tier done lets Main grow {@link #CA_TIER_TILES} tiles bigger. Returns a line when it grew. */
+    public String setCaTiers(int tiers)
+    {
+        tiers = Math.max(0, Math.min(CA_TIERS, tiers));
+        int delta = tiers - caTiers;
+        if (delta == 0) return null;
+        caTiers = tiers;
+        for (Circle c : new Circle[]{main(), twin})
+        {
+            if (c == null) continue;
+            c.radiusMax += CA_TIER_TILES * delta;
+            c.radius = clamp(c.radius, c.radiusMin, c.radiusMax);
+            c.radiusTarget = clamp(c.radiusTarget, c.radiusMin, c.radiusMax);
+        }
+        return delta > 0 ? "Grand tier crowns: " + tiers + " Combat Achievement " + (tiers == 1 ? "tier" : "tiers")
+            + " done, so Main can grow to " + Math.round(main().radiusMax) + " tiles." : null;
+    }
+
+    public int caTiers()
+    {
+        return caTiers;
+    }
+
+    /** Log pop: a new collection log slot makes your circle a tile bigger for {@link #POP_MINUTES} minutes, up to {@link #POP_MAX} at once. */
+    public String logPop()
+    {
+        Circle c = bound();
+        int n = c.pops == null ? 0 : c.pops.length;
+        if (n >= POP_MAX)
+        {
+            // At the cap a new slot refreshes the one closest to ending.
+            int low = 0;
+            for (int k = 1; k < n; k++) if (c.pops[k] < c.pops[low]) low = k;
+            c.pops[low] = POP_MINUTES;
+            return "Log pop! A new collection log slot keeps your circle " + n + " tiles bigger.";
+        }
+        c.pops = c.pops == null ? new int[]{POP_MINUTES} : append(c.pops, POP_MINUTES);
+        shiftRange(c, 1);
+        return "Log pop! A new collection log slot: your circle is " + (n + 1) + (n == 0 ? " tile" : " tiles") + " bigger for "
+            + POP_MINUTES + " minutes.";
+    }
+
+    private static int[] append(int[] a, int v)
+    {
+        int[] out = java.util.Arrays.copyOf(a, a.length + 1);
+        out[a.length] = v;
+        return out;
+    }
+
+    /** Starfall: a star crashed inside your circle holds it still until it's mined out. Null if it isn't inside. */
+    public String starfall(Tile star)
+    {
+        Circle c = bound();
+        if (star == null || c.voyage != null || !c.contains(star.x, star.y) || c.starLeft > 0) return null;
+        c.starX = star.x;
+        c.starY = star.y;
+        c.starLeft = STAR_HOLD;
+        return "Starfall! A star crashed inside your circle: it holds your circle still until it's mined out.";
+    }
+
+    /** Starfall: a layer of the star mined, a tile bigger for {@link #STAR_MINUTES} minutes, up to {@link #STAR_MAX}. Null if no star holds your circle. */
+    public String starLayer()
+    {
+        Circle c = bound();
+        if (c.starLeft <= 0) return null;
+        int n = c.stars == null ? 0 : c.stars.length;
+        if (n >= STAR_MAX) return null;
+        c.stars = c.stars == null ? new int[]{STAR_MINUTES} : append(c.stars, STAR_MINUTES);
+        shiftRange(c, 1);
+        return "A layer of the star is mined: your circle is " + (n + 1) + (n == 0 ? " tile" : " tiles") + " bigger for 2 hours.";
+    }
+
+    /** Starfall: the star is mined out or gone, and lets go. */
+    public String starGone()
+    {
+        Circle c = bound();
+        if (c.starLeft <= 0) return null;
+        c.starLeft = 0;
+        if (bound == MAIN && twin != null) twin.starLeft = 0;
+        return "The star is mined out: your circle drifts again.";
+    }
+
+    /** The fallen star holding your circle, or null. */
+    public Tile star()
+    {
+        Circle c = bound();
+        return c.starLeft > 0 ? new Tile(c.starX, c.starY) : null;
+    }
+
+    /** Coordinate tide: the dig spot of the coordinate clue you hold, or null when you hold none. */
+    public void setTide(Tile dig)
+    {
+        tideX = dig == null ? 0 : dig.x;
+        tideY = dig == null ? 0 : dig.y;
+    }
+
+    public Tile tide()
+    {
+        return tideX == 0 ? null : new Tile(tideX, tideY);
+    }
+
+    /** Coordinate tide: your circle steps a tile toward the dig spot, if it's free to move and the step stays on land (or in its kingdom). */
+    private void leanToTide()
+    {
+        if (tideX == 0) return;
+        Circle c = bound();
+        if (c.voyage != null || c.anchorLeft > 0 || c.starLeft > 0 || c.isCaravan()) return;
+        double d = Circle.dist(tideX - c.x, tideY - c.y);
+        if (d <= TIDE_STEP) return;
+        double nx = c.x + (tideX - c.x) / d * TIDE_STEP;
+        double ny = c.y + (tideY - c.y) / d * TIDE_STEP;
+        boolean ok = c.isKingdom() ? c.region().contains(nx, ny) : Geography.onLand(nx, ny);
+        if (!ok) return;
+        c.x = nx;
+        c.y = ny;
+    }
+
+    /** Encore: a new music track banks a minute of Anchor, up to {@link #ENCORE_MAX}. */
+    public String addEncore()
+    {
+        if (encore >= ENCORE_MAX) return null;
+        encore++;
+        return "Encore! A new music track banks a minute of Anchor: " + encore + (encore == 1 ? " minute" : " minutes") + " banked.";
+    }
+
+    public int encore()
+    {
+        return encore;
+    }
+
+    /** Encore: spends every banked minute as Anchor on your circle. Null if none are banked. */
+    public String useEncore()
+    {
+        if (encore <= 0) return null;
+        Circle c = bound();
+        c.anchorLeft += encore;
+        String line = "Encore: your circle holds still for " + encore + (encore == 1 ? " minute." : " minutes.");
+        encore = 0;
+        return line;
+    }
+
+    /** Intermission: whether you're in a minigame's round right now. */
+    public void setIntermission(boolean on)
+    {
+        intermission = on;
+    }
+
+    public boolean intermission()
+    {
+        return intermission && interHeld < INTERMISSION_MAX;
+    }
+
+    public int catchUp()
+    {
+        return catchUp;
+    }
+
+    private void intermission(List<String> log)
+    {
+        if (intermission)
+        {
+            if (interHeld >= INTERMISSION_MAX) return;
+            if (interHeld == 0) log.add("Intermission: your circle waits for you while you play, up to " + INTERMISSION_MAX + " minutes.");
+            if (++interHeld == INTERMISSION_MAX) log.add("The intermission ran long: your circle drifts on, and catches up after.");
+        }
+        else if (interHeld > 0)
+        {
+            catchUp = interHeld;
+            interHeld = 0;
+            log.add("Intermission over: your circle rushes " + CATCH_UP + "x as fast for " + catchUp + " minutes to catch up.");
+        }
+    }
+
+    /**
+     * Leylines (a setting): a teleport cast inside your circle that lands inside another you could
+     * cross into counts as crossing into it, once every {@link #LEY_WAIT} minutes. Null if it doesn't.
+     */
+    public String leyline(Tile from, Tile to)
+    {
+        if (leyWait > 0 || from == null || to == null || !inYours(from.x, from.y)) return null;
+        int best = -1;
+        double near = Double.MAX_VALUE;
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            if (j == bound || !linked(j) || !c.contains(to.x, to.y)) continue;
+            double d = Circle.dist(c.x - to.x, c.y - to.y);
+            if (d < near)
+            {
+                near = d;
+                best = j;
+            }
+        }
+        if (best < 0) return null;
+        String was = bound().name();
+        crossInto(best);
+        leyWait = LEY_WAIT;
+        return "Leyline! Your teleport carried you from " + was + " into " + bound().name() + ". The leyline's charge comes back in "
+            + LEY_WAIT / 60 + " hours.";
+    }
+
+    public int leyWait()
+    {
+        return leyWait;
+    }
+
+    /** Obelisk roulette: stepping through a Wilderness obelisk the Wilderness circle covers carries the circle to the obelisk you land at. */
+    public String obelisk(Tile from, Tile to)
+    {
+        if (from == null || to == null) return null;
+        Tile a = Networks.obeliskNear(from.x, from.y, 4);
+        Tile b = Networks.obeliskNear(to.x, to.y, 4);
+        if (a == null || b == null || a == b) return null;
+        for (Circle w : circles)
+        {
+            if (!"wilderness".equals(w.regionId) || !w.contains(a.x, a.y)) continue;
+            w.x = b.x;
+            w.y = b.y;
+            w.wx = w.wy = 0;
+            w.moodLeft = 0;
+            w.orbitLeft = 0;
+            w.pulse = 45;
+            return "Obelisk roulette! The Wilderness circle went through the obelisk with you, to level " + ((b.y - WILD_DITCH) / 8 + 1) + ".";
+        }
+        return null;
+    }
+
+    /** Port of call: docking your own boat inside a kingdom's circle while Main is yours crosses you into it. Null if it doesn't. */
+    public String dockCross(Tile at)
+    {
+        if (bound != MAIN || at == null) return null;
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            if (!c.isKingdom() || !linked(j) || !c.contains(at.x, at.y)) continue;
+            crossInto(j);
+            return "Port of call: you docked your boat inside " + c.name() + " and crossed into it. The only way out is back into Main.";
+        }
+        return null;
+    }
+
+    /** Superior surge: a superior monster appeared inside your circle, so a common waystone rises 10 to 20 tiles from where you stand. */
+    public String superior(Tile at)
+    {
+        Circle c = bound();
+        if (at == null || !c.contains(at.x, at.y)) return null;
+        Rng dice = new Rng(seed ^ ((superiors + 1) * 0x5D1E2B37));
+        superiors++;
+        for (int k = 0; k < 12; k++)
+        {
+            double a = dice.next() * Math.PI * 2;
+            double d = SUPERIOR_NEAR + dice.next() * (SUPERIOR_FAR - SUPERIOR_NEAR);
+            int x = (int) round(at.x + StrictMath.cos(a) * d);
+            int y = (int) round(at.y + StrictMath.sin(a) * d);
+            if (!c.contains(x, y) || !Geography.onLand(x, y) || takenAt(x, y)) continue;
+            Waystone w = new Waystone();
+            w.landmark = SUPERIOR;
+            w.x = x;
+            w.y = y;
+            w.circle = bound;
+            w.tier = COMMON;
+            w.boon = COMMON_BOONS[(int) (dice.next() * COMMON_BOONS.length)];
+            waystones.add(w);
+            return "Superior surge! A waystone holding " + w.boon + " (common) rose " + Math.round(d) + " tiles " + compass(a) + " of you.";
+        }
+        return null;
+    }
+
+    /** Rings and roots: the travel networks you've unlocked, a bit per {@link Networks} index. */
+    public void setNetworks(int mask)
+    {
+        networks = mask;
+    }
+
+    public int networks()
+    {
+        return networks;
+    }
+
+    /** The hop Main is about to make: where from and to, and minutes left; null when none is coming. */
+    public String hopFrom()
+    {
+        return hopWarn > 0 ? hopFrom : null;
+    }
+
+    public String hopTo()
+    {
+        return hopWarn > 0 ? hopTo : null;
+    }
+
+    public int hopWarn()
+    {
+        return hopWarn;
+    }
+
+    /**
+     * Rings and roots: near a stop of a network you've unlocked, Main now and then hops it, the way
+     * it sails: a warning, then it's at another stop of the same network. On its own dice.
+     */
+    private void travel(List<String> log)
+    {
+        Circle m = main();
+        if (hopWarn > 0)
+        {
+            if (--hopWarn > 0) return;
+            Networks.Node from = Networks.byName(hopFrom);
+            Networks.Node to = Networks.byName(hopTo);
+            if (from != null && to != null && m.voyage == null)
+            {
+                m.x = to.x;
+                m.y = to.y;
+                m.wx = m.wy = 0;
+                m.moodLeft = 0;
+                m.orbitLeft = 0;
+                m.port = null;
+                m.turn = 0;
+                m.pulse = 45;
+                lastBig = minutes;
+                log.add("Main hopped by " + Networks.NAMES[to.network] + " from " + from.name + " to " + to.name + ".");
+            }
+            hopFrom = null;
+            hopTo = null;
+            hopRest = HOP_REST;
+            return;
+        }
+        if (hopRest > 0)
+        {
+            hopRest--;
+            return;
+        }
+        if (networks == 0 || m.voyage != null || m.port != null || m.anchorLeft > 0 || m.starLeft > 0 || twin != null
+            || m.orbitLeft > 0 || helmsTo != null)
+        {
+            return;
+        }
+        Rng dice = new Rng(seed ^ ((minutes + 1) * 0x6B2E5A17));
+        if (dice.next() >= HOP_CHANCE) return;
+        // The stop nearest Main's middle, of those inside it.
+        Networks.Node near = null;
+        double best = m.radius;
+        for (Networks.Node n : Networks.NODES)
+        {
+            if ((networks & (1 << n.network)) == 0) continue;
+            double d = Circle.dist(n.x - m.x, n.y - m.y);
+            if (d <= best)
+            {
+                best = d;
+                near = n;
+            }
+        }
+        if (near == null) return;
+        List<Networks.Node> stops = Networks.of(near.network);
+        stops.remove(near);
+        Networks.Node to = stops.get((int) (dice.next() * stops.size()));
+        hopFrom = near.name;
+        hopTo = to.name;
+        hopWarn = HOP_WARN;
+        log.add("Main is by the " + Networks.NAMES[near.network] + " at " + near.name + ": in " + HOP_WARN + " minutes it hops to "
+            + to.name + ".");
+    }
+
     /** Shatter: the next waystone you claim (not a legendary one) is shattered instead, for a 50/50 at a rare boon. */
     public void setShatterNext(boolean on)
     {
@@ -1457,6 +1914,16 @@ public final class NomadSim
     public String crossTo(int index, Tile player)
     {
         if (!canCross(index, player)) return null;
+        crossInto(index);
+        Circle to = bound();
+        if (to.isMain()) return "You crossed back into the Main circle.";
+        if (to.isCaravan()) return "You joined the caravan. It walks the roads between bank towns, and the only way off is back into Main.";
+        return "You crossed into " + to.name() + ". It never leaves its kingdom, and the only way out is back into Main.";
+    }
+
+    /** Makes another circle yours, however you got there. */
+    private void crossInto(int index)
+    {
         bound = index;
         outside = false;
         lastBig = minutes;
@@ -1465,10 +1932,6 @@ public final class NomadSim
             c.waiting = false;
             c.touchingYours = linked(circles.indexOf(c)) && bound().touches(c);
         }
-        Circle to = bound();
-        if (to.isMain()) return "You crossed back into the Main circle.";
-        if (to.isCaravan()) return "You joined the caravan. It walks the roads between bank towns, and the only way off is back into Main.";
-        return "You crossed into " + to.name() + ". It never leaves its kingdom, and the only way out is back into Main.";
     }
 
     /**
@@ -1565,7 +2028,8 @@ public final class NomadSim
             int speedup = (yours && penalty ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
                 * (j == MAIN && stormLeft > 0 && stormKind == GALE ? GALE_SPEEDUP : 1)
                 * (c.isKingdom() && stampedeLeft > 0 ? STAMPEDE_SPEEDUP : 1)
-                * (aurora == RUSH ? RUSH_SPEEDUP : 1);
+                * (aurora == RUSH ? RUSH_SPEEDUP : 1)
+                * (yours && catchUp > 0 ? CATCH_UP : 1);
             if (j == MAIN && twin != null) part(c, twin);
             else if (eclipse > 0 && j == eclipse)
             {
@@ -1584,9 +2048,19 @@ public final class NomadSim
             {
                 // Its aurora holds it still.
             }
+            else if (yours && intermission && interHeld < INTERMISSION_MAX && c.voyage == null)
+            {
+                // Intermission: it waits over the minigame's door for you.
+            }
+            else if (j == MAIN && hopWarn > 0 && c.voyage == null)
+            {
+                // Rings and roots: it waits at the stop it's about to hop from.
+            }
             else if (c.isCaravan()) caravan(c, yours, stranded, log);
             else move(c, rng, speedup, yours, toward, pull, lean, log);
         }
+        leanToTide();
+        intermission(log);
         wakes(log);
         minutes++;
         tickBoons(log);
@@ -1602,6 +2076,7 @@ public final class NomadSim
         flotsam(log);
         exodus(log);
         kiss(log);
+        travel(log);
 
         if (minutes % 5 == 0)
         {
@@ -1662,6 +2137,35 @@ public final class NomadSim
             if (c.lodeLeft > 0 && --c.lodeLeft == 0 && j == bound) log.add("The Lodestone's pull has faded.");
         }
         if (twin != null && twin.lodeLeft > 0) twin.lodeLeft--;
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            boolean yours = j == bound;
+            if (c.starLeft > 0 && --c.starLeft == 0 && yours) log.add("The fallen star's hold has faded: your circle drifts again.");
+            c.pops = fade(c, c.pops);
+            c.stars = fade(c, c.stars);
+        }
+        if (twin != null)
+        {
+            if (twin.starLeft > 0) twin.starLeft--;
+            twin.pops = fade(twin, twin.pops);
+            twin.stars = fade(twin, twin.stars);
+        }
+        if (catchUp > 0) catchUp--;
+        if (leyWait > 0 && --leyWait == 0) log.add("The leyline has its charge back.");
+    }
+
+    /** Counts down a circle's extra tiles from Log pop or a star, each one shrinking it back as it ends. Null once none are left. */
+    private static int[] fade(Circle c, int[] left)
+    {
+        if (left == null) return null;
+        int keep = 0;
+        for (int k = 0; k < left.length; k++)
+        {
+            if (--left[k] > 0) left[keep++] = left[k];
+            else shiftRange(c, -1);
+        }
+        return keep == 0 ? null : java.util.Arrays.copyOf(left, keep);
     }
 
     /** Wake: a circle leaving one adds where it is each minute; once it stops, the oldest minute fades each minute. */
@@ -2064,9 +2568,9 @@ public final class NomadSim
     {
         Temperament t = Temperament.of(c.regionId);
         Allowed allowed = c.isMain() ? Geography::onLand : c.region()::contains;
-        if (c.anchorLeft > 0)
+        if (c.anchorLeft > 0 || c.starLeft > 0)
         {
-            // Anchored: it holds its place, voyage and all, and only breathes.
+            // Anchored, or held by a fallen star: it holds its place, voyage and all, and only breathes.
         }
         else if (c.isKingdom() && !c.region().contains(c.x, c.y))
         {
@@ -2276,21 +2780,30 @@ public final class NomadSim
             double u = rng.next();
             c.radiusTarget = c.radiusMin + (t.hungry ? u * u : u) * (c.radiusMax - c.radiusMin);
         }
-        double dr = c.radiusTarget - c.radius;
+        // Deep wilds: the Wilderness circle is cramped near the ditch and huge deep in.
+        double scale = wildScale(c);
+        double dr = c.radiusTarget * scale - c.radius;
         c.radius += Math.signum(dr) * Math.min(Math.abs(dr), RADIUS_EASE);
         if (rng.next() < PULSE_CHANCE * t.pulses)
         {
-            double nr = clamp(c.radius + (rng.next() < 0.5 ? t.pulse : -t.pulse), c.radiusMin, c.radiusMax);
+            double nr = clamp(c.radius + (rng.next() < 0.5 ? t.pulse : -t.pulse), c.radiusMin * scale, c.radiusMax * scale);
             if (yours && Math.abs(nr - c.radius) > 0.5)
             {
                 log.add("Pulse! Your circle " + (nr > c.radius ? "grew" : "shrank") + " by "
                     + Math.round(Math.abs(nr - c.radius)) + " tiles.");
             }
             c.radius = nr;
-            c.radiusTarget = nr;
+            c.radiusTarget = nr / scale;
             c.pulse = 45;
         }
         if (c.pulse > 0) c.pulse--;
+    }
+
+    /** Deep wilds: how much bigger or smaller the Wilderness circle is where its middle stands; 1 for every other circle. */
+    static double wildScale(Circle c)
+    {
+        if (!"wilderness".equals(c.regionId)) return 1;
+        return WILD_LOW + (WILD_HIGH - WILD_LOW) * clamp((c.y - WILD_DITCH) / WILD_DEPTH, 0, 1);
     }
 
     /**
@@ -2304,15 +2817,16 @@ public final class NomadSim
         double total = 0;
         for (int k = 0; k < Temperament.MOODS; k++)
         {
-            if (k != c.mood) total += t.weights[k];
+            if (k != c.mood) total += weight(c, t, k);
         }
         double pick = rng.next() * total;
         int mood = -1;
         for (int k = 0; k < Temperament.MOODS; k++)
         {
-            if (k == c.mood || t.weights[k] <= 0) continue;
+            double w = weight(c, t, k);
+            if (k == c.mood || w <= 0) continue;
             mood = k;
-            pick -= t.weights[k];
+            pick -= w;
             if (pick < 0) break;
         }
         if (mood < 0) mood = c.mood;
@@ -2390,6 +2904,12 @@ public final class NomadSim
             c.trail = next;
         }
         if (yours) log.add("Your circle " + MOOD_LOG[mood] + ".");
+    }
+
+    /** How likely a mood is to come next: its temperament's weight, doubled for Main when your spellbook favours it. */
+    private double weight(Circle c, Temperament t, int mood)
+    {
+        return t.weights[mood] * (c.isMain() && book > 0 && book < BOOK_MOOD.length && BOOK_MOOD[book] == mood ? BOOK_WEIGHT : 1);
     }
 
     /** Orbit: picks a landmark 8 to 24 tiles from Main's middle to circle round; false if there's none. */

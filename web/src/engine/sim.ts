@@ -1,5 +1,6 @@
 import { CARAVAN, dist, Geography, LUMBRIDGE, Port, Tile, TOWNS, VOLCANO } from './geography';
 import { LANDMARKS, Landmark } from './landmarks';
+import { NETWORK_NAMES, STOPS, Stop, obeliskNear, stopByName, stopsOf } from './networks';
 import { Rng } from './rng';
 
 /**
@@ -228,6 +229,32 @@ export const WANDER_STEP = 8;
 export const WANDERER = 'the wandering stone';
 export const RITE_KILL_REACH = 10;
 export const RITE_REACH = CLAIM_REACH + 2;
+/** Wave 4, the real OSRS systems. As in NomadSim.java. */
+export const BOOKS = ['', 'Standard', 'Ancient', 'Lunar', 'Arceuus'];
+const BOOK_MOOD = [-1, ROAM, DASH, LOOP, LINGER];
+const BOOK_WEIGHT = 2;
+export const WILD_LOW = 0.6;
+export const WILD_HIGH = 1.4;
+const WILD_DITCH = 3520;
+const WILD_DEPTH = 440;
+export const CA_TIER_TILES = 2;
+export const CA_TIERS = 6;
+export const POP_MINUTES = 30;
+export const POP_MAX = 10;
+export const STAR_HOLD = 180;
+export const STAR_MINUTES = 120;
+export const STAR_MAX = 5;
+const TIDE_STEP = 1;
+export const ENCORE_MAX = 60;
+export const INTERMISSION_MAX = 20;
+const CATCH_UP = 3;
+export const LEY_WAIT = 180;
+const HOP_CHANCE = 0.03;
+export const HOP_WARN = 10;
+const HOP_REST = 180;
+export const SUPERIOR = "the superior's lair";
+const SUPERIOR_NEAR = 10;
+const SUPERIOR_FAR = 20;
 /** The rites a waystone can ask for (with Rites on), as in Waystone.java. */
 export const RITES = ['bow', 'eat', 'fire', 'kill'];
 
@@ -413,6 +440,13 @@ export interface CircleState {
   /** Wake: minutes left leaving one, and the ground it holds as x, y, radius triples, oldest first. */
   wakeLeft: number;
   wake?: number[];
+  /** Log pop and Starfall: minutes left on each extra tile. */
+  pops?: number[];
+  stars?: number[];
+  /** Starfall: the fallen star holding this circle, and the most minutes it can still hold it. */
+  starX: number;
+  starY: number;
+  starLeft: number;
 }
 
 /** A waystone holding one boon at a landmark inside a circle (by index). */
@@ -534,6 +568,21 @@ export interface SimState {
   vigilAt?: string;
   rites: boolean;
   riteAt?: string;
+  book: number;
+  caTiers: number;
+  superiors: number;
+  tideX: number;
+  tideY: number;
+  encore: number;
+  intermission: boolean;
+  interHeld: number;
+  catchUp: number;
+  leyWait: number;
+  networks: number;
+  hopFrom?: string;
+  hopTo?: string;
+  hopWarn: number;
+  hopRest: number;
 }
 
 const WAVE_TWO_ZEROES = [
@@ -543,9 +592,13 @@ const WAVE_TWO_ZEROES = [
   'foreseen', 'foreseenAxis', 'wardLeft', 'keystoneLeft', 'shattered',
 ] as const;
 
-const WAVE_THREE_FALSES = ['keystone', 'shatterNext', 'vigil', 'rites'] as const;
+const WAVE_THREE_FALSES = ['keystone', 'shatterNext', 'vigil', 'rites', 'intermission'] as const;
 
-const ORBIT_ZEROES = ['orbitX', 'orbitY', 'orbitR', 'orbitSide', 'orbitLeft', 'lodeX', 'lodeY', 'lodeLeft', 'wakeLeft'] as const;
+const WAVE_FOUR_ZEROES = [
+  'book', 'caTiers', 'superiors', 'tideX', 'tideY', 'encore', 'interHeld', 'catchUp', 'leyWait', 'networks', 'hopWarn', 'hopRest',
+] as const;
+
+const ORBIT_ZEROES = ['orbitX', 'orbitY', 'orbitR', 'orbitSide', 'orbitLeft', 'lodeX', 'lodeY', 'lodeLeft', 'wakeLeft', 'starX', 'starY', 'starLeft'] as const;
 
 export const contains = (c: CircleState, x: number, y: number) => dist(x - c.x, y - c.y) <= c.radius;
 export const isCaravan = (c: CircleState) => c.regionId === 'caravan';
@@ -632,6 +685,7 @@ export class NomadSim {
       w.riteDone ??= false;
     }
     for (const k of WAVE_THREE_FALSES) state[k] ??= false;
+    for (const k of WAVE_FOUR_ZEROES) state[k] ??= 0;
     if (!state.circles.some(isCaravan)) this.addCaravan();
   }
 
@@ -660,9 +714,10 @@ export class NomadSim {
       forks: 0, nextFork: 0, lastBig: 0, forkWarn: 0, forkAxis: 0, forkAge: 0,
       storms: 0, nextStorm: 0, stormWarn: 0, stormLeft: 0, stormKind: 0, squallFrom: 0,
       ripened: 0, comets: 0, nextComet: 0, homewardLeft: 0, ghostLeft: 0, ghostApart: false, voyages: 0, gatherLeft: 0,
-      borderKiss: false, deep: false, keystone: false, shatterNext: false, vigil: false, rites: false,
+      borderKiss: false, deep: false, keystone: false, shatterNext: false, vigil: false, rites: false, intermission: false,
     } as unknown as SimState;
     for (const k of WAVE_TWO_ZEROES) state[k] = 0;
+    for (const k of WAVE_FOUR_ZEROES) state[k] = 0;
     // The constructor adds the caravan.
     return new NomadSim(geo, state);
   }
@@ -980,6 +1035,255 @@ export class NomadSim {
     return done == null ? null : `Rite done: ${done} will give up its boon now.`;
   }
 
+  setSpellbook(book: number) {
+    this.state.book = book < 0 || book >= BOOKS.length ? 0 : book;
+  }
+
+  uninvitedGuest(): string | null {
+    const m = this.main;
+    if (m.voyage) return null;
+    m.moodLeft = 0;
+    m.orbitLeft = 0;
+    if (m.port == null) m.wx = m.wy = 0;
+    return 'An uninvited guest! Main forgets its mood and picks a new one.';
+  }
+
+  setCaTiers(tiers: number): string | null {
+    const s = this.state;
+    tiers = Math.max(0, Math.min(CA_TIERS, tiers));
+    const delta = tiers - s.caTiers;
+    if (delta === 0) return null;
+    s.caTiers = tiers;
+    for (const c of [this.main, s.twin]) {
+      if (!c) continue;
+      c.radiusMax += CA_TIER_TILES * delta;
+      c.radius = clamp(c.radius, c.radiusMin, c.radiusMax);
+      c.radiusTarget = clamp(c.radiusTarget, c.radiusMin, c.radiusMax);
+    }
+    return delta > 0 ? `Grand tier crowns: ${tiers} Combat Achievement ${tiers === 1 ? 'tier' : 'tiers'} done, so Main can grow to ${javaRound(this.main.radiusMax)} tiles.` : null;
+  }
+
+  logPop(): string {
+    const c = this.bound;
+    const n = c.pops?.length ?? 0;
+    if (n >= POP_MAX) {
+      const pops = c.pops!;
+      let low = 0;
+      for (let k = 1; k < n; k++) if (pops[k] < pops[low]) low = k;
+      pops[low] = POP_MINUTES;
+      return `Log pop! A new collection log slot keeps your circle ${n} tiles bigger.`;
+    }
+    c.pops = [...(c.pops ?? []), POP_MINUTES];
+    shiftRange(c, 1);
+    return `Log pop! A new collection log slot: your circle is ${n + 1}${n === 0 ? ' tile' : ' tiles'} bigger for ${POP_MINUTES} minutes.`;
+  }
+
+  starfall(star: Tile | null): string | null {
+    const c = this.bound;
+    if (star == null || c.voyage || !contains(c, star.x, star.y) || c.starLeft > 0) return null;
+    c.starX = star.x;
+    c.starY = star.y;
+    c.starLeft = STAR_HOLD;
+    return "Starfall! A star crashed inside your circle: it holds your circle still until it's mined out.";
+  }
+
+  starLayer(): string | null {
+    const c = this.bound;
+    if (c.starLeft <= 0) return null;
+    const n = c.stars?.length ?? 0;
+    if (n >= STAR_MAX) return null;
+    c.stars = [...(c.stars ?? []), STAR_MINUTES];
+    shiftRange(c, 1);
+    return `A layer of the star is mined: your circle is ${n + 1}${n === 0 ? ' tile' : ' tiles'} bigger for 2 hours.`;
+  }
+
+  starGone(): string | null {
+    const s = this.state;
+    const c = this.bound;
+    if (c.starLeft <= 0) return null;
+    c.starLeft = 0;
+    if (s.bound === MAIN && s.twin) s.twin.starLeft = 0;
+    return 'The star is mined out: your circle drifts again.';
+  }
+
+  setTide(dig: Tile | null) {
+    this.state.tideX = dig?.x ?? 0;
+    this.state.tideY = dig?.y ?? 0;
+  }
+
+  private leanToTide() {
+    const s = this.state;
+    if (s.tideX === 0) return;
+    const c = this.bound;
+    if (c.voyage || c.anchorLeft > 0 || c.starLeft > 0 || isCaravan(c)) return;
+    const d = dist(s.tideX - c.x, s.tideY - c.y);
+    if (d <= TIDE_STEP) return;
+    const nx = c.x + ((s.tideX - c.x) / d) * TIDE_STEP;
+    const ny = c.y + ((s.tideY - c.y) / d) * TIDE_STEP;
+    const region = isKingdom(c) ? this.geo.region(c.regionId!)! : null;
+    const ok = region ? this.geo.inRegion(region, nx, ny) : this.geo.onLand(nx, ny);
+    if (!ok) return;
+    c.x = nx;
+    c.y = ny;
+  }
+
+  addEncore(): string | null {
+    const s = this.state;
+    if (s.encore >= ENCORE_MAX) return null;
+    s.encore++;
+    return `Encore! A new music track banks a minute of Anchor: ${s.encore}${s.encore === 1 ? ' minute' : ' minutes'} banked.`;
+  }
+
+  useEncore(): string | null {
+    const s = this.state;
+    if (s.encore <= 0) return null;
+    this.bound.anchorLeft += s.encore;
+    const line = `Encore: your circle holds still for ${s.encore}${s.encore === 1 ? ' minute.' : ' minutes.'}`;
+    s.encore = 0;
+    return line;
+  }
+
+  setIntermission(on: boolean) {
+    this.state.intermission = on;
+  }
+
+  private intermissionStep(log: string[]) {
+    const s = this.state;
+    if (s.intermission) {
+      if (s.interHeld >= INTERMISSION_MAX) return;
+      if (s.interHeld === 0) log.push(`Intermission: your circle waits for you while you play, up to ${INTERMISSION_MAX} minutes.`);
+      if (++s.interHeld === INTERMISSION_MAX) log.push('The intermission ran long: your circle drifts on, and catches up after.');
+    } else if (s.interHeld > 0) {
+      s.catchUp = s.interHeld;
+      s.interHeld = 0;
+      log.push(`Intermission over: your circle rushes ${CATCH_UP}x as fast for ${s.catchUp} minutes to catch up.`);
+    }
+  }
+
+  leyline(from: Tile | null, to: Tile | null): string | null {
+    const s = this.state;
+    if (s.leyWait > 0 || from == null || to == null || !this.inYours(from.x, from.y)) return null;
+    let best = -1;
+    let near = Number.MAX_VALUE;
+    this.circles.forEach((c, j) => {
+      if (j === s.bound || !this.linked(j) || !contains(c, to.x, to.y)) return;
+      const d = dist(c.x - to.x, c.y - to.y);
+      if (d < near) {
+        near = d;
+        best = j;
+      }
+    });
+    if (best < 0) return null;
+    const was = this.name(this.bound);
+    this.crossInto(best);
+    s.leyWait = LEY_WAIT;
+    return `Leyline! Your teleport carried you from ${was} into ${this.name(this.bound)}. The leyline's charge comes back in ${LEY_WAIT / 60} hours.`;
+  }
+
+  obelisk(from: Tile | null, to: Tile | null): string | null {
+    if (from == null || to == null) return null;
+    const a = obeliskNear(from.x, from.y, 4);
+    const b = obeliskNear(to.x, to.y, 4);
+    if (a == null || b == null || a === b) return null;
+    for (const w of this.circles) {
+      if (w.regionId !== 'wilderness' || !contains(w, a.x, a.y)) continue;
+      w.x = b.x;
+      w.y = b.y;
+      w.wx = w.wy = 0;
+      w.moodLeft = 0;
+      w.orbitLeft = 0;
+      w.pulse = 45;
+      return `Obelisk roulette! The Wilderness circle went through the obelisk with you, to level ${Math.trunc((b.y - WILD_DITCH) / 8) + 1}.`;
+    }
+    return null;
+  }
+
+  dockCross(at: Tile | null): string | null {
+    if (this.state.bound !== MAIN || at == null) return null;
+    for (let j = 0; j < this.circles.length; j++) {
+      const c = this.circles[j];
+      if (!isKingdom(c) || !this.linked(j) || !contains(c, at.x, at.y)) continue;
+      this.crossInto(j);
+      return `Port of call: you docked your boat inside ${this.name(c)} and crossed into it. The only way out is back into Main.`;
+    }
+    return null;
+  }
+
+  superior(at: Tile | null): string | null {
+    const s = this.state;
+    const c = this.bound;
+    if (at == null || !contains(c, at.x, at.y)) return null;
+    const dice = new Rng(s.seed ^ Math.imul(s.superiors + 1, 0x5d1e2b37));
+    s.superiors++;
+    for (let k = 0; k < 12; k++) {
+      const a = dice.next() * Math.PI * 2;
+      const d = SUPERIOR_NEAR + dice.next() * (SUPERIOR_FAR - SUPERIOR_NEAR);
+      const x = round(at.x + Math.cos(a) * d);
+      const y = round(at.y + Math.sin(a) * d);
+      if (!contains(c, x, y) || !this.geo.onLand(x, y) || this.takenAt(x, y)) continue;
+      const boon = COMMON_BOONS[Math.floor(dice.next() * COMMON_BOONS.length)];
+      s.waystones.push({ landmark: SUPERIOR, x, y, circle: s.bound, tier: COMMON, boon, age: 0, pilgrim: false, life: 0, wander: false, heading: 0, riteDone: false });
+      return `Superior surge! A waystone holding ${boon} (common) rose ${javaRound(d)} tiles ${compass(a)} of you.`;
+    }
+    return null;
+  }
+
+  setNetworks(mask: number) {
+    this.state.networks = mask;
+  }
+
+  /** Rings and roots: near a stop of a network you've unlocked, Main now and then hops it. As in NomadSim.java. */
+  private travel(log: string[]) {
+    const s = this.state;
+    const m = this.main;
+    if (s.hopWarn > 0) {
+      if (--s.hopWarn > 0) return;
+      const from = stopByName(s.hopFrom);
+      const to = stopByName(s.hopTo);
+      if (from && to && !m.voyage) {
+        m.x = to.x;
+        m.y = to.y;
+        m.wx = m.wy = 0;
+        m.moodLeft = 0;
+        m.orbitLeft = 0;
+        delete m.port;
+        m.turn = 0;
+        m.pulse = 45;
+        s.lastBig = s.minutes;
+        log.push(`Main hopped by ${NETWORK_NAMES[to.network]} from ${from.name} to ${to.name}.`);
+      }
+      delete s.hopFrom;
+      delete s.hopTo;
+      s.hopRest = HOP_REST;
+      return;
+    }
+    if (s.hopRest > 0) {
+      s.hopRest--;
+      return;
+    }
+    if (s.networks === 0 || m.voyage || m.port != null || m.anchorLeft > 0 || m.starLeft > 0 || s.twin || m.orbitLeft > 0 || s.helmsTo != null) return;
+    const dice = new Rng(s.seed ^ Math.imul(s.minutes + 1, 0x6b2e5a17));
+    if (dice.next() >= HOP_CHANCE) return;
+    let near: Stop | null = null;
+    let best = m.radius;
+    for (const n of STOPS) {
+      if ((s.networks & (1 << n.network)) === 0) continue;
+      const d = dist(n.x - m.x, n.y - m.y);
+      if (d <= best) {
+        best = d;
+        near = n;
+      }
+    }
+    if (!near) return;
+    const from = near;
+    const stops = stopsOf(from.network).filter((n) => n !== from);
+    const to = stops[Math.floor(dice.next() * stops.length)];
+    s.hopFrom = from.name;
+    s.hopTo = to.name;
+    s.hopWarn = HOP_WARN;
+    log.push(`Main is by the ${NETWORK_NAMES[from.network]} at ${from.name}: in ${HOP_WARN} minutes it hops to ${to.name}.`);
+  }
+
   /** Where a wandering stone hops next, as [x, y, heading], or null. As in NomadSim.java. */
   nextHop(w: Waystone): [number, number, number] | null {
     if (!w.wander) return null;
@@ -1127,6 +1431,15 @@ export class NomadSim {
 
   crossTo(index: number, player: Tile | null): string | null {
     if (!this.canCross(index, player)) return null;
+    this.crossInto(index);
+    const to = this.bound;
+    if (!to.regionId) return 'You crossed back into the Main circle.';
+    if (isCaravan(to)) return 'You joined the caravan. It walks the roads between bank towns, and the only way off is back into Main.';
+    return `You crossed into ${this.name(to)}. It never leaves its kingdom, and the only way out is back into Main.`;
+  }
+
+  /** Makes another circle yours, however you got there. */
+  private crossInto(index: number) {
     this.state.bound = index;
     this.state.outside = false;
     this.state.lastBig = this.state.minutes;
@@ -1134,10 +1447,6 @@ export class NomadSim {
       c.waiting = false;
       c.touchingYours = this.linked(j) && touches(this.bound, c);
     });
-    const to = this.bound;
-    if (!to.regionId) return 'You crossed back into the Main circle.';
-    if (isCaravan(to)) return 'You joined the caravan. It walks the roads between bank towns, and the only way off is back into Main.';
-    return `You crossed into ${this.name(to)}. It never leaves its kingdom, and the only way out is back into Main.`;
   }
 
   setDiaryTiers(regionId: string, tiers: number): string | null {
@@ -1205,7 +1514,8 @@ export class NomadSim {
       const speedup = (yours && penalty ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
         * (j === MAIN && s.stormLeft > 0 && s.stormKind === GALE ? GALE_SPEEDUP : 1)
         * (isKingdom(c) && s.stampedeLeft > 0 ? STAMPEDE_SPEEDUP : 1)
-        * (aurora === RUSH ? RUSH_SPEEDUP : 1);
+        * (aurora === RUSH ? RUSH_SPEEDUP : 1)
+        * (yours && s.catchUp > 0 ? CATCH_UP : 1);
       if (j === MAIN && s.twin) part(c, s.twin, this.geo);
       else if (s.eclipse > 0 && j === s.eclipse) {
         // Eclipsed: it moves as one with Main.
@@ -1218,9 +1528,15 @@ export class NomadSim {
         // Deep time: underground, Main drifts only every other minute.
       } else if (aurora === STILL) {
         // Its aurora holds it still.
+      } else if (yours && s.intermission && s.interHeld < INTERMISSION_MAX && !c.voyage) {
+        // Intermission: it waits over the minigame's door for you.
+      } else if (j === MAIN && s.hopWarn > 0 && !c.voyage) {
+        // Rings and roots: it waits at the stop it's about to hop from.
       } else if (isCaravan(c)) this.caravan(c, yours, stranded, log);
       else this.move(c, rng, speedup, yours, toward, pull, lean, log);
     });
+    this.leanToTide();
+    this.intermissionStep(log);
     this.wakes(log);
     s.minutes++;
     this.tickBoons(log);
@@ -1236,6 +1552,7 @@ export class NomadSim {
     this.flotsam(log);
     this.exodus(log);
     this.kiss(log);
+    this.travel(log);
 
     if (s.minutes % 5 === 0) {
       const yours = this.bound;
@@ -1283,6 +1600,18 @@ export class NomadSim {
       if (c.lodeLeft > 0 && --c.lodeLeft === 0 && j === s.bound) log.push("The Lodestone's pull has faded.");
     });
     if (s.twin && s.twin.lodeLeft > 0) s.twin.lodeLeft--;
+    this.circles.forEach((c, j) => {
+      if (c.starLeft > 0 && --c.starLeft === 0 && j === s.bound) log.push("The fallen star's hold has faded: your circle drifts again.");
+      fadeTiles(c, 'pops');
+      fadeTiles(c, 'stars');
+    });
+    if (s.twin) {
+      if (s.twin.starLeft > 0) s.twin.starLeft--;
+      fadeTiles(s.twin, 'pops');
+      fadeTiles(s.twin, 'stars');
+    }
+    if (s.catchUp > 0) s.catchUp--;
+    if (s.leyWait > 0 && --s.leyWait === 0) log.push('The leyline has its charge back.');
   }
 
   /** The Wanderer's Crown: the circle's middle walks toward you, up to 10 tiles a minute. */
@@ -1606,8 +1935,8 @@ export class NomadSim {
     const t = temperamentOf(c);
     const region = c.regionId ? geo.region(c.regionId)! : null;
     const allowed = (x: number, y: number) => (region ? geo.inRegion(region, x, y) : geo.onLand(x, y));
-    if (c.anchorLeft > 0) {
-      // Anchored: it holds its place, voyage and all, and only breathes.
+    if (c.anchorLeft > 0 || c.starLeft > 0) {
+      // Anchored, or held by a fallen star: it holds its place, voyage and all, and only breathes.
     } else if (region && isKingdom(c) && !geo.inRegion(region, c.x, c.y)) {
       // Out of its kingdom (after an eclipse): it walks straight home.
       const home = region.home;
@@ -1757,15 +2086,17 @@ export class NomadSim {
       const u = rng.next();
       c.radiusTarget = c.radiusMin + (t.hungry ? u * u : u) * (c.radiusMax - c.radiusMin);
     }
-    const dr = c.radiusTarget - c.radius;
+    // Deep wilds: the Wilderness circle is cramped near the ditch and huge deep in.
+    const scale = wildScale(c);
+    const dr = c.radiusTarget * scale - c.radius;
     c.radius += Math.sign(dr) * Math.min(Math.abs(dr), RADIUS_EASE);
     if (rng.next() < PULSE_CHANCE * t.pulses) {
-      const nr = clamp(c.radius + (rng.next() < 0.5 ? t.pulse : -t.pulse), c.radiusMin, c.radiusMax);
+      const nr = clamp(c.radius + (rng.next() < 0.5 ? t.pulse : -t.pulse), c.radiusMin * scale, c.radiusMax * scale);
       if (yours && Math.abs(nr - c.radius) > 0.5) {
         log.push(`Pulse! Your circle ${nr > c.radius ? 'grew' : 'shrank'} by ${javaRound(Math.abs(nr - c.radius))} tiles.`);
       }
       c.radius = nr;
-      c.radiusTarget = nr;
+      c.radiusTarget = nr / scale;
       c.pulse = 45;
     }
     if (c.pulse > 0) c.pulse--;
@@ -1777,15 +2108,22 @@ export class NomadSim {
    * waypoint: the best of a few random spots, the one furthest from where the circle has headed
    * lately. Mirrors startMood in NomadSim.java.
    */
+  /** How likely a mood is to come next: its temperament's weight, doubled for Main when your spellbook favours it. */
+  private weight(c: CircleState, t: Temperament, mood: number): number {
+    const b = this.state.book;
+    return t.weights[mood] * (!c.regionId && b > 0 && b < BOOK_MOOD.length && BOOK_MOOD[b] === mood ? BOOK_WEIGHT : 1);
+  }
+
   private startMood(c: CircleState, t: Temperament, rng: Rng, allowed: (x: number, y: number) => boolean, yours: boolean, log: string[]) {
     let total = 0;
-    for (let k = 0; k < MOOD_NAMES.length; k++) if (k !== c.mood) total += t.weights[k];
+    for (let k = 0; k < MOOD_NAMES.length; k++) if (k !== c.mood) total += this.weight(c, t, k);
     let pick = rng.next() * total;
     let mood = -1;
     for (let k = 0; k < MOOD_NAMES.length; k++) {
-      if (k === c.mood || t.weights[k] <= 0) continue;
+      const w = this.weight(c, t, k);
+      if (k === c.mood || w <= 0) continue;
       mood = k;
-      pick -= t.weights[k];
+      pick -= w;
       if (pick < 0) break;
     }
     if (mood < 0) mood = c.mood;
@@ -2594,6 +2932,25 @@ function part(a: CircleState, b: CircleState, geo: Geography) {
 }
 
 /** Moves a circle's whole range, and its radius with it. */
+/** Deep wilds: how much bigger or smaller the Wilderness circle is where its middle stands; 1 for every other circle. */
+export function wildScale(c: CircleState): number {
+  if (c.regionId !== 'wilderness') return 1;
+  return WILD_LOW + (WILD_HIGH - WILD_LOW) * clamp((c.y - WILD_DITCH) / WILD_DEPTH, 0, 1);
+}
+
+/** Counts down a circle's extra tiles from Log pop or a star, each one shrinking it back as it ends. */
+function fadeTiles(c: CircleState, key: 'pops' | 'stars') {
+  const left = c[key];
+  if (!left) return;
+  const keep: number[] = [];
+  for (const v of left) {
+    if (v - 1 > 0) keep.push(v - 1);
+    else shiftRange(c, -1);
+  }
+  if (keep.length) c[key] = keep;
+  else delete c[key];
+}
+
 function shiftRange(c: CircleState, tiles: number) {
   c.expand += tiles;
   c.radiusMin += tiles;
@@ -2609,7 +2966,7 @@ function blank(x: number, y: number, heading: number, start: number, min: number
     pulse: 0, tiers: 0, atEdge: false, waiting: false, touchingYours: false,
     mood: 0, moodLeft: 0, turn: 0, bend: 0, swing: 0, speed: 1, wx: 0, wy: 0, avoid: 0,
     expand: 0, expandLeft: 0, tailwindLeft: 0, anchorLeft: 0, crownLeft: 0, shore: 0,
-    orbitX: 0, orbitY: 0, orbitR: 0, orbitSide: 0, orbitLeft: 0, lodeX: 0, lodeY: 0, lodeLeft: 0, wakeLeft: 0,
+    orbitX: 0, orbitY: 0, orbitR: 0, orbitSide: 0, orbitLeft: 0, lodeX: 0, lodeY: 0, lodeLeft: 0, wakeLeft: 0, starX: 0, starY: 0, starLeft: 0,
   };
 }
 

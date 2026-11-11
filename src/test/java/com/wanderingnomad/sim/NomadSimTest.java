@@ -99,7 +99,11 @@ public class NomadSimTest
             sim.step(null);
             for (Circle c : sim.circles())
             {
-                assertTrue(c.radius() >= c.radiusMin() - 1e-9 && c.radius() <= c.radiusMax() + 1e-9);
+                // Deep wilds: the Wilderness circle shrinks near the ditch and swells deep in.
+                boolean wild = "wilderness".equals(c.regionId);
+                double lo = c.radiusMin() * (wild ? NomadSim.WILD_LOW : 1);
+                double hi = c.radiusMax() * (wild ? NomadSim.WILD_HIGH : 1);
+                assertTrue(c.name() + " " + c.radius(), c.radius() >= lo - 1e-9 && c.radius() <= hi + 1e-9);
             }
         }
     }

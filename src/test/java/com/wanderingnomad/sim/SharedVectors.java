@@ -26,7 +26,7 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26, 560, 3, 333};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26, 560, 3, 333, 404};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
     /** Left alone, sets course for a port, sails, and is blown off course: a castaway. */
@@ -45,6 +45,8 @@ public final class SharedVectors
     static final int KISS_SEED = 3;
     /** Wave 3's boons and stones: Foresight, Ward, Wake, Leap, Lodestone, Keystone, Shatter, Rites, Vigil, kingdom and wandering stones. */
     static final int STONE_SEED = 333;
+    /** Wave 4's real OSRS systems: travel networks, spellbooks, Log pop, stars, tides, Encore, Intermission, obelisks and the rest. */
+    static final int OSRS_SEED = 404;
     /** Kisses are rare: this seed's comes a little after the usual run length. */
     static final int KISS_RUN = 1620;
 
@@ -90,6 +92,7 @@ public final class SharedVectors
         if (seed == WORLD_SEED) return worldScript(seed);
         if (seed == KISS_SEED) return kissScript(seed);
         if (seed == STONE_SEED) return stoneScript(seed);
+        if (seed == OSRS_SEED) return osrsScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
         Circle m = probe.main();
@@ -383,6 +386,60 @@ public final class SharedVectors
         return events;
     }
 
+    static JsonArray osrsScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        // Every travel network unlocked, the Lunar spellbook, and two Combat Achievement tiers.
+        events.add(event(0, "networks", 127));
+        events.add(event(0, "book", 3));
+        events.add(event(0, "ca", 2));
+        for (int k = 0; k < 3; k++) events.add(event(10 + k, "pop"));
+        events.add(event(20, "guest"));
+        Circle m = probe(seed, events, 30).main();
+        events.add(event(30, "superior", (int) Math.round(m.x), (int) Math.round(m.y)));
+        m = probe(seed, events, 40).main();
+        events.add(event(40, "star", (int) Math.round(m.x), (int) Math.round(m.y)));
+        events.add(event(45, "layer"));
+        events.add(event(50, "layer"));
+        events.add(event(70, "stargone"));
+        // A coordinate clue's dig spot at Varrock, held for an hour.
+        events.add(event(80, "tide", 3213, 3428));
+        events.add(event(140, "tide"));
+        for (int k = 0; k < 3; k++) events.add(event(150 + k, "encore"));
+        events.add(event(160, "useencore"));
+        // A minigame that runs past the cap, then the catch-up.
+        events.add(event(170, "intermission", true));
+        events.add(event(200, "intermission", false));
+        // Docking your own boat inside a kingdom's circle, then a leyline teleport back into Main.
+        NomadSim at = probe(seed, events, 250);
+        Circle k = at.circles().get(1);
+        events.add(event(250, "dockcross", (int) Math.round(k.x), (int) Math.round(k.y)));
+        at = probe(seed, events, 260);
+        events.add(event(260, "leyline", (int) Math.round(at.bound().x), (int) Math.round(at.bound().y),
+            (int) Math.round(at.main().x), (int) Math.round(at.main().y)));
+        // An obelisk the Wilderness circle covers, to the one furthest from it.
+        int wild = firstMinute(seed, events, s -> s.minutes() >= 270 && wildObelisk(s) != null);
+        if (wild >= 0)
+        {
+            Tile from = wildObelisk(probe(seed, events, wild));
+            Tile to = from;
+            for (Tile o : Networks.OBELISKS) if (Circle.dist(o.x - from.x, o.y - from.y) > Circle.dist(to.x - from.x, to.y - from.y)) to = o;
+            events.add(event(wild, "obelisk", from.x, from.y, to.x, to.y));
+        }
+        return events;
+    }
+
+    /** An obelisk inside the Wilderness circle, or null. */
+    private static Tile wildObelisk(NomadSim s)
+    {
+        for (Circle c : s.circles())
+        {
+            if (!"wilderness".equals(c.regionId)) continue;
+            for (Tile o : Networks.OBELISKS) if (c.contains(o.x, o.y)) return o;
+        }
+        return null;
+    }
+
     /** A tile in your circle's Wake but outside the circle itself, or null. */
     private static int[] inWakeOnly(NomadSim s)
     {
@@ -609,6 +666,54 @@ public final class SharedVectors
                     break;
                 case "rite":
                     line = sim.performRite(a.get(0).getAsString(), new Tile(a.get(1).getAsInt(), a.get(2).getAsInt()));
+                    break;
+                case "networks":
+                    sim.setNetworks(a.get(0).getAsInt());
+                    break;
+                case "book":
+                    sim.setSpellbook(a.get(0).getAsInt());
+                    break;
+                case "ca":
+                    line = sim.setCaTiers(a.get(0).getAsInt());
+                    break;
+                case "pop":
+                    line = sim.logPop();
+                    break;
+                case "guest":
+                    line = sim.uninvitedGuest();
+                    break;
+                case "superior":
+                    line = sim.superior(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()));
+                    break;
+                case "star":
+                    line = sim.starfall(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()));
+                    break;
+                case "layer":
+                    line = sim.starLayer();
+                    break;
+                case "stargone":
+                    line = sim.starGone();
+                    break;
+                case "tide":
+                    sim.setTide(a.size() == 0 ? null : new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()));
+                    break;
+                case "encore":
+                    line = sim.addEncore();
+                    break;
+                case "useencore":
+                    line = sim.useEncore();
+                    break;
+                case "intermission":
+                    sim.setIntermission(a.get(0).getAsBoolean());
+                    break;
+                case "dockcross":
+                    line = sim.dockCross(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()));
+                    break;
+                case "leyline":
+                    line = sim.leyline(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));
+                    break;
+                case "obelisk":
+                    line = sim.obelisk(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));
                     break;
                 case "homeward":
                     line = sim.homeward(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));

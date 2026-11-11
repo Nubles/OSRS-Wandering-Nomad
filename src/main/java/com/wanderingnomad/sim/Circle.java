@@ -77,6 +77,13 @@ public final class Circle
     /** Wake: minutes left leaving a wake, and the wake itself as x, y, radius for each of the last minutes, oldest first (null if none). */
     int wakeLeft;
     double[] wake;
+    /** Log pop and Starfall: minutes left on each extra tile (null if none). */
+    int[] pops;
+    int[] stars;
+    /** Starfall: the fallen star holding this circle, and the most minutes it can still hold it. */
+    int starX;
+    int starY;
+    int starLeft;
 
     static final class Voyage
     {
@@ -140,6 +147,11 @@ public final class Circle
         c.lodeLeft = lodeLeft;
         c.wakeLeft = wakeLeft;
         c.wake = wake == null ? null : wake.clone();
+        c.pops = pops == null ? null : pops.clone();
+        c.stars = stars == null ? null : stars.clone();
+        c.starX = starX;
+        c.starY = starY;
+        c.starLeft = starLeft;
         return c;
     }
 
@@ -235,6 +247,17 @@ public final class Circle
     public Tile lode()
     {
         return lodeLeft > 0 ? new Tile(lodeX, lodeY) : null;
+    }
+
+    /** Extra tiles from Log pop and a mined star, right now. */
+    public int pops()
+    {
+        return pops == null ? 0 : pops.length;
+    }
+
+    public int starTiles()
+    {
+        return stars == null ? 0 : stars.length;
     }
 
     /** Minutes left leaving a Wake. */
