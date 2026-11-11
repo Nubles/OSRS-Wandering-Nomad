@@ -113,6 +113,8 @@ import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.NpcLootReceived;
+import net.runelite.client.input.KeyManager;
+import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -198,6 +200,35 @@ public class NomadPlugin extends Plugin
     private boolean developerMode;
     @Inject
     private NomadBannerOverlay bannerOverlay;
+    @Inject
+    private NomadCaptionOverlay captionOverlay;
+    @Inject
+    private KeyManager keyManager;
+    /** Streaming: the episode desk, and the hotkeys that mark a moment and toggle photo mode. */
+    private StreamDesk desk;
+    /** The account the desk was read for, or -1. */
+    private long deskAccount = -1;
+    static final String STREAM_KEY = StreamDesk.KEY;
+    /** Photo mode: the Nomad HUD hidden and the glow and shade full. Any thread reads it. */
+    static volatile boolean photoMode;
+    /** Chat's voted edge colour for the episode, or -1. Any thread reads it. */
+    static volatile int votedColour = -1;
+    private final HotkeyListener markerHotkey = new HotkeyListener(() -> config.markerKey())
+    {
+        @Override
+        public void hotkeyPressed()
+        {
+            clientThread.invokeLater(() -> streamFromPanel("mark", ""));
+        }
+    };
+    private final HotkeyListener photoHotkey = new HotkeyListener(() -> config.photoKey())
+    {
+        @Override
+        public void hotkeyPressed()
+        {
+            clientThread.invokeLater(() -> streamFromPanel("photo", ""));
+        }
+    };
     private final Moments moments = new Moments();
     /** The half of a forked Main that faded at the last parting, dissolving on the maps; null if none yet. */
     private volatile Fade fade;
@@ -352,6 +383,10 @@ public class NomadPlugin extends Plugin
         panel.onEncore(this::encoreFromPanel);
         panel.onLegacy(this::retireFromPanel, this::wagerFromPanel, this::sealFromPanel);
         panel.onSocial(this::socialFromPanel);
+        panel.onStream(this::streamFromPanel);
+        desk = new StreamDesk(this, gson, executor, this::show, this::chat);
+        keyManager.registerKeyListener(markerHotkey);
+        keyManager.registerKeyListener(photoHotkey);
         if (developerMode)
         {
             // In a developer client, buttons for the same test shortcuts as the ::nomad commands.
@@ -397,6 +432,7 @@ public class NomadPlugin extends Plugin
         overlayManager.add(statusOverlay);
         overlayManager.add(glowOverlay);
         overlayManager.add(bannerOverlay);
+        overlayManager.add(captionOverlay);
         loadPending = client.getGameState() == GameState.LOGGED_IN;
     }
 
@@ -410,6 +446,12 @@ public class NomadPlugin extends Plugin
         overlayManager.remove(statusOverlay);
         overlayManager.remove(glowOverlay);
         overlayManager.remove(bannerOverlay);
+        overlayManager.remove(captionOverlay);
+        keyManager.unregisterKeyListener(markerHotkey);
+        keyManager.unregisterKeyListener(photoHotkey);
+        photoMode = false;
+        votedColour = -1;
+        deskAccount = -1;
         bannerOverlay.clear();
         clientThread.invoke(edgeWall::clear);
         clientToolbar.removeNavigation(navButton);
@@ -434,6 +476,7 @@ public class NomadPlugin extends Plugin
         else if (state == GameState.LOGIN_SCREEN && sim != null)
         {
             // The next login may be another account, with a run of its own.
+            if (!retired) desk.loggedOut(sim, surface, journey, outsideNow());
             save();
             if (config.liveShare()) live.offline(liveCode(), liveToken(), runCode());
             sim = null;
@@ -488,6 +531,7 @@ public class NomadPlugin extends Plugin
         watchDock();
         readMilestones();
         watchJourney();
+        desk.feed(sim, surface, radar, outsideNow());
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
         // Moments are read after the minute's step below too; here they catch stepping over the edge.
         announce();
@@ -669,6 +713,7 @@ public class NomadPlugin extends Plugin
         int boundBefore = sim.boundIndex();
         // Sheltered (delving, carried off, in a plot circle or an intermission), you count as inside
         // wherever the circle goes: the rules get no tile to judge.
+        double before = desk.margin();
         lines.addAll(sim.step(sheltered() ? null : surface));
         if (delveLeft > 0 && --delveLeft == 0)
         {
@@ -694,6 +739,7 @@ public class NomadPlugin extends Plugin
         journey.minute(!outsideNow());
         legacyMinute();
         fellowshipMinute();
+        desk.minute(sim, before, journey);
         for (RoadStones.Due due : RoadStones.due(journey)) summon(due.tier, due.why);
         if (config.holidayWeather() && Holidays.easterStoneDue(journey, LocalDate.now())) summon(NomadSim.COMMON, "An Easter weekend day");
         String owed = Bestiary.due(journey, sim.minutes());
@@ -765,6 +811,7 @@ public class NomadPlugin extends Plugin
             case DEATH:
                 scar("death", "You died at " + NomadPanel.time(sim.minutes()) + ".");
                 if (surface != null) journey.died(surface.x, surface.y);
+                desk.died();
                 if (config.hardcore() && !fallen)
                 {
                     fallen = true;
@@ -1310,6 +1357,7 @@ public class NomadPlugin extends Plugin
     /** Notes a moment in the timeline and the run's tallies, then shows its banner and plays its sound if they're on. Client thread. */
     private void show(Moments.Banner b)
     {
+        if (desk != null && !retired) desk.banner(b);
         long now = System.currentTimeMillis();
         NomadPanel.Moment last = timeline.peekFirst();
         // Stepping out and back in again and again along the edge makes one row with a count, not dozens.
@@ -1680,6 +1728,14 @@ public class NomadPlugin extends Plugin
         }
         forksSampled = sim.forks();
         buildAncestors();
+        // The desk is read once per account: a new run started mid-session keeps the episode's latest beats.
+        if (client.getAccountHash() != deskAccount)
+        {
+            deskAccount = client.getAccountHash();
+            desk.load(configManager.getRSProfileConfiguration(NomadConfig.GROUP, STREAM_KEY));
+        }
+        if (!retired) desk.loaded(sim, run == null || run.sim == null);
+        saveStream();
         applyPalette();
         ticks = 0;
         diariesRead = false;
@@ -2832,7 +2888,8 @@ public class NomadPlugin extends Plugin
     private void applyPalette()
     {
         Region crest = crest();
-        mainColour = crest != null ? crest.colour : renown.paletteColour();
+        // Chat's vote paints the edge for the episode, over every other colour.
+        mainColour = votedColour >= 0 ? votedColour : crest != null ? crest.colour : renown.paletteColour();
     }
 
     /** Heraldry's kingdom this act, or null when Heraldry isn't the edge colour or no kingdom holds the act yet. Any thread. */
@@ -2919,6 +2976,91 @@ public class NomadPlugin extends Plugin
         applyPalette();
     }
 
+    private void saveStream()
+    {
+        if (desk != null) configManager.setRSProfileConfiguration(NomadConfig.GROUP, STREAM_KEY, desk.save());
+    }
+
+    /** The sidebar's Streaming menu and the hotkeys. Client thread. */
+    private void streamFromPanel(String action, String input)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null && !"photo".equals(action)) return;
+            switch (action)
+            {
+                case "record":
+                    if (!retired) desk.record();
+                    break;
+                case "mark":
+                    if (!retired) desk.mark();
+                    break;
+                case "wrap":
+                    desk.wrap();
+                    applyPalette();
+                    break;
+                case "chapters":
+                {
+                    String[] chapters = desk.chapters();
+                    SwingUtilities.invokeLater(() -> panel.showChapters(chapters));
+                    break;
+                }
+                case "wrapped":
+                {
+                    BufferedImage img = desk.wrapped(sim, journey, stats.timesOutside, fallen);
+                    SwingUtilities.invokeLater(() -> panel.showWrapped(img));
+                    break;
+                }
+                case "another":
+                    desk.another();
+                    break;
+                case "votes":
+                    desk.votes(input);
+                    applyPalette();
+                    break;
+                case "clear-votes":
+                    desk.clearVotes();
+                    applyPalette();
+                    break;
+                case "flags":
+                    desk.flags(input);
+                    break;
+                case "clear-flags":
+                    desk.clearFlags();
+                    chat("Every viewer flag is off the map.");
+                    break;
+                case "photo":
+                    photoMode = !photoMode;
+                    chat(photoMode ? "Photo mode: the Nomad HUD is hidden and the glow and shade are full. The rules keep running."
+                        : "Photo mode off.");
+                    break;
+                default:
+                    return;
+            }
+            saveStream();
+            publish();
+        });
+    }
+
+    /** The streaming desk, for the caption overlay and the maps' viewer flags. */
+    StreamDesk desk()
+    {
+        return desk;
+    }
+
+    /** Backseat shield: the Radar's countdowns and the Forecast stay off the game view. */
+    boolean shielded()
+    {
+        return config.backseatShield();
+    }
+
+    /** The account's ended runs, oldest first. */
+    List<Legacy.Run> legacy()
+    {
+        Renown r = renown;
+        return r == null ? java.util.Collections.emptyList() : r.legacy();
+    }
+
     private void saveJourney()
     {
         if (sim != null) configManager.setRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY, gson.toJson(journey));
@@ -2994,6 +3136,7 @@ public class NomadPlugin extends Plugin
         run.epithet = epithet;
         run.batonGrace = batonGrace;
         configManager.setRSProfileConfiguration(NomadConfig.GROUP, RUN_KEY, gson.toJson(run));
+        saveStream();
     }
 
     private int seed()
@@ -3192,6 +3335,7 @@ public class NomadPlugin extends Plugin
         NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
+        view.stream = desk == null ? java.util.Collections.emptyList() : desk.lines(sim != null && !retired);
         if (sim != null && retired)
         {
             view.state = "Laid down: the run has ended";

@@ -95,6 +95,12 @@ class NomadPanel extends PluginPanel
     private List<String> shownFellowship;
     private final JButton fellowshipMenu = small("Fellowship...", "Bottles, dares, the clan torch, relays, colours, the clan atlas and the "
         + "tale of the tape", this::showFellowshipMenu);
+    /** Streaming: an action and what was pasted for it; the lines shown, and the menu's button. */
+    private BiConsumer<String, String> onStream = (action, input) -> { };
+    private final JLabel streaming = note(" ");
+    private List<String> shownStream;
+    private final JButton streamMenu = small("Streaming...", "Recording, chapters, Run wrapped, chat's votes, viewer flags and photo mode",
+        this::showStreamMenu);
     private final SidebarParts.Header header = new SidebarParts.Header();
     private final SidebarParts.MiniMap map = new SidebarParts.MiniMap();
     private final JLabel boonsTitle = heading("Boons");
@@ -221,6 +227,14 @@ class NomadPanel extends PluginPanel
         fix(fellowshipMenu, 24);
         add(fellowshipMenu);
         add(gap(10));
+        add(heading("Streaming"));
+        add(gap(4));
+        streaming.setAlignmentX(LEFT_ALIGNMENT);
+        add(streaming);
+        add(gap(4));
+        fix(streamMenu, 24);
+        add(streamMenu);
+        add(gap(10));
         add(heading("Moments"));
         add(gap(4));
         JScrollPane scroll = new JScrollPane(timeline, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -331,6 +345,11 @@ class NomadPanel extends PluginPanel
         this.onEncore = onEncore;
     }
 
+    void onStream(BiConsumer<String, String> onStream)
+    {
+        this.onStream = onStream;
+    }
+
     void onSocial(BiConsumer<String, String> onSocial)
     {
         this.onSocial = onSocial;
@@ -418,6 +437,16 @@ class NomadPanel extends PluginPanel
             for (int i = 0; i < shownFellowship.size(); i++) html.append(i == 0 ? "" : "<br>").append(escape(shownFellowship.get(i)));
             fellowship.setText(html.append("</html>").toString());
             fix(fellowship, 4 + 14 * Math.max(1, shownFellowship.size()));
+            revalidate();
+        }
+        if (!v.stream.equals(shownStream))
+        {
+            shownStream = v.stream;
+            StringBuilder html = new StringBuilder("<html>");
+            if (shownStream.isEmpty()) html.append("Off air. Episodes start at login; Start recording for chapters and a stake.");
+            for (int i = 0; i < shownStream.size(); i++) html.append(i == 0 ? "" : "<br>").append(escape(shownStream.get(i)));
+            streaming.setText(html.append("</html>").toString());
+            fix(streaming, 4 + 14 * Math.max(1, wrapped(shownStream)));
             revalidate();
         }
         prophecies.setText(jv.prophecyOpen ? "Seal prophecies" : "Prophecies");
@@ -533,6 +562,111 @@ class NomadPanel extends PluginPanel
     private static String escape(String text)
     {
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /** Roughly how many sidebar lines some text takes once wrapped. */
+    private static int wrapped(List<String> lines)
+    {
+        int n = 0;
+        for (String line : lines) n += 1 + line.length() / 38;
+        return n;
+    }
+
+    /** The Streaming menu: recording, chapters, Run wrapped, chat's votes, viewer flags and photo mode. */
+    private void showStreamMenu()
+    {
+        JPopupMenu menu = new JPopupMenu();
+        item(menu, "Start recording", "Chapters count from now, and the episode gets its stake", () -> onStream.accept("record", ""));
+        item(menu, "Mark a moment", "A chapter of your own (there's a hotkey for this in the settings)", () -> onStream.accept("mark", ""));
+        item(menu, "Chapters...", "YouTube chapters, a marker list and an EDL for your editor", () -> onStream.accept("chapters", ""));
+        item(menu, "Wrap the episode", "Reveals the prophecy, settles the stake and scores the drama", () ->
+        {
+            int ok = JOptionPane.showConfirmDialog(this, "End this episode now? A new one starts at your next login, or when you start recording.",
+                "Nomad UIM", JOptionPane.OK_CANCEL_OPTION);
+            if (ok == JOptionPane.OK_OPTION) onStream.accept("wrap", "");
+        });
+        menu.addSeparator();
+        item(menu, "Run wrapped...", "Six stat cards from your run so far, to save and share", () -> onStream.accept("wrapped", ""));
+        item(menu, "Another talking point", "A fresh dead-air card from your run", () -> onStream.accept("another", ""));
+        menu.addSeparator();
+        item(menu, "Chat paints the wall...", "Paste chat's !colour, !tone and !name votes, or a votes code", () -> pasteStream("votes",
+            "Paste chat lines (bob: !colour teal, !tone dry, !name Gertrude) or a votes code. Each voter counts once; the looks last this episode."));
+        item(menu, "Clear chat's wall", "Back to your own colour, narrator and name", () -> onStream.accept("clear-votes", ""));
+        item(menu, "Plant viewer flags...", "Paste chat's !flag lines or a flags code", () -> pasteStream("flags",
+            "Paste chat lines (bob: !flag 3222 3218, or amy: !flag Varrock Square) or a flags code. One flag per viewer, 200 at most."));
+        item(menu, "Clear viewer flags", "Takes every flag off the map", () -> onStream.accept("clear-flags", ""));
+        menu.addSeparator();
+        item(menu, "Photo mode", "Hides the Nomad HUD and turns the glow and shade up full; again to turn it off", () -> onStream.accept("photo", ""));
+        menu.show(streamMenu, 0, streamMenu.getHeight());
+    }
+
+    private void pasteStream(String action, String prompt)
+    {
+        JTextArea area = new JTextArea(6, 28);
+        area.setLineWrap(true);
+        JScrollPane scroll = new JScrollPane(area);
+        int ok = JOptionPane.showConfirmDialog(this, new Object[]{prompt, scroll}, "Nomad UIM", JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE);
+        if (ok == JOptionPane.OK_OPTION && !area.getText().trim().isEmpty()) onStream.accept(action, area.getText().trim());
+    }
+
+    /** The episode's chapters: YouTube's list, a marker list and an EDL, each to copy or save. */
+    void showChapters(String[] c)
+    {
+        if (c == null)
+        {
+            JOptionPane.showMessageDialog(this, "No episode yet: one starts when you log in.", "Nomad UIM", JOptionPane.PLAIN_MESSAGE);
+            return;
+        }
+        javax.swing.JTabbedPane tabs = new javax.swing.JTabbedPane();
+        String[] names = {"YouTube", "Markers", "EDL"};
+        for (int i = 0; i < names.length; i++)
+        {
+            JTextArea area = new JTextArea(c[i], 12, 34);
+            area.setEditable(false);
+            tabs.addTab(names[i], new JScrollPane(area));
+        }
+        Object[] options = {"Copy this tab", "Save EDL", "Close"};
+        int picked = JOptionPane.showOptionDialog(this, tabs, "Nomad UIM: chapters of " + c[3], JOptionPane.DEFAULT_OPTION,
+            JOptionPane.PLAIN_MESSAGE, null, options, options[2]);
+        if (picked == 0)
+        {
+            java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+                new java.awt.datatransfer.StringSelection(c[tabs.getSelectedIndex()]), null);
+        }
+        if (picked != 1) return;
+        javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+        chooser.setSelectedFile(new java.io.File("nomad-" + c[3].toLowerCase().replace(' ', '-') + ".edl"));
+        if (chooser.showSaveDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) return;
+        try
+        {
+            java.nio.file.Files.write(chooser.getSelectedFile().toPath(), c[2].getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        catch (java.io.IOException e)
+        {
+            JOptionPane.showMessageDialog(this, "Couldn't save the EDL: " + e.getMessage(), "Nomad UIM", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+
+    /** Run wrapped's cards, to save as a picture. */
+    void showWrapped(java.awt.image.BufferedImage img)
+    {
+        java.awt.Image small = img.getScaledInstance(img.getWidth() / 2, img.getHeight() / 2, java.awt.Image.SCALE_SMOOTH);
+        Object[] options = {"Save picture", "Close"};
+        int picked = JOptionPane.showOptionDialog(this, new JLabel(new javax.swing.ImageIcon(small)), "Nomad UIM: Run wrapped",
+            JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, options, options[1]);
+        if (picked != 0) return;
+        javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+        chooser.setSelectedFile(new java.io.File("nomad-run-wrapped.png"));
+        if (chooser.showSaveDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) return;
+        try
+        {
+            javax.imageio.ImageIO.write(img, "png", chooser.getSelectedFile());
+        }
+        catch (java.io.IOException e)
+        {
+            JOptionPane.showMessageDialog(this, "Couldn't save the picture: " + e.getMessage(), "Nomad UIM", JOptionPane.WARNING_MESSAGE);
+        }
     }
 
     /** The Fellowship menu: every code Nomads hand each other, and the tale of the tape. */
@@ -1295,6 +1429,8 @@ class NomadPanel extends PluginPanel
 
         List<Moment> moments = Collections.emptyList();
         List<String> log = Collections.emptyList();
+        /** The Streaming section's lines. */
+        List<String> stream = Collections.emptyList();
 
         static View of(NomadSim sim, Tile at, List<String> log, Radar radar, RuleGuard guard, Forecast forecast,
             RunStats stats, List<Moment> moments, boolean outsideNow)

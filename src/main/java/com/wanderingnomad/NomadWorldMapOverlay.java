@@ -103,7 +103,8 @@ class NomadWorldMapOverlay extends Overlay
         if (plugin.config().footprint()) drawFootprint(graphics, sim, bounds, west, south, zoom);
         List<Circle> circles = sim.circles();
         Forecast forecast = plugin.forecast();
-        if (forecast != null && plugin.config().forecast())
+        // The backseat shield moves the Forecast into the sidebar.
+        if (forecast != null && plugin.config().forecast() && !plugin.shielded())
         {
             drawForecast(graphics, forecast, circles, sim.boundIndex(), bounds, west, south, zoom);
         }
@@ -197,6 +198,7 @@ class NomadWorldMapOverlay extends Overlay
         drawOmen(graphics, bounds, west, south, zoom);
         drawRivals(graphics, bounds, west, south, zoom);
         drawFellowship(graphics, bounds, west, south, zoom);
+        drawFlags(graphics, bounds, west, south, zoom);
         drawPointers(graphics, sim, rings, bounds);
         drawHover(graphics, sim, rings, bounds);
         graphics.setFont(font);
@@ -575,6 +577,34 @@ class NomadWorldMapOverlay extends Overlay
     private static final Color BOTTLE = new Color(0x9FE0D0);
     private static final Color GRAVE = new Color(0xC9C2B0);
 
+    private static final Color FLAG = new Color(0xB89CFF);
+
+    /** Viewer flags still standing: a pennant each, named once you zoom in. */
+    private void drawFlags(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        StreamDesk desk = plugin.desk();
+        if (desk == null) return;
+        for (com.wanderingnomad.stream.Flags.Flag f : desk.standingFlags())
+        {
+            double px = bounds.x + (f.x - west) * zoom;
+            double py = bounds.y + bounds.height - (f.y - south) * zoom;
+            if (!bounds.contains(px, py)) continue;
+            graphics.setStroke(new BasicStroke(1.5f));
+            graphics.setColor(Color.BLACK);
+            graphics.draw(new java.awt.geom.Line2D.Double(px + 1, py, px + 1, py - 13));
+            graphics.setColor(new Color(0xE8E2D4));
+            graphics.draw(new java.awt.geom.Line2D.Double(px, py, px, py - 13));
+            Path2D.Double pennant = new Path2D.Double();
+            pennant.moveTo(px, py - 13);
+            pennant.lineTo(px + 9, py - 10);
+            pennant.lineTo(px, py - 7);
+            pennant.closePath();
+            graphics.setColor(FLAG);
+            graphics.fill(pennant);
+            if (zoom >= 2) outlined(graphics, f.name, (float) px + 10, (float) py - 6, FLAG, false);
+        }
+    }
+
     /** The Lodestar when it's near or shining, bottles drifting your way, and ancestors' graves near your circle. */
     private void drawFellowship(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
     {
@@ -757,7 +787,7 @@ class NomadWorldMapOverlay extends Overlay
         }
         if (sim.linked(pick))
         {
-            Radar radar = plugin.radar();
+            Radar radar = plugin.shielded() ? null : plugin.radar();
             int in = radar == null || pick >= radar.crossingIn.length ? -1 : radar.crossingIn[pick];
             double gap = sim.bound().gap(c);
             lines.add(gap <= 0 ? "Touching yours: you can cross in the overlap"

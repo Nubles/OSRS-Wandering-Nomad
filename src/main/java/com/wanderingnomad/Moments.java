@@ -555,6 +555,69 @@ final class Moments
             SoundEffectID.PRAYER_ACTIVATE_PIETY);
     }
 
+    /** Streaming's own colour: a broadcast violet. */
+    static final Color STREAM = new Color(0xB89CFF);
+
+    static Banner closeCall(int seconds, int count)
+    {
+        return new Banner("Close call", "The edge came within a tile, " + seconds + (seconds == 1 ? " second" : " seconds") + " to spare. Close call "
+            + count + " this run.", WARM, Icon.EDGE, true, SoundEffectID.TOWN_CRIER_BELL_DING);
+    }
+
+    static Banner echo(String region, String line, int minutesAgo)
+    {
+        return new Banner("Echoes of " + region, NomadPanel.time(minutesAgo) + " ago here: " + line, LEGACY, Icon.MOOD, false,
+            SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
+    }
+
+    static Banner flagSwallowed(String name, String place)
+    {
+        return new Banner(name + "'s flag swallowed", "The circle took " + name + "'s flag" + (place == null ? "." : " in " + place + "."),
+            STREAM, Icon.STAR, false, SoundEffectID.GE_COIN_TINKLE);
+    }
+
+    static Banner prophecyTonight(String line)
+    {
+        return new Banner("Tonight's prophecy", line, STREAM, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner prophecyRevealed(boolean cameTrue, String line)
+    {
+        return new Banner(cameTrue ? "It came to pass" : "Fate defied", "\"" + line + "\"", cameTrue ? GOLD : STREAM, Icon.STAR, true,
+            cameTrue ? SoundEffectID.PRAYER_ACTIVATE_PIETY : SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner stake(String headline)
+    {
+        return new Banner("The stake", headline, STREAM, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DING);
+    }
+
+    static Banner stakeResolved(String headline, String result)
+    {
+        return new Banner("The stake: " + result, headline, STREAM, Icon.STAR, false, SoundEffectID.UI_BOOP);
+    }
+
+    static Banner drama(int score, String rank)
+    {
+        return new Banner("Drama " + score, "This episode ranks " + rank + ".", STREAM, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner previously(String first)
+    {
+        return new Banner("Previously on Nomad UIM", first, STREAM, Icon.STAR, true, SoundEffectID.TOWN_CRIER_BELL_DONG);
+    }
+
+    static Banner wrapped(int hours)
+    {
+        return new Banner("Run wrapped: " + hours + " hours", "Six cards from your run are ready in the sidebar's Streaming menu.", GOLD,
+            Icon.STAR, true, SoundEffectID.PRAYER_ACTIVATE_PIETY);
+    }
+
+    static Banner marked(int count)
+    {
+        return new Banner("Moment marked", "Marker " + count + " is in this episode's chapters.", STREAM, Icon.STAR, false, SoundEffectID.UI_BOOP);
+    }
+
     /** One of every kind of banner, for trying them out with ::nomadmoments. */
     static List<Banner> samples(NomadSim sim)
     {
@@ -637,6 +700,15 @@ final class Moments
         out.add(dare(true, com.wanderingnomad.social.Dare.send("Zezima", com.wanderingnomad.social.Dare.CLAIM, 1, 0)));
         out.add(torch("the Wanderers"));
         out.add(grave("Generation 2, Main the Seaborn"));
+        out.add(closeCall(12, 3));
+        out.add(echo("Kandarin", "Comet caught! A rare waystone answers its call.", 14 * 60 + 5));
+        out.add(flagSwallowed("Zezima", "Asgarnia"));
+        out.add(prophecyTonight("Salt water will carry the circle before the night is out."));
+        out.add(prophecyRevealed(false, "Salt water will carry the circle before the night is out."));
+        out.add(stake("Main forks in 12 min, north or south: which half lives?"));
+        out.add(drama(64, "2nd of 11 episodes"));
+        out.add(previously("The halves parted: the north half lives on; the south half faded."));
+        out.add(wrapped(100));
         out.add(new Banner("Waystone risen", "Tailwind at Draynor Village, in your circle.", GOLD, Icon.WAYSTONE, false,
             SoundEffectID.PRAYER_DEPLETE_TWINKLE));
         out.add(new Banner("Rare waystone risen", "Bridge at the Grand Exchange, in your circle.", GOLD, Icon.WAYSTONE, true,

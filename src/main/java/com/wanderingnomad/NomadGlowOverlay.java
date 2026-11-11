@@ -45,12 +45,18 @@ class NomadGlowOverlay extends Overlay
     {
         NomadSim sim = plugin.sim();
         Tile at = plugin.surface();
-        if (sim == null || at == null || !plugin.config().edgeGlow()) return null;
+        if (sim == null || at == null || !plugin.config().edgeGlow() && !NomadPlugin.photoMode) return null;
         Circle c = sim.bound();
         double toEdge = NomadPlugin.toEdge(sim, at.x, at.y);
         double strength;
         Color colour;
-        if (toEdge < 0)
+        if (NomadPlugin.photoMode)
+        {
+            // Photo mode: the glow full, for thumbnails.
+            colour = toEdge < 0 ? OUT : WARM;
+            strength = 1;
+        }
+        else if (toEdge < 0)
         {
             colour = OUT;
             strength = 0.7 + 0.3 * Math.sin(System.currentTimeMillis() / 250.0);
@@ -59,7 +65,7 @@ class NomadGlowOverlay extends Overlay
         {
             colour = WARM;
             strength = Math.max(0, (NEAR - toEdge) / NEAR);
-            Radar radar = plugin.radar();
+            Radar radar = plugin.shielded() ? null : plugin.radar();
             if (radar != null && radar.edgeIn > 0) strength = Math.max(strength, (Radar.MINUTES + 1 - radar.edgeIn) / (double) (Radar.MINUTES + 1) * 0.8);
             strength *= 0.85 + 0.15 * Math.sin(System.currentTimeMillis() / 600.0);
         }

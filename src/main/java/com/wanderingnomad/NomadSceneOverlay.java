@@ -145,7 +145,9 @@ class NomadSceneOverlay extends Overlay
         NomadConfig config = plugin.config();
         long now = System.currentTimeMillis();
 
-        if (config.dimOutside() > 0) drawOutside(graphics, view, sim, at, config.dimOutside());
+        // Photo mode turns the outside shade up full.
+        int dim = NomadPlugin.photoMode ? 80 : config.dimOutside();
+        if (dim > 0) drawOutside(graphics, view, sim, at, dim);
         if (config.drawEdge())
         {
             boolean wall = config.edgeStyle() != NomadConfig.EdgeStyle.TILES;
@@ -173,12 +175,15 @@ class NomadSceneOverlay extends Overlay
             drawFeet(graphics, view, sim, at);
             if (sim.ghost() != null) drawGhost(graphics, view, sim.ghost(), at);
         }
-        if (config.tideLine()) drawTide(graphics, view, at);
+        // The tide line is the Radar's: the backseat shield keeps it off the game view.
+        if (config.tideLine() && !plugin.shielded()) drawTide(graphics, view, at);
+        boolean hud = config.compass() && !NomadPlugin.photoMode;
         drawBeacons(graphics, view, sim, now);
-        drawComet(graphics, view, sim, at, now, config.compass());
-        drawFellowship(graphics, view, at, now, config.compass());
+        drawComet(graphics, view, sim, at, now, hud);
+        drawFellowship(graphics, view, at, now, hud);
+        if (!NomadPlugin.photoMode) drawFlags(graphics, view, at);
         if (plugin.spots().on()) drawSpots(graphics, view);
-        if (config.compass())
+        if (hud)
         {
             drawCompass(graphics, view, sim, at);
             drawWaystoneArrow(graphics, view, sim, at);
@@ -794,7 +799,8 @@ class NomadSceneOverlay extends Overlay
         for (int j = 0; j < sim.circles().size(); j++)
         {
             int in = radar.crossingIn[j];
-            if (in < 0) continue;
+            // Behind the backseat shield, only crossings already open get an arrow.
+            if (in < 0 || in > 0 && plugin.shielded()) continue;
             if (best < 0 || in < radar.crossingIn[best]
                 || in == radar.crossingIn[best] && yours.gap(sim.circles().get(j)) < yours.gap(sim.circles().get(best)))
             {
@@ -1004,6 +1010,34 @@ class NomadSceneOverlay extends Overlay
         if (arrow && e != null && e.shining(now) && Math.hypot(e.landmark.x - at.getX(), e.landmark.y - at.getY()) <= com.wanderingnomad.social.Lodestar.REACH)
         {
             drawArrow(graphics, view, at, new double[]{e.landmark.x, e.landmark.y}, GOLD, GOLD, "Lodestar");
+        }
+    }
+
+    private static final Color FLAG = new Color(0xB89CFF);
+
+    /** Viewer flags near you: a pennant over the tile, with the viewer's name. */
+    private void drawFlags(Graphics2D graphics, WorldView view, WorldPoint at)
+    {
+        StreamDesk desk = plugin.desk();
+        if (desk == null) return;
+        for (com.wanderingnomad.stream.Flags.Flag f : desk.standingFlags())
+        {
+            if (Math.abs(f.x - at.getX()) > REACH || Math.abs(f.y - at.getY()) > REACH) continue;
+            LocalPoint local = LocalPoint.fromWorld(view, f.x, f.y);
+            if (local == null) continue;
+            Point foot = Perspective.localToCanvas(client, local, view.getPlane(), 0);
+            Point top = Perspective.localToCanvas(client, local, view.getPlane(), 180);
+            if (foot == null || top == null) continue;
+            graphics.setStroke(new BasicStroke(2f));
+            graphics.setColor(new Color(0xE8E2D4));
+            graphics.drawLine(foot.getX(), foot.getY(), top.getX(), top.getY());
+            Polygon pennant = new Polygon(new int[]{top.getX(), top.getX() + 16, top.getX()},
+                new int[]{top.getY(), top.getY() + 6, top.getY() + 12}, 3);
+            graphics.setColor(FLAG);
+            graphics.fill(pennant);
+            Point text = Perspective.localToCanvas(client, local, view.getPlane(), 230);
+            if (text != null) OverlayUtil.renderTextLocation(graphics, new Point(text.getX() - graphics.getFontMetrics().stringWidth(f.name) / 2,
+                text.getY()), f.name, FLAG);
         }
     }
 

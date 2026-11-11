@@ -10,7 +10,7 @@ import java.util.zip.GZIPOutputStream;
 
 /**
  * The codes Nomads hand each other with no server: a kind's prefix, then JSON gzipped and
- * base64url-encoded, like a run code. Bottles, dares, torches, colours, footprints and batons.
+ * base64url-encoded, like a run code. Bottles, dares, torches, colours, footprints, batons, and a stream's votes and flags.
  */
 public final class Codes
 {
@@ -20,6 +20,9 @@ public final class Codes
     public static final String COLOURS = "NC1.";
     public static final String FOOTPRINT = "NF1.";
     public static final String BATON = "NR1.";
+    /** Streaming: chat's votes on how the episode looks, and viewers' flags. */
+    public static final String VOTES = "NW1.";
+    public static final String FLAGS = "NV1.";
     /** The most JSON a pasted code may unpack to. */
     public static final int MAX_BYTES = 512 * 1024;
 

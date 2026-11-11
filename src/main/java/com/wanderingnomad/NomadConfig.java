@@ -4,6 +4,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.config.Range;
 
 @ConfigGroup(NomadConfig.GROUP)
@@ -56,6 +57,185 @@ public interface NomadConfig extends Config
         closedByDefault = true
     )
     String FELLOWSHIP = "fellowship";
+
+    @ConfigSection(
+        name = "Streaming",
+        description = "For streams and videos: close calls, echoes, a prophecy and a stake each episode, chapters, a narrator, "
+            + "chat's votes, viewer flags, photo mode and an OBS feed. Nothing here changes the rules.",
+        position = 58,
+        closedByDefault = true
+    )
+    String STREAMING = "streaming";
+
+    @ConfigItem(
+        keyName = "closeCalls",
+        name = "Close calls",
+        description = "When the edge comes within a tile of you and turns away, a banner stamps it with the seconds you had to spare.",
+        section = STREAMING,
+        position = 0
+    )
+    default boolean closeCalls()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "echoes",
+        name = "Echoes",
+        description = "Back in a kingdom after 10+ played hours away, a banner recalls the biggest thing that happened there last time.",
+        section = STREAMING,
+        position = 1
+    )
+    default boolean echoes()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "sessionProphecy",
+        name = "Session prophecy",
+        description = "Each episode opens with one cryptic line the drift will make true if you follow the circle, revealed when the "
+            + "episode ends. Defy it for a \"Fate defied\" stamp.",
+        section = STREAMING,
+        position = 2
+    )
+    default boolean sessionProphecy()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "previouslyOn",
+        name = "Previously on",
+        description = "Logging in after a break of 30 minutes or more, a recap of the last episode's three biggest moments and the "
+            + "thread it left hanging. At logout, the sidebar shows what the circles will do in your next session's first 20 minutes "
+            + "if you do nothing.",
+        section = STREAMING,
+        position = 3
+    )
+    default boolean previouslyOn()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "narrator",
+        name = "Narrator captions",
+        description = "A lower third that tells your run's moments in the third person. No line comes back within 20 played hours.",
+        section = STREAMING,
+        position = 4
+    )
+    default boolean narrator()
+    {
+        return false;
+    }
+
+    enum NarratorTone
+    {
+        SAGA,
+        DRY,
+        HUSHED
+    }
+
+    @ConfigItem(
+        keyName = "narratorTone",
+        name = "Narrator's tone",
+        description = "Saga, dry or hushed. Chat's vote, if you paste one in, wins for the episode.",
+        section = STREAMING,
+        position = 5
+    )
+    default NarratorTone narratorTone()
+    {
+        return NarratorTone.SAGA;
+    }
+
+    @ConfigItem(
+        keyName = "deadAir",
+        name = "Dead-air cards",
+        description = "After 15 quiet played minutes, the sidebar offers a talking point from your own run. Never on the game view.",
+        section = STREAMING,
+        position = 6
+    )
+    default boolean deadAir()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "markerKey",
+        name = "Mark a moment",
+        description = "A hotkey that marks the moment as a chapter of this episode, for your editor.",
+        section = STREAMING,
+        position = 7
+    )
+    default Keybind markerKey()
+    {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+        keyName = "photoKey",
+        name = "Photo mode",
+        description = "A hotkey that hides the Nomad HUD and turns the edge glow and outside shade up full, for thumbnails. "
+            + "The rules keep running.",
+        section = STREAMING,
+        position = 8
+    )
+    default Keybind photoKey()
+    {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+        keyName = "backseatShield",
+        name = "Backseat shield",
+        description = "Moves the Radar's countdowns and the Forecast off the game view and into the sidebar, which you can crop out "
+            + "of your stream.",
+        section = STREAMING,
+        position = 9
+    )
+    default boolean backseatShield()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "streamFeed",
+        name = "Stream feed",
+        description = "Writes tiny text files (mood, kingdom, edge time, chapter, drama and more) to .runelite/nomad-uim/stream for "
+            + "OBS text sources. Local files only.",
+        section = STREAMING,
+        position = 10
+    )
+    default boolean streamFeed()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "streamerLayout",
+        name = "Streamer layout",
+        description = "Makes the status box's key numbers big enough to read on a stream.",
+        section = STREAMING,
+        position = 11
+    )
+    default boolean streamerLayout()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "blockedWords",
+        name = "Blocked words",
+        description = "Words, separated by commas, that keep a viewer's flag or chat's circle name off the screen, beside the "
+            + "plugin's own short list.",
+        section = STREAMING,
+        position = 12
+    )
+    default String blockedWords()
+    {
+        return "";
+    }
 
     @ConfigItem(
         keyName = "lodestar",

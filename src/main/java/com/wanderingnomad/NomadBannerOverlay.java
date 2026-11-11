@@ -70,6 +70,8 @@ class NomadBannerOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
+        // Photo mode hides the HUD; banners wait until it's off.
+        if (NomadPlugin.photoMode) return null;
         Moments.Banner b;
         long age;
         synchronized (this)

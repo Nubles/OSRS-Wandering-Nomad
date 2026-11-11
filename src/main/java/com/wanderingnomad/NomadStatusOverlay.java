@@ -7,8 +7,10 @@ import com.wanderingnomad.sim.Tile;
 import com.wanderingnomad.sim.Waystone;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics2D;
 import javax.inject.Inject;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.ComponentConstants;
@@ -43,11 +45,16 @@ class NomadStatusOverlay extends OverlayPanel
     public Dimension render(Graphics2D graphics)
     {
         NomadSim sim = plugin.sim();
-        if (sim == null || !plugin.config().statusBox()) return null;
+        if (sim == null || !plugin.config().statusBox() || NomadPlugin.photoMode) return null;
         Circle c = sim.bound();
         Tile at = plugin.surface();
+        // Streamer layout: the key numbers big enough to read on a stream. Backseat shield: no countdowns here.
+        Font big = plugin.config().streamerLayout() ? FontManager.getRunescapeBoldFont().deriveFont(22f) : null;
+        boolean shielded = plugin.shielded();
+        StreamDesk desk = plugin.desk();
+        String voted = desk == null ? null : desk.votedName();
         panelComponent.getChildren().add(TitleComponent.builder()
-            .text(c.name() + " circle").color(NomadPlugin.colour(c, 255)).build());
+            .text((c.isMain() && voted != null ? voted : c.name()) + " circle").color(NomadPlugin.colour(c, 255)).build());
 
         String state;
         Color colour;
@@ -73,13 +80,13 @@ class NomadStatusOverlay extends OverlayPanel
             state = "Inside";
             colour = INSIDE;
         }
-        panelComponent.getChildren().add(LineComponent.builder().left("Status").right(state).rightColor(colour).build());
+        panelComponent.getChildren().add(LineComponent.builder().left("Status").right(state).rightColor(colour).rightFont(big).build());
         if (at != null)
         {
             // Either half of a forked Main counts, so the nearest edge is the one you're inside.
             double toEdge = NomadPlugin.toEdge(sim, at.x, at.y);
             String edge = toEdge >= 0 ? (int) Math.floor(toEdge) + " tiles" : (int) Math.ceil(-toEdge) + " out";
-            panelComponent.getChildren().add(LineComponent.builder().left("To edge").right(edge).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("To edge").right(edge).rightFont(big).build());
         }
         if (sim.forkWarning() > 0)
         {
@@ -103,7 +110,7 @@ class NomadStatusOverlay extends OverlayPanel
                 .left(sim.stormWarning() > 0 ? kind + " in " + sim.stormWarning() + " min" : kind)
                 .right(sim.stormWarning() > 0 ? "over Main" : sim.stormLeft() + " min left").rightColor(STORM).build());
         }
-        Radar radar = plugin.radar();
+        Radar radar = shielded ? null : plugin.radar();
         boolean hud = plugin.config().hudExtras();
         // A fixed width, so the box doesn't change size as names and numbers come and go.
         panelComponent.setPreferredSize(new Dimension(hud ? WIDTH : ComponentConstants.STANDARD_WIDTH, 0));
@@ -111,7 +118,8 @@ class NomadStatusOverlay extends OverlayPanel
         {
             Color urgency = urgency(radar.edgeIn);
             panelComponent.getChildren().add(LineComponent.builder().left("Edge reaches you")
-                .right("~" + radar.edgeIn + " min").rightColor(hud ? urgency : radar.edgeIn <= NomadPlugin.EDGE_WARNING ? OUTSIDE : STRANDED).build());
+                .right("~" + radar.edgeIn + " min").rightColor(hud ? urgency : radar.edgeIn <= NomadPlugin.EDGE_WARNING ? OUTSIDE : STRANDED)
+                .rightFont(big).build());
             if (hud)
             {
                 // Empties as the edge closes in, shifting from calm to urgent.
@@ -151,7 +159,7 @@ class NomadStatusOverlay extends OverlayPanel
             if (sim.tide() != null) chips.add("Tide");
             if (!chips.isEmpty()) panelComponent.getChildren().add(chips);
         }
-        panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").build());
+        panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").rightFont(big).build());
         for (int j = 0; j < sim.circles().size(); j++)
         {
             Circle o = sim.circles().get(j);

@@ -60,6 +60,19 @@ What works:
 - **Forecast:** the website's 1, 3 and 6 hour cones on the in-game world map, for Main and your circle. Like the website's, it imagines 40 futures with made-up dice, so it shows where a circle could get to, never where it will. It runs off the client thread every 15 played minutes.
 - **Rule guard:** XP, loot, ground pickups and kills while you're outside your circle are noted in the run log and the sidebar. The rules allow fighting back and travelling home, so these are notes for the run's record, not verdicts, and nothing is ever blocked.
 
+### Streaming
+
+Everything here frames the run for streams and videos; nothing changes a rule. It lives in `stream/` (pure rules, with tests) and `StreamDesk.java`, under the **Streaming** settings section and the sidebar's **Streaming...** menu.
+
+- **Episodes:** each play session is an episode. A break under 30 minutes carries it on; a longer one ends it, and the next login opens with **Previously on** (the last episode's three biggest moments and the thread it left hanging). At logout the sidebar shows **Next time on**: what the circles will do in your next session's first 20 minutes if you do nothing.
+- **Session prophecy:** each episode opens with one cryptic line read from the run's own future, true if you follow the circle ("Salt water will carry the circle before the night is out"). It's revealed when the episode ends, or stamped **Fate defied**.
+- **Start recording** times the chapters from now and stamps one **stake** from what the run already shows (a fork's warning, a storm brewing, a waystone's time left, an open dare, the edge's countdown, the Forecast's odds). **Wrap the episode** reveals the prophecy, settles the stake and gives a **drama score** out of 100 with its breakdown, ranked against every episode.
+- **Close calls** (the edge within a tile, moving toward you, then turning away), **Echoes** (back in a kingdom after 10+ hours, a banner recalls what happened there), and **Run wrapped** (every 100 hours, six stat cards picked from a pool of 30, saved as a picture).
+- **Chapters:** YouTube chapters, a marker list and an EDL for your editor, from the episode's biggest moments, with a hotkey to mark your own.
+- **Narrator captions** (off by default): a lower third in a saga, dry or hushed voice, never repeating a line within 20 played hours.
+- **Chat paints the wall:** paste chat's `!colour`, `!tone` and `!name` votes to set the edge colour, narrator and circle name for the episode. **Viewer flags:** paste chat's `!flag 3222 3218` or `!flag Varrock Square` lines; when the circle takes a flag in, a banner names its viewer. Both are pasted, so no relay is needed, and names are filtered.
+- **Photo mode** (a hotkey) hides the Nomad HUD and turns the glow and shade up full. **Backseat shield** moves the Radar's countdowns and the Forecast into the sidebar. **Dead-air cards** (off by default) offer a talking point in the sidebar after 15 quiet minutes. **Stream feed** (off by default) writes text files for OBS to `.runelite/nomad-uim/stream`, and **Streamer layout** enlarges the status box's key numbers.
+
 Not yet:
 
 - Campfire (the fourth-circle boon), Forks, Passport, the hash-chained run log and Season mode.
