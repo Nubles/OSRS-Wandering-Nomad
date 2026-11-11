@@ -151,6 +151,26 @@ public final class Geography
         return pockets().wayOut(x, y, lookahead);
     }
 
+    private static Harbours harbours;
+
+    private static Harbours harbours()
+    {
+        if (harbours == null) harbours = new Harbours(WORLD);
+        return harbours;
+    }
+
+    /** Cells of walking over land from a tile to a port, or -1 if no walk leads there. */
+    public static int harbourSteps(Port p, double x, double y)
+    {
+        return harbours().steps(p, x, y);
+    }
+
+    /** A point a few cells along the shortest walk over land to a port, as {x, y}; null if no walk leads there. */
+    public static double[] wayTo(Port p, double x, double y, int lookahead)
+    {
+        return harbours().wayTo(p, x, y, lookahead);
+    }
+
     /** Any land the Main circle may drift over, islands included. */
     public static boolean onLand(double x, double y)
     {

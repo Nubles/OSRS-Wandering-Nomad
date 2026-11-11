@@ -1,4 +1,4 @@
-import { dist, Geography, LUMBRIDGE, Tile, VOLCANO } from './geography';
+import { dist, Geography, LUMBRIDGE, Port, Tile, VOLCANO } from './geography';
 import { LANDMARKS, Landmark } from './landmarks';
 import { Rng } from './rng';
 
@@ -73,10 +73,16 @@ export const RUDDER = 'Rudder';
 export const BRIDGE = 'Bridge';
 export const LANTERN = 'Lantern';
 export const CALM = 'Calm';
+/** Legendary boons, as in NomadSim.java. */
+export const CROWN = "Wanderer's Crown";
+export const HELMSMAN = 'Helmsman';
+export const GATHERING = 'Gathering';
 export const COMMON = 'common';
 export const RARE = 'rare';
+export const LEGENDARY = 'legendary';
 const COMMON_BOONS = [EXPAND, TAILWIND, ANCHOR, LANTERN, CALM];
 const RARE_BOONS = [RUDDER, BRIDGE];
+const LEGENDARY_BOONS = [CROWN, HELMSMAN, GATHERING];
 export const BOONS_HELD = 3;
 export const CLAIM_REACH = 3;
 const EXPAND_TILES = 12;
@@ -90,6 +96,33 @@ export const BRIDGE_REACH = 60;
 /** Calm keeps forks and storms off Main for this long, and breaks one that's brewing or blowing. */
 export const CALM_MINUTES = 180;
 const LASTING = 30;
+/** Ripening, pilgrim stones, the Crown, Gathering, comets, Homeward, Reunion and Castaway, as in NomadSim.java. */
+export const RIPEN = 30;
+const PILGRIM_CHANCE = 0.25;
+/** Ports of call, as in NomadSim.java. */
+const PORT_CALL_CHANCE = 0.25;
+const PORT_CALL_RANGE = 500;
+const PORT_PULL = 0.5;
+const PORT_LOOKAHEAD = 8;
+const SHORE_LEAVE = 180;
+export const PILGRIM_MINUTES = 60;
+export const CROWN_MINUTES = 60;
+const CROWN_SPEED = 10;
+export const GATHER_MINUTES = 60;
+const GATHER_PULL = 0.12;
+const COMET_EVERY_MIN = 900;
+const COMET_EVERY_MAX = 1500;
+export const COMET_WARN = 20;
+export const COMET_MINUTES = 30;
+export const COMET_RADIUS = 6;
+const COMET_SPEED = 20;
+const COMET_RETRY = 30;
+export const HOMEWARD_COOLDOWN = 360;
+const HOMEWARD_RADIUS = 12;
+export const GHOST_MINUTES = 360;
+const GHOST_DRIFT = DRIFT / 2;
+const GHOST_APART = 10;
+const CASTAWAY_CHANCE = 0.1;
 /** A fork comes a random 30 minutes to 4 played hours after the last one parted, with a 10-minute warning. */
 const FORK_EVERY_MIN = 30;
 const FORK_EVERY_MAX = 240;
@@ -155,6 +188,19 @@ export interface Voyage {
   to: string;
   tx: number;
   ty: number;
+  /** Castaway: the port a storm at sea washes it up at instead, once it's this close to where it meant to go. */
+  wreck?: string;
+  wreckAt?: number;
+}
+
+/** A comet streaking across the map, as in Comet.java. */
+export interface Comet {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  warn: number;
+  left: number;
 }
 
 export interface CircleState {
@@ -196,6 +242,12 @@ export interface CircleState {
   expandLeft: number;
   tailwindLeft: number;
   anchorLeft: number;
+  /** Minutes left on the Wanderer's Crown, while this circle follows you. */
+  crownLeft: number;
+  /** The port Main has set course for, to board a boat when it gets there. */
+  port?: string;
+  /** Minutes after docking before Main boards a boat again, unless a Helmsman sends it. */
+  shore: number;
 }
 
 /** A waystone holding one boon at a landmark inside a circle (by index). */
@@ -205,6 +257,12 @@ export interface Waystone {
   y: number;
   circle: number;
   boon: string;
+  /** common, rare or legendary; missing in runs saved before tiers were kept. */
+  tier?: string;
+  /** Played minutes since it rose. */
+  age: number;
+  /** Rises just outside your circle and can be claimed from outside it. */
+  pilgrim: boolean;
 }
 
 export interface SimState {
@@ -245,6 +303,17 @@ export interface SimState {
   stormLeft: number;
   stormKind: number;
   squallFrom: number;
+  ripened: number;
+  comet?: Comet;
+  comets: number;
+  nextComet: number;
+  homewardLeft: number;
+  ghost?: CircleState;
+  ghostLeft: number;
+  ghostApart: boolean;
+  voyages: number;
+  helmsTo?: string;
+  gatherLeft: number;
 }
 
 export const contains = (c: CircleState, x: number, y: number) => dist(x - c.x, y - c.y) <= c.radius;
@@ -267,6 +336,9 @@ export class NomadSim {
       c.expandLeft ??= 0;
       c.tailwindLeft ??= 0;
       c.anchorLeft ??= 0;
+      c.crownLeft ??= 0;
+      c.shore ??= 0;
+      if (c.voyage) c.voyage.wreckAt ??= 0;
     }
     // And runs saved before waystones.
     state.waystones ??= [];
@@ -292,6 +364,27 @@ export class NomadSim {
     state.stormLeft ??= 0;
     state.stormKind ??= 0;
     state.squallFrom ??= 0;
+    // And runs saved before comets, ghosts, Homeward and legendary boons.
+    for (const w of state.waystones) {
+      w.age ??= 0;
+      w.pilgrim ??= false;
+    }
+    if (state.twin) {
+      state.twin.crownLeft ??= 0;
+      state.twin.shore ??= 0;
+    }
+    if (state.ghost) {
+      state.ghost.crownLeft ??= 0;
+      state.ghost.shore ??= 0;
+    }
+    state.ripened ??= 0;
+    state.comets ??= 0;
+    state.nextComet ??= 0;
+    state.homewardLeft ??= 0;
+    state.ghostLeft ??= 0;
+    state.ghostApart ??= false;
+    state.voyages ??= 0;
+    state.gatherLeft ??= 0;
   }
 
   static start(geo: Geography, seed: number): NomadSim {
@@ -301,7 +394,7 @@ export class NomadSim {
       x, y, heading, radius: start, radiusTarget: start, radiusMin: min, radiusMax: max,
       pulse: 0, tiers: 0, atEdge: false, waiting: false, touchingYours: false,
       mood: 0, moodLeft: 0, turn: 0, bend: 0, swing: 0, speed: 1, wx: 0, wy: 0, avoid: 0,
-      expand: 0, expandLeft: 0, tailwindLeft: 0, anchorLeft: 0,
+      expand: 0, expandLeft: 0, tailwindLeft: 0, anchorLeft: 0, crownLeft: 0, shore: 0,
     });
     circles.push(base(LUMBRIDGE.x, LUMBRIDGE.y, rng.next() * Math.PI * 2, MAIN_START, MAIN_MIN, MAIN_MAX));
     for (const r of geo.regions) {
@@ -312,6 +405,7 @@ export class NomadSim {
       waystones: [], boons: [], pending: [], summons: 0, bridgeLeft: 0, calmLeft: 0, lanternX: 0, lanternY: 0,
       forks: 0, nextFork: 0, lastBig: 0, forkWarn: 0, forkAxis: 0, forkAge: 0,
       storms: 0, nextStorm: 0, stormWarn: 0, stormLeft: 0, stormKind: 0, squallFrom: 0,
+      ripened: 0, comets: 0, nextComet: 0, homewardLeft: 0, ghostLeft: 0, ghostApart: false, voyages: 0, gatherLeft: 0,
     });
   }
 
@@ -385,7 +479,7 @@ export class NomadSim {
 
   /** A milestone summons a waystone of the tier; it rises now, or once a landmark drifts into reach. */
   summon(tier: string): string | null {
-    this.state.pending.push(tier === RARE ? RARE : COMMON);
+    this.state.pending.push(tier === RARE || tier === LEGENDARY ? tier : COMMON);
     const log: string[] = [];
     this.placePending(log);
     return log.length ? log[0] : null;
@@ -439,11 +533,89 @@ export class NomadSim {
       case CALM:
         line = this.calm();
         break;
+      case CROWN:
+        if (c.voyage) return null;
+        c.crownLeft = CROWN_MINUTES;
+        c.anchorLeft = 0;
+        c.pulse = 45;
+        line = "Wanderer's Crown: for an hour your circle follows you wherever you walk.";
+        break;
+      case GATHERING:
+        s.gatherLeft = GATHER_MINUTES;
+        line = "Gathering: for an hour every kingdom's circle turns toward the Main circle.";
+        break;
       default:
         return null;
     }
     s.boons.splice(index, 1);
     return line;
+  }
+
+  /** Helmsman: Main's next voyage goes to the port you pick. As in NomadSim.java. */
+  useHelmsman(index: number, port: string): string | null {
+    const s = this.state;
+    if (index < 0 || index >= s.boons.length || s.boons[index] !== HELMSMAN) return null;
+    if (!this.helmsmanPorts().includes(port)) return null;
+    s.helmsTo = port;
+    s.boons.splice(index, 1);
+    const m = this.main;
+    const near = m.voyage ? null : this.nearestPort(m, port, Number.MAX_VALUE);
+    if (!near) return `Helmsman: the next time a port is inside the Main circle, it sets sail for ${port}.`;
+    setCourse(m, near);
+    return `Helmsman: the Main circle sets course for ${near.name}, and will sail from there for ${port}.`;
+  }
+
+  /** The ports a Helmsman can send Main to. */
+  helmsmanPorts(): string[] {
+    const out: string[] = [];
+    for (const p of this.geo.ports) {
+      for (const to of this.geo.routesFrom(p.name, this.dockLevel(), this.state.questsMissing ?? [])) if (!out.includes(to)) out.push(to);
+    }
+    return out;
+  }
+
+  private dockLevel(): number {
+    const s = this.state;
+    return !s.sailingUnlocked ? 0 : s.sailingLevel && s.sailingLevel > 0 ? s.sailingLevel : 99;
+  }
+
+  /** Homeward: a Home Teleport from inside Main carries Main with you. As in NomadSim.java. */
+  homeward(from: Tile | null, to: Tile | null): string | null {
+    const s = this.state;
+    if (to == null || s.bound !== MAIN) return null;
+    if (from != null && !this.inMain(from.x, from.y)) return null;
+    if (s.homewardLeft > 0) return `Homeward is still gathering itself (${s.homewardLeft} more minutes), so the Main circle stayed behind.`;
+    if (!this.geo.onLand(to.x, to.y)) return null;
+    const m = this.main;
+    const collapsed = s.twin || s.forkWarn > 0 ? ' The fork it was in collapsed.' : '';
+    if (s.twin) {
+      delete s.twin;
+      s.forkAge = 0;
+      s.forks++;
+      s.nextFork = 0;
+    }
+    if (s.forkWarn > 0) {
+      s.forkWarn = 0;
+      s.nextFork = s.minutes + FORK_RETRY;
+    }
+    delete m.voyage;
+    m.x = to.x;
+    m.y = to.y;
+    m.radius = clamp(HOMEWARD_RADIUS, m.radiusMin, m.radiusMax);
+    m.radiusTarget = m.radius;
+    m.moodLeft = 0;
+    m.wx = m.wy = 0;
+    m.turn = 0;
+    m.pulse = 45;
+    s.homewardLeft = HOMEWARD_COOLDOWN;
+    s.outside = false;
+    s.lastBig = s.minutes;
+    return `Homeward! The Main circle followed your Home Teleport and stands around you now, shrunk to ${javaRound(m.radius)} tiles. It can do that again in 6 played hours.${collapsed}`;
+  }
+
+  /** Testing only: the next comet is announced at the next minute. */
+  cometSoonForTesting() {
+    if (!this.state.comet) this.state.nextComet = Math.max(1, this.state.minutes);
   }
 
   /** Calm: no fork or storm over Main for 3 hours; a fork's warning or a storm under way breaks off now. As in NomadSim.java. */
@@ -536,16 +708,20 @@ export class NomadSim {
     this.circles.forEach((c, j) => {
       const yours = j === s.bound;
       const pulled = yours && stranded && !!c.regionId;
+      const gather = s.gatherLeft > 0 && !!c.regionId;
       const lean = yours && !out && player != null && dist(player.x - c.x, player.y - c.y) >= c.radius - LEAN_BAND ? player : null;
       const speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
         * (j === MAIN && s.stormLeft > 0 && s.stormKind === GALE ? GALE_SPEEDUP : 1);
       if (j === MAIN && s.twin) part(c, s.twin, this.geo);
-      else this.move(c, rng, speedup, yours, pulled ? main : null, pulled ? STRANDED_PULL : 0, lean, log);
+      else if (yours && c.crownLeft > 0 && player != null && !c.voyage) this.follow(c, player);
+      else this.move(c, rng, speedup, yours, pulled || gather ? main : null, pulled ? STRANDED_PULL : gather ? GATHER_PULL : 0, lean, log);
     });
     s.minutes++;
     this.tickBoons(log);
     this.fork(player, log);
     this.storm(log);
+    this.ghost(log);
+    this.comet(player, log);
 
     if (s.minutes % 5 === 0) {
       const yours = this.bound;
@@ -580,8 +756,118 @@ export class NomadSim {
         if (yours) log.push(`Expand wore off: your circle shrank back by ${EXPAND_TILES} tiles.`);
       }
     });
+    this.circles.forEach((c, j) => {
+      if (c.crownLeft > 0 && --c.crownLeft === 0 && j === s.bound) log.push("The Wanderer's Crown has dimmed: your circle wanders on its own again.");
+    });
     if (s.bridgeLeft > 0 && --s.bridgeLeft === 0) log.push('The Bridge closed.');
     if (s.calmLeft > 0 && --s.calmLeft === 0) log.push('The Calm has lifted: forks and storms can come again.');
+    if (s.gatherLeft > 0 && --s.gatherLeft === 0) log.push("The Gathering is over: the kingdoms' circles go their own ways.");
+    if (s.homewardLeft > 0 && --s.homewardLeft === 0) log.push('Homeward is ready again: a Home Teleport from inside Main will carry it with you.');
+  }
+
+  /** The Wanderer's Crown: the circle's middle walks toward you, up to 10 tiles a minute. */
+  private follow(c: CircleState, player: Tile) {
+    const d = dist(player.x - c.x, player.y - c.y);
+    if (d < 1) return;
+    const step = Math.min(CROWN_SPEED, d);
+    const nx = c.x + ((player.x - c.x) / d) * step;
+    const ny = c.y + ((player.y - c.y) / d) * step;
+    const region = c.regionId ? this.geo.region(c.regionId)! : null;
+    const ok = region ? this.geo.inRegion(region, nx, ny) : this.geo.onLand(nx, ny);
+    if (!ok) return;
+    c.x = nx;
+    c.y = ny;
+    c.heading = Math.atan2(player.y - c.y, player.x - c.x);
+  }
+
+  /** Reunion: the lost half drifts on and can merge back into Main. As in NomadSim.java. */
+  private ghost(log: string[]) {
+    const s = this.state;
+    const g = s.ghost;
+    if (!g) return;
+    if (--s.ghostLeft <= 0) {
+      delete s.ghost;
+      s.ghostApart = false;
+      log.push('The lost half of the last fork has faded for good.');
+      return;
+    }
+    for (const turn of [0, 0.5, -0.5, 1, -1, 2, -2, Math.PI]) {
+      const nx = g.x + Math.cos(g.heading + turn) * GHOST_DRIFT;
+      const ny = g.y + Math.sin(g.heading + turn) * GHOST_DRIFT;
+      if (!this.geo.onLand(nx, ny)) continue;
+      g.x = nx;
+      g.y = ny;
+      g.heading += turn;
+      break;
+    }
+    const m = this.main;
+    if (s.twin || m.voyage) return;
+    const gp = gap(m, g);
+    if (gp >= GHOST_APART) s.ghostApart = true;
+    if (!s.ghostApart || gp > 0) return;
+    const r = Math.min(m.radiusMax, m.radius + g.radius / 2);
+    log.push(`Reunion! The lost half drifted back into the Main circle and merged with it. Main grows to ${javaRound(r)} tiles.`);
+    m.radius = r;
+    m.radiusTarget = r;
+    m.pulse = 45;
+    delete s.ghost;
+    s.ghostApart = false;
+    s.ghostLeft = 0;
+    s.lastBig = s.minutes;
+  }
+
+  /** Schedules, announces and flies comets. As in NomadSim.java. */
+  private comet(player: Tile | null, log: string[]) {
+    const s = this.state;
+    const k = s.comet;
+    if (k) {
+      if (k.warn > 0) {
+        if (--k.warn === 0) log.push('The comet is streaking across the sky now. Stand in its path!');
+        return;
+      }
+      const ox = k.x;
+      const oy = k.y;
+      k.x += k.dx;
+      k.y += k.dy;
+      k.left--;
+      if (player != null && segmentDist(player.x, player.y, ox, oy, k.x, k.y) <= COMET_RADIUS) {
+        delete s.comet;
+        s.comets++;
+        s.nextComet = 0;
+        s.lastBig = s.minutes;
+        s.pending.push(RARE);
+        log.push('You caught the comet! A rare waystone answers its call.');
+        return;
+      }
+      if (k.left > 0) return;
+      delete s.comet;
+      s.comets++;
+      s.nextComet = 0;
+      log.push('The comet passed over and was gone.');
+      return;
+    }
+    if (s.nextComet <= 0) {
+      const dice = new Rng(s.seed ^ Math.imul(s.comets + 1, 0x5bd1e995 | 0));
+      s.nextComet = s.minutes + COMET_EVERY_MIN + Math.trunc(dice.next() * (COMET_EVERY_MAX - COMET_EVERY_MIN));
+    }
+    if (s.minutes < s.nextComet) return;
+    const m = this.main;
+    if (m.voyage) {
+      s.nextComet = s.minutes + COMET_RETRY;
+      return;
+    }
+    const dice = new Rng(s.seed ^ Math.imul(s.comets + 1, 0x1b873593));
+    const a = round(dice.next() * Math.PI * 2 * 1e4) / 1e4;
+    const half = (COMET_SPEED * COMET_MINUTES) / 2.0;
+    s.comet = {
+      x: m.x - Math.cos(a) * half,
+      y: m.y - Math.sin(a) * half,
+      dx: Math.cos(a) * COMET_SPEED,
+      dy: Math.sin(a) * COMET_SPEED,
+      warn: COMET_WARN,
+      left: COMET_MINUTES,
+    };
+    log.push(`A comet is coming! In ${COMET_WARN} minutes it streaks ${compass(a)} across the map, straight through the Main circle. Stand in its path to catch it.`);
   }
 
   private waystones(player: Tile | null, log: string[]) {
@@ -589,7 +875,8 @@ export class NomadSim {
     if (player != null && s.boons.length < BOONS_HELD) {
       for (let i = 0; i < s.waystones.length; i++) {
         const w = s.waystones[i];
-        if (w.circle !== s.bound || !contains(this.bound, player.x, player.y)) continue;
+        const anywhere = w.pilgrim || w.tier === LEGENDARY;
+        if (w.circle !== s.bound || (!anywhere && !contains(this.bound, player.x, player.y))) continue;
         if (dist(player.x - w.x, player.y - w.y) > CLAIM_REACH) continue;
         s.waystones.splice(i, 1);
         s.boons.push(w.boon);
@@ -599,9 +886,25 @@ export class NomadSim {
     }
     for (let i = s.waystones.length - 1; i >= 0; i--) {
       const w = s.waystones[i];
+      if (w.tier === LEGENDARY) continue;
+      if (w.pilgrim) {
+        if (w.age < PILGRIM_MINUTES) continue;
+        s.waystones.splice(i, 1);
+        log.push(`The pilgrim stone at ${w.landmark} sank back into the ground.`);
+        continue;
+      }
       if (contains(this.circles[w.circle], w.x, w.y)) continue;
       s.waystones.splice(i, 1);
       log.push(`The waystone at ${w.landmark} faded: its circle drifted off it.`);
+    }
+    for (const w of s.waystones) {
+      w.age++;
+      if (w.pilgrim || w.tier !== COMMON || w.age !== RIPEN) continue;
+      const dice = new Rng(s.seed ^ Math.imul(s.ripened + 1, 0x68e31da4));
+      s.ripened++;
+      w.tier = RARE;
+      w.boon = RARE_BOONS[Math.floor(dice.next() * RARE_BOONS.length)];
+      log.push(`The waystone at ${w.landmark} ripened: it holds ${w.boon} (rare) now.`);
     }
     this.placePending(log);
   }
@@ -630,21 +933,43 @@ export class NomadSim {
       });
       if (nearest >= 0) reach.push(nearest);
     }
+    // A legendary stone rises only in your own circle, at its landmark furthest from the middle.
+    if (tier === LEGENDARY) reach.splice(0, reach.length, s.bound);
+    const taken = (l: Landmark) => s.waystones.some((w) => w.x === l.x && w.y === l.y);
     let options: [number, number][] = [];
     for (const j of reach) {
       const c = this.circles[j];
       LANDMARKS.forEach((l, k) => {
-        if (!contains(c, l.x, l.y) || s.waystones.some((w) => w.x === l.x && w.y === l.y)) return;
+        if (!contains(c, l.x, l.y) || taken(l)) return;
         options.push([k, j]);
       });
     }
-    if (!options.length) return null;
+    // Pilgrim spots: landmarks just outside your circle, no further past its edge than its radius.
+    const pilgrims: [number, number][] = [];
+    if (tier === RARE) {
+      const c = this.bound;
+      LANDMARKS.forEach((l, k) => {
+        const d = dist(l.x - c.x, l.y - c.y);
+        if (d <= c.radius + CLAIM_REACH || d > c.radius * 2 || taken(l)) return;
+        pilgrims.push([k, s.bound]);
+      });
+    }
+    if (!options.length && !pilgrims.length) return null;
+    if (tier === LEGENDARY) return this.placeLegendary(options);
+    const rng = new Rng(s.seed ^ Math.imul(s.summons + 1, 0x9e3779b9 | 0));
+    if (pilgrims.length && (!options.length || rng.next() < PILGRIM_CHANCE)) {
+      s.summons++;
+      const [k, j] = pilgrims[Math.floor(rng.next() * pilgrims.length)];
+      const l = LANDMARKS[k];
+      const w = this.stone(l, j, RARE, RARE_BOONS[Math.floor(rng.next() * RARE_BOONS.length)]);
+      w.pilgrim = true;
+      return `A pilgrim stone rose at ${l.name}, just outside your circle, holding ${w.boon} (rare). Step out to claim it within the hour.`;
+    }
     const all = options;
     const lasting = options.filter(([k, j]) => minutesLeft(this.circles[j], LANDMARKS[k].x, LANDMARKS[k].y) >= LASTING);
     if (lasting.length) options = lasting;
     // A lit Lantern takes the lasting landmark nearest it in your circle, else the nearest at all.
     const lit = s.lanternX !== 0 || s.lanternY !== 0 ? this.nearestLantern(options) ?? this.nearestLantern(all) : null;
-    const rng = new Rng(s.seed ^ Math.imul(s.summons + 1, 0x9e3779b9 | 0));
     s.summons++;
     let [k, j] = options[Math.floor(rng.next() * options.length)];
     if (lit) {
@@ -654,9 +979,36 @@ export class NomadSim {
     }
     const pool = tier === RARE ? RARE_BOONS : COMMON_BOONS;
     const l: Landmark = LANDMARKS[k];
-    const w: Waystone = { landmark: l.name, x: l.x, y: l.y, circle: j, boon: pool[Math.floor(rng.next() * pool.length)] };
-    s.waystones.push(w);
+    const w = this.stone(l, j, tier === RARE ? RARE : COMMON, pool[Math.floor(rng.next() * pool.length)]);
     return `A waystone rose at ${l.name}${j === s.bound ? ' in your circle' : ` in ${this.name(this.circles[j])}`}, holding ${w.boon} (${tier === RARE ? 'rare' : 'common'}).`;
+  }
+
+  /** A legendary stone: the landmark in your circle furthest from its middle. It never fades. */
+  private placeLegendary(options: [number, number][]): string | null {
+    if (!options.length) return null;
+    const s = this.state;
+    const c = this.bound;
+    let best = options[0];
+    let bestD = -1;
+    for (const o of options) {
+      const l = LANDMARKS[o[0]];
+      const d = dist(l.x - c.x, l.y - c.y);
+      if (d > bestD) {
+        best = o;
+        bestD = d;
+      }
+    }
+    const rng = new Rng(s.seed ^ Math.imul(s.summons + 1, 0x9e3779b9 | 0));
+    s.summons++;
+    const l = LANDMARKS[best[0]];
+    const w = this.stone(l, best[1], LEGENDARY, LEGENDARY_BOONS[Math.floor(rng.next() * LEGENDARY_BOONS.length)]);
+    return `A legendary waystone rose at ${l.name}, holding the ${w.boon}. It never fades.`;
+  }
+
+  private stone(l: Landmark, circle: number, tier: string, boon: string): Waystone {
+    const w: Waystone = { landmark: l.name, x: l.x, y: l.y, circle, boon, tier, age: 0, pilgrim: false };
+    this.state.waystones.push(w);
+    return w;
   }
 
   /** The option in your circle nearest the lit Lantern, or null if none is in your circle. */
@@ -685,12 +1037,22 @@ export class NomadSim {
       // Anchored: it holds its place, voyage and all, and only breathes.
     } else if (c.voyage) {
       const v = c.voyage;
+      if (v.wreck != null && dist(v.tx - c.x, v.ty - c.y) <= (v.wreckAt ?? 0)) {
+        const w = this.geo.port(v.wreck)!;
+        log.push(`Castaway! A storm at sea blew the Main circle off course. It will wash up at ${w.name} instead of ${v.to}.`);
+        v.to = w.name;
+        v.tx = w.tile.x;
+        v.ty = w.tile.y;
+        delete v.wreck;
+        v.wreckAt = 0;
+      }
       const d = dist(v.tx - c.x, v.ty - c.y);
       if (d <= SAIL_SPEED) {
         c.x = v.tx;
         c.y = v.ty;
         if (yours) log.push(`Your circle docked at ${v.to}.`);
         delete c.voyage;
+        c.shore = SHORE_LEAVE;
         c.heading = rng.next() * Math.PI * 2;
         c.turn = 0;
         c.moodLeft = 0;
@@ -699,27 +1061,39 @@ export class NomadSim {
         c.y += ((v.ty - c.y) / d) * SAIL_SPEED;
       }
     } else {
+      if (c.shore > 0) c.shore--;
       if (c.moodLeft <= 0) this.startMood(c, t, rng, allowed, yours, log);
       c.moodLeft--;
       const m = c.mood;
       // In a peninsula or cove, Main forgets its mood and keeps a steady pace until it's out.
-      const depth = region ? 0 : geo.pocketDepth(c.x, c.y);
+      // Bound for a port, it goes into the cove the port sits in, and holds its course.
+      const depth = region || c.port != null ? 0 : geo.pocketDepth(c.x, c.y);
       const cramped = depth >= CRAMPED_DEPTH;
       const pocket = depth >= POCKET_DEPTH;
+      const steady = cramped || c.port != null;
 
-      const target = cramped ? 0 : m === LOOP ? c.bend : m === MEANDER ? c.bend * Math.sin(c.swing * MEANDER_STEP) : 0;
+      const target = steady ? 0 : m === LOOP ? c.bend : m === MEANDER ? c.bend * Math.sin(c.swing * MEANDER_STEP) : 0;
       c.swing++;
       c.turn += (target - c.turn) * TURN_EASE + (rng.next() - 0.5) * 2 * MOOD_WOBBLE[m];
       c.turn = clamp(c.turn, -TURN_MAX, TURN_MAX);
       c.heading += c.turn;
-      c.speed += ((cramped ? 1 : MOOD_SPEED[m]) - c.speed) * SPEED_EASE;
+      c.speed += ((steady ? 1 : MOOD_SPEED[m]) - c.speed) * SPEED_EASE;
 
       if (c.wx !== 0 && dist(c.wx - c.x, c.wy - c.y) < c.radius / 2) {
         // Arrived: it'll pick a new mood, and somewhere new to head for, next minute.
         c.wx = c.wy = 0;
         c.moodLeft = 0;
+        delete c.port;
       }
-      if (c.wx !== 0 && MOOD_PULL[m] > 0 && !cramped) steer(c, c.wx, c.wy, MOOD_PULL[m]);
+      if (c.port != null) {
+        // Bound for a port: it follows the walk there over land, round coasts and into coves.
+        const way = geo.wayTo(geo.port(c.port)!, c.x, c.y, PORT_LOOKAHEAD);
+        if (way) steer(c, way.x, way.y, PORT_PULL);
+        else {
+          delete c.port;
+          c.wx = c.wy = 0;
+        }
+      } else if (c.wx !== 0 && MOOD_PULL[m] > 0 && !cramped) steer(c, c.wx, c.wy, MOOD_PULL[m]);
       if (toward) steer(c, toward.x, toward.y, pull);
       if (pocket) {
         const out = geo.wayOut(c.x, c.y, 2)!;
@@ -733,7 +1107,7 @@ export class NomadSim {
 
       const v = (c.regionId ? REGION_DRIFT : DRIFT) * t.speed * c.speed * speedup;
       // Feel the way ahead and bend away from a coast or border before reaching it.
-      if (!toward && !pocket && !feelClear(c, c.heading, v, allowed)) {
+      if (!toward && !pocket && c.port == null && !feelClear(c, c.heading, v, allowed)) {
         const left = feelClear(c, c.heading + FEEL_SPLAY, v, allowed);
         const right = feelClear(c, c.heading - FEEL_SPLAY, v, allowed);
         const side = left === right ? (c.turn >= 0 ? 1 : -1) : left ? 1 : -1;
@@ -743,6 +1117,7 @@ export class NomadSim {
           c.wx = c.wy = 0;
           c.moodLeft = 0;
           c.avoid = 0;
+          delete c.port;
         }
       } else {
         c.avoid = 0;
@@ -773,7 +1148,7 @@ export class NomadSim {
           }
           if (yours && !waitingForMain && !c.atEdge) log.push(`Your circle reached the ${region.name} border and turned back.`);
           if (yours && waitingForMain) c.waiting = true;
-        } else if (yours && !c.atEdge) {
+        } else if (yours && !c.atEdge && c.port == null) {
           log.push('Your circle hit the coast and turned back inland.');
         }
         c.atEdge = true;
@@ -829,6 +1204,18 @@ export class NomadSim {
     }
     const range = c.regionId ? REGION_WAY : MAIN_WAY;
     const island = !c.regionId && this.geo.pocketDepth(c.x, c.y) < 0;
+    const s = this.state;
+    if (!c.regionId && (s.helmsTo != null || (c.shore <= 0 && this.geo.pocketDepth(c.x, c.y) === 0))) {
+      // A port of call, from open land only and on its own dice. A Helmsman always heads for the nearest port.
+      const call = new Rng(s.seed ^ Math.imul(s.minutes + 1, 0x2f0b3a49));
+      const p = s.helmsTo != null ? this.nearestPort(c, s.helmsTo, Number.MAX_VALUE)
+        : call.next() < PORT_CALL_CHANCE ? this.nearestPort(c, null, PORT_CALL_RANGE) : null;
+      if (p) {
+        setCourse(c, p);
+        if (yours) log.push(`Your circle ${MOOD_LOG[mood]}, setting course for ${p.name} to board a boat.`);
+        return;
+      }
+    }
     let bestScore = -1;
     let bx = 0;
     let by = 0;
@@ -854,17 +1241,66 @@ export class NomadSim {
   }
 
   private maybeBoard(c: CircleState, rng: Rng, log: string[]) {
-    const port = this.geo.ports.find((p) => contains(c, p.tile.x, p.tile.y));
-    if (!port || rng.next() >= BOARD_CHANCE) return;
+    let port = this.geo.ports.find((p) => contains(c, p.tile.x, p.tile.y));
     const s = this.state;
-    const level = !s.sailingUnlocked ? 0 : s.sailingLevel && s.sailingLevel > 0 ? s.sailingLevel : 99;
-    const routes = this.geo.routesFrom(port.name, level, s.questsMissing ?? []);
-    if (routes.length === 0) return;
+    // At its port of call, it boards there.
+    const call = c.port == null ? undefined : this.geo.port(c.port);
+    const arrived = call != null && contains(c, call.tile.x, call.tile.y);
+    if (arrived) port = call;
+    if (port && s.helmsTo != null && port.name !== s.helmsTo) {
+      this.board(c, port, s.helmsTo, log);
+      log.push('The Helmsman holds the course: no storm will blow it off.');
+      delete s.helmsTo;
+      return;
+    }
+    if (!port || (!arrived && (c.shore > 0 || rng.next() >= BOARD_CHANCE))) return;
+    const level = this.dockLevel();
+    const missing = s.questsMissing ?? [];
+    const routes = this.geo.routesFrom(port.name, level, missing);
+    if (routes.length === 0) {
+      if (arrived) delete c.port;
+      return;
+    }
     const to = routes[Math.floor(rng.next() * routes.length)];
+    this.board(c, port, to, log);
+    const cast = new Rng(s.seed ^ Math.imul(s.voyages, 0x7feb352d));
+    if (cast.next() >= CASTAWAY_CHANCE) return;
+    const wrecks = this.geo.ports
+      .filter((p) => p.name !== port.name && p.name !== to && this.geo.routesFrom(p.name, level, missing).length > 0)
+      .map((p) => p.name);
+    if (!wrecks.length) return;
+    c.voyage!.wreck = wrecks[Math.floor(cast.next() * wrecks.length)];
+    c.voyage!.wreckAt = dist(c.voyage!.tx - c.x, c.voyage!.ty - c.y) / 2;
+  }
+
+  /**
+   * The nearest port, in a straight line, that Main can walk to and that isn't already inside it,
+   * within range tiles. With helm, any such port but that one; without, only ports with a route
+   * Main can sail. As in NomadSim.java.
+   */
+  private nearestPort(c: CircleState, helm: string | null, range: number): Port | null {
+    const missing = this.state.questsMissing ?? [];
+    let best: Port | null = null;
+    let bestD = range;
+    for (const p of this.geo.ports) {
+      if (p.name === helm || contains(c, p.tile.x, p.tile.y)) continue;
+      if (helm == null && this.geo.routesFrom(p.name, this.dockLevel(), missing).length === 0) continue;
+      const d = dist(p.tile.x - c.x, p.tile.y - c.y);
+      if (d > bestD || this.geo.harbourSteps(p, c.x, c.y) < 0) continue;
+      best = p;
+      bestD = d;
+    }
+    return best;
+  }
+
+  private board(c: CircleState, port: { name: string; tile: Tile }, to: string, log: string[]) {
     const dest = this.geo.port(to)!;
     c.x = port.tile.x;
     c.y = port.tile.y;
-    c.voyage = { to, tx: dest.tile.x, ty: dest.tile.y };
+    c.voyage = { to, tx: dest.tile.x, ty: dest.tile.y, wreckAt: 0 };
+    this.state.voyages++;
+    delete c.port;
+    c.wx = c.wy = 0;
     log.push(`The Main circle boarded a boat at ${port.name}, bound for ${to}.`);
     this.state.lastBig = this.state.minutes;
   }
@@ -994,6 +1430,14 @@ export class NomadSim {
       keepTwin = depth !== twinDepth ? twinDepth < depth : new Rng(s.seed ^ Math.imul(s.forks + 1, 0x27d4eb2f | 0)).next() < 0.5;
     }
     const kept = keepTwin ? twin : m;
+    // Reunion: the lost half drifts on as a ghost for a while.
+    const lost = structuredClone(keepTwin ? m : twin);
+    delete lost.voyage;
+    lost.crownLeft = 0;
+    delete lost.port;
+    s.ghost = lost;
+    s.ghostLeft = GHOST_MINUTES;
+    s.ghostApart = false;
     kept.moodLeft = 0;
     kept.wx = kept.wy = 0;
     kept.turn = 0;
@@ -1016,6 +1460,15 @@ export function compass(heading: number): string {
   const a = Math.atan2(Math.sin(heading), Math.cos(heading));
   const k = Math.floor(a / (Math.PI / 4) + 0.5);
   return COMPASS[((k % 8) + 8) % 8];
+}
+
+/** Distance from (px, py) to the segment from (ax, ay) to (bx, by). */
+export function segmentDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const vx = bx - ax;
+  const vy = by - ay;
+  const len2 = vx * vx + vy * vy;
+  const t = len2 === 0 ? 0 : clamp(((px - ax) * vx + (py - ay) * vy) / len2, 0, 1);
+  return dist(px - (ax + t * vx), py - (ay + t * vy));
 }
 
 /** How many tiles of land lie along a heading from Main's centre, up to 60. */
@@ -1098,6 +1551,14 @@ function openHeading(c: CircleState, step: number, rng: Rng, ok: (x: number, y: 
     if (score >= best * LOOK_SHARE) good.push(k);
   });
   return (good[Math.floor(rng.next() * good.length)] * Math.PI * 2) / LOOK_DIRECTIONS;
+}
+
+/** Sets Main's course for a port: it heads there and boards a boat once it's inside. */
+function setCourse(c: CircleState, p: Port) {
+  c.port = p.name;
+  c.wx = p.tile.x;
+  c.wy = p.tile.y;
+  c.avoid = 0;
 }
 
 function steer(c: CircleState, tx: number, ty: number, weight: number) {

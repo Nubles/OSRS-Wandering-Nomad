@@ -100,10 +100,16 @@ public final class NomadSim
     public static final String BRIDGE = "Bridge";
     public static final String LANTERN = "Lantern";
     public static final String CALM = "Calm";
+    /** Legendary boons, once-per-find: the circle follows you, you pick Main's next port, every kingdom comes to Main. */
+    public static final String CROWN = "Wanderer's Crown";
+    public static final String HELMSMAN = "Helmsman";
+    public static final String GATHERING = "Gathering";
     public static final String COMMON = "common";
     public static final String RARE = "rare";
+    public static final String LEGENDARY = "legendary";
     private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR, LANTERN, CALM};
     private static final String[] RARE_BOONS = {RUDDER, BRIDGE};
+    private static final String[] LEGENDARY_BOONS = {CROWN, HELMSMAN, GATHERING};
     public static final int BOONS_HELD = 3;
     public static final int CLAIM_REACH = 3;
     static final int EXPAND_TILES = 12;
@@ -119,6 +125,55 @@ public final class NomadSim
     public static final int CALM_MINUTES = 180;
     /** A waystone prefers a landmark its circle should keep for at least this many minutes. */
     static final int LASTING = 30;
+    /** Ripening: a common stone left alone this long turns rare (it still fades if its circle leaves it). */
+    public static final int RIPEN = 30;
+    /**
+     * Pilgrim stones: a quarter of rare stones rise just outside your circle, up to a radius beyond
+     * its edge. You may claim one from outside, and it fades an hour after it rose.
+     */
+    static final double PILGRIM_CHANCE = 0.25;
+    /**
+     * A port of call: when Main picks somewhere new to head for, this often it sets course for the
+     * nearest port within range that it can sail from instead, and boards a boat once it's there.
+     */
+    static final double PORT_CALL_CHANCE = 0.25;
+    static final int PORT_CALL_RANGE = 500;
+    static final double PORT_PULL = 0.5;
+    /** After docking, Main stays ashore this long before it boards again or sets course for a port. */
+    static final int SHORE_LEAVE = 180;
+    /** How many cells (of 4 tiles) ahead along the walk to its port Main looks for a spot to aim at. */
+    static final int PORT_LOOKAHEAD = 8;
+    public static final int PILGRIM_MINUTES = 60;
+    /** The Wanderer's Crown: for an hour your circle follows you, this many tiles a minute at most. */
+    public static final int CROWN_MINUTES = 60;
+    static final double CROWN_SPEED = 10;
+    /** Gathering: for an hour every region circle steers for Main. */
+    public static final int GATHER_MINUTES = 60;
+    static final double GATHER_PULL = 0.12;
+    /**
+     * Comets: one every 15 to 25 played hours, announced 20 minutes ahead. It flies 20 tiles a
+     * minute for 30 minutes along a line through Main's middle; stand within 6 tiles of its path as
+     * it passes and a rare waystone answers.
+     */
+    static final int COMET_EVERY_MIN = 900;
+    static final int COMET_EVERY_MAX = 1500;
+    public static final int COMET_WARN = 20;
+    public static final int COMET_MINUTES = 30;
+    public static final int COMET_RADIUS = 6;
+    static final double COMET_SPEED = 20;
+    static final int COMET_RETRY = 30;
+    /** Homeward: a Home Teleport cast from inside Main carries Main with you, shrunk to 12 tiles, once every 6 played hours. */
+    public static final int HOMEWARD_COOLDOWN = 360;
+    static final int HOMEWARD_RADIUS = 12;
+    /**
+     * Reunion: the half a fork lost drifts on as a ghost for 6 hours at half pace. Once it has
+     * parted at least 10 tiles from Main, touching Main again merges it back in, growing Main.
+     */
+    public static final int GHOST_MINUTES = 360;
+    static final double GHOST_DRIFT = DRIFT / 2;
+    static final int GHOST_APART = 10;
+    /** Castaway: one voyage in ten washes up at another dock than the one it set out for. */
+    static final double CASTAWAY_CHANCE = 0.1;
 
     /** A fork comes a random 30 minutes to 4 played hours after the last one parted, with a 10-minute warning. */
     static final int FORK_EVERY_MIN = 30;
@@ -194,6 +249,24 @@ public final class NomadSim
     int stormLeft;
     int stormKind;
     double squallFrom;
+    /** Common stones that ripened so far; each one's dice come from the seed and this. */
+    int ripened;
+    /** The comet coming or flying, null when none; comets so far, and the minute the next is due (0 until scheduled). */
+    Comet comet;
+    int comets;
+    int nextComet;
+    /** Minutes until Homeward can carry Main again. */
+    int homewardLeft;
+    /** The half the last fork lost, drifting on as a ghost; its minutes left, and whether it has parted far enough to merge back. */
+    Circle ghost;
+    int ghostLeft;
+    boolean ghostApart;
+    /** Voyages so far; each one's Castaway dice come from the seed and this. */
+    int voyages;
+    /** Helmsman: the port Main's next voyage goes to, once a port is inside it; null when not set. */
+    String helmsTo;
+    /** Minutes left on Gathering. */
+    int gatherLeft;
 
     public static NomadSim start(int seed)
     {
@@ -245,6 +318,17 @@ public final class NomadSim
         s.squallFrom = squallFrom;
         s.twin = twin == null ? null : twin.copy();
         s.forkAge = forkAge;
+        s.ripened = ripened;
+        s.comet = comet == null ? null : comet.copy();
+        s.comets = comets;
+        s.nextComet = nextComet;
+        s.homewardLeft = homewardLeft;
+        s.ghost = ghost == null ? null : ghost.copy();
+        s.ghostLeft = ghostLeft;
+        s.ghostApart = ghostApart;
+        s.voyages = voyages;
+        s.helmsTo = helmsTo;
+        s.gatherLeft = gatherLeft;
         return s;
     }
 
@@ -437,7 +521,7 @@ public final class NomadSim
      */
     public String summon(String tier)
     {
-        pending.add(RARE.equals(tier) ? RARE : COMMON);
+        pending.add(RARE.equals(tier) || LEGENDARY.equals(tier) ? tier : COMMON);
         List<String> log = new ArrayList<>();
         placePending(log);
         return log.isEmpty() ? null : log.get(0);
@@ -502,11 +586,148 @@ public final class NomadSim
             case CALM:
                 line = calm();
                 break;
+            case CROWN:
+                if (c.voyage != null) return null;
+                c.crownLeft = CROWN_MINUTES;
+                c.anchorLeft = 0;
+                c.pulse = 45;
+                line = "Wanderer's Crown: for an hour your circle follows you wherever you walk.";
+                break;
+            case GATHERING:
+                gatherLeft = GATHER_MINUTES;
+                line = "Gathering: for an hour every kingdom's circle turns toward the Main circle.";
+                break;
             default:
+                // Helmsman needs a port: see useHelmsman.
                 return null;
         }
         boons.remove(index);
         return line;
+    }
+
+    /**
+     * Helmsman: Main sets course for the nearest port and, once a port is inside it, boards at once for {@code port}, which
+     * must be one {@link #helmsmanPorts()} lists. Returns the log line, or null if nothing was spent.
+     */
+    public String useHelmsman(int index, String port)
+    {
+        if (index < 0 || index >= boons.size() || !HELMSMAN.equals(boons.get(index))) return null;
+        if (port == null || !helmsmanPorts().contains(port)) return null;
+        helmsTo = port;
+        boons.remove(index);
+        Circle m = main();
+        Geography.Port near = m.voyage == null ? nearestPort(m, port, Double.MAX_VALUE) : null;
+        if (near == null) return "Helmsman: the next time a port is inside the Main circle, it sets sail for " + port + ".";
+        setCourse(m, near);
+        return "Helmsman: the Main circle sets course for " + near.name + ", and will sail from there for " + port + ".";
+    }
+
+    /** The ports a Helmsman can send Main to: any that some route your boats can sail reaches. */
+    public List<String> helmsmanPorts()
+    {
+        List<String> out = new ArrayList<>();
+        List<String> missing = questsMissing == null ? Collections.<String>emptyList() : questsMissing;
+        for (Geography.Port p : Geography.PORTS)
+        {
+            for (String to : Geography.routesFrom(p.name, dockLevel(), missing))
+            {
+                if (!out.contains(to)) out.add(to);
+            }
+        }
+        return out;
+    }
+
+    /** The port a Helmsman set Main's next voyage for, or null. */
+    public String helmsmanTo()
+    {
+        return helmsTo;
+    }
+
+    /** Minutes left on Gathering, 0 when not active. */
+    public int gatherLeft()
+    {
+        return gatherLeft;
+    }
+
+    /** The comet coming or flying, or null. */
+    public Comet comet()
+    {
+        return comet;
+    }
+
+    public int comets()
+    {
+        return comets;
+    }
+
+    /** The half the last fork lost while it drifts on as a ghost, or null. */
+    public Circle ghost()
+    {
+        return ghost;
+    }
+
+    public int ghostLeft()
+    {
+        return ghostLeft;
+    }
+
+    /** Minutes until Homeward can carry Main again, 0 when ready. */
+    public int homewardLeft()
+    {
+        return homewardLeft;
+    }
+
+    /**
+     * Homeward: you cast a Home Teleport from {@code from} and landed at {@code to}. If you were
+     * inside Main and it's ready, Main comes with you, shrunk to 12 tiles, and can't again for 6
+     * played hours. A fork under way collapses into it. Returns the log line, or null if Main stays.
+     */
+    public String homeward(Tile from, Tile to)
+    {
+        if (to == null || bound != MAIN) return null;
+        if (from != null && !inMain(from.x, from.y)) return null;
+        if (homewardLeft > 0)
+        {
+            return "Homeward is still gathering itself (" + homewardLeft + " more minutes), so the Main circle stayed behind.";
+        }
+        if (!Geography.onLand(to.x, to.y)) return null;
+        Circle m = main();
+        String collapsed = twin != null || forkWarn > 0 ? " The fork it was in collapsed." : "";
+        if (twin != null)
+        {
+            twin = null;
+            forkAge = 0;
+            forks++;
+            nextFork = 0;
+        }
+        if (forkWarn > 0)
+        {
+            forkWarn = 0;
+            nextFork = minutes + FORK_RETRY;
+        }
+        m.voyage = null;
+        m.x = to.x;
+        m.y = to.y;
+        m.radius = clamp(HOMEWARD_RADIUS, m.radiusMin, m.radiusMax);
+        m.radiusTarget = m.radius;
+        m.moodLeft = 0;
+        m.wx = m.wy = 0;
+        m.turn = 0;
+        m.pulse = 45;
+        homewardLeft = HOMEWARD_COOLDOWN;
+        outside = false;
+        lastBig = minutes;
+        return "Homeward! The Main circle followed your Home Teleport and stands around you now, shrunk to "
+            + Math.round(m.radius) + " tiles. It can do that again in 6 played hours." + collapsed;
+    }
+
+    /**
+     * For trying comets out in game: the next comet is announced at the next played minute. Never
+     * called by the rules.
+     */
+    public void cometSoonForTesting()
+    {
+        if (comet == null) nextComet = Math.max(1, minutes);
     }
 
     /** Calm: no fork or storm over Main for 3 hours; a fork's warning or a storm under way breaks off now. */
@@ -674,18 +895,23 @@ public final class NomadSim
             boolean yours = j == bound;
             // Region circles wander on their own; only yours leans toward Main, and only once you're stranded.
             boolean pulled = yours && stranded && !c.isMain();
-            Circle toward = pulled ? main : null;
-            double pull = pulled ? STRANDED_PULL : 0;
+            // Gathering: every kingdom's circle steers for Main.
+            boolean gather = gatherLeft > 0 && !c.isMain();
+            Circle toward = pulled || gather ? main : null;
+            double pull = pulled ? STRANDED_PULL : gather ? GATHER_PULL : 0;
             Tile lean = yours && !out && player != null && dist(c, player) >= c.radius - LEAN_BAND ? player : null;
             int speedup = (yours && out ? OUTSIDE_SPEEDUP : 1) * (c.tailwindLeft > 0 ? 2 : 1)
                 * (j == MAIN && stormLeft > 0 && stormKind == GALE ? GALE_SPEEDUP : 1);
             if (j == MAIN && twin != null) part(c, twin);
+            else if (yours && c.crownLeft > 0 && player != null && c.voyage == null) follow(c, player);
             else move(c, rng, speedup, yours, toward, pull, lean, log);
         }
         minutes++;
         tickBoons(log);
         fork(player, log);
         storm(log);
+        ghost(log);
+        comet(player, log);
 
         if (minutes % 5 == 0)
         {
@@ -729,8 +955,30 @@ public final class NomadSim
                 if (yours) log.add("Expand wore off: your circle shrank back by " + EXPAND_TILES + " tiles.");
             }
         }
+        for (int j = 0; j < circles.size(); j++)
+        {
+            Circle c = circles.get(j);
+            if (c.crownLeft > 0 && --c.crownLeft == 0 && j == bound) log.add("The Wanderer's Crown has dimmed: your circle wanders on its own again.");
+        }
         if (bridgeLeft > 0 && --bridgeLeft == 0) log.add("The Bridge closed.");
         if (calmLeft > 0 && --calmLeft == 0) log.add("The Calm has lifted: forks and storms can come again.");
+        if (gatherLeft > 0 && --gatherLeft == 0) log.add("The Gathering is over: the kingdoms' circles go their own ways.");
+        if (homewardLeft > 0 && --homewardLeft == 0) log.add("Homeward is ready again: a Home Teleport from inside Main will carry it with you.");
+    }
+
+    /** The Wanderer's Crown: the circle's middle walks toward you, up to 10 tiles a minute, never off land or out of its kingdom. */
+    private static void follow(Circle c, Tile player)
+    {
+        double d = Circle.dist(player.x - c.x, player.y - c.y);
+        if (d < 1) return;
+        double step = Math.min(CROWN_SPEED, d);
+        double nx = c.x + (player.x - c.x) / d * step;
+        double ny = c.y + (player.y - c.y) / d * step;
+        boolean ok = c.isMain() ? Geography.onLand(nx, ny) : c.region().contains(nx, ny);
+        if (!ok) return;
+        c.x = nx;
+        c.y = ny;
+        c.heading = StrictMath.atan2(player.y - c.y, player.x - c.x);
     }
 
     /** Moves a circle's whole range, and its radius with it, by {@code tiles}. */
@@ -751,7 +999,9 @@ public final class NomadSim
             for (int i = 0; i < waystones.size(); i++)
             {
                 Waystone w = waystones.get(i);
-                if (w.circle != bound || !bound().contains(player.x, player.y)) continue;
+                // Pilgrim and legendary stones can be claimed from outside; the rest only from inside.
+                boolean anywhere = w.pilgrim || LEGENDARY.equals(w.tier);
+                if (w.circle != bound || (!anywhere && !bound().contains(player.x, player.y))) continue;
                 if (Circle.dist(player.x - w.x, player.y - w.y) > CLAIM_REACH) continue;
                 waystones.remove(i);
                 boons.add(w.boon);
@@ -762,9 +1012,27 @@ public final class NomadSim
         for (int i = waystones.size() - 1; i >= 0; i--)
         {
             Waystone w = waystones.get(i);
+            if (LEGENDARY.equals(w.tier)) continue;
+            if (w.pilgrim)
+            {
+                if (w.age < PILGRIM_MINUTES) continue;
+                waystones.remove(i);
+                log.add("The pilgrim stone at " + w.landmark + " sank back into the ground.");
+                continue;
+            }
             if (circles.get(w.circle).contains(w.x, w.y)) continue;
             waystones.remove(i);
             log.add("The waystone at " + w.landmark + " faded: its circle drifted off it.");
+        }
+        for (Waystone w : waystones)
+        {
+            w.age++;
+            if (w.pilgrim || !COMMON.equals(w.tier) || w.age != RIPEN) continue;
+            Rng dice = new Rng(seed ^ ((ripened + 1) * 0x68E31DA4));
+            ripened++;
+            w.tier = RARE;
+            w.boon = RARE_BOONS[(int) (dice.next() * RARE_BOONS.length)];
+            log.add("The waystone at " + w.landmark + " ripened: it holds " + w.boon + " (rare) now.");
         }
         placePending(log);
     }
@@ -803,6 +1071,12 @@ public final class NomadSim
             }
             if (nearest >= 0) reach.add(nearest);
         }
+        // A legendary stone rises only in your own circle, at its landmark furthest from the middle.
+        if (LEGENDARY.equals(tier))
+        {
+            reach.clear();
+            reach.add(bound);
+        }
         List<int[]> options = new ArrayList<>();
         for (int j : reach)
         {
@@ -814,7 +1088,32 @@ public final class NomadSim
                 options.add(new int[]{k, j});
             }
         }
-        if (options.isEmpty()) return null;
+        // Pilgrim spots: landmarks just outside your circle, no further past its edge than its radius.
+        List<int[]> pilgrims = new ArrayList<>();
+        if (RARE.equals(tier))
+        {
+            Circle c = bound();
+            for (int k = 0; k < Landmarks.ALL.size(); k++)
+            {
+                Landmarks.Landmark l = Landmarks.ALL.get(k);
+                double d = Circle.dist(l.x - c.x, l.y - c.y);
+                if (d <= c.radius + CLAIM_REACH || d > c.radius * 2 || taken(l)) continue;
+                pilgrims.add(new int[]{k, bound});
+            }
+        }
+        if (options.isEmpty() && pilgrims.isEmpty()) return null;
+        if (LEGENDARY.equals(tier)) return placeLegendary(options);
+        Rng rng = new Rng(seed ^ ((summons + 1) * 0x9E3779B9));
+        if (!pilgrims.isEmpty() && (options.isEmpty() || rng.next() < PILGRIM_CHANCE))
+        {
+            summons++;
+            int[] o = pilgrims.get((int) (rng.next() * pilgrims.size()));
+            Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
+            Waystone w = stone(l, o[1], RARE, RARE_BOONS[(int) (rng.next() * RARE_BOONS.length)]);
+            w.pilgrim = true;
+            return "A pilgrim stone rose at " + l.name + ", just outside your circle, holding " + w.boon
+                + " (rare). Step out to claim it within the hour.";
+        }
         List<int[]> all = options;
         // Prefer landmarks the circle won't leave for a while, so there's time for the walk.
         List<int[]> lasting = new ArrayList<>();
@@ -831,7 +1130,6 @@ public final class NomadSim
             lit = nearestLantern(options);
             if (lit == null) lit = nearestLantern(all);
         }
-        Rng rng = new Rng(seed ^ ((summons + 1) * 0x9E3779B9));
         summons++;
         int[] o = options.get((int) (rng.next() * options.size()));
         if (lit != null)
@@ -842,16 +1140,47 @@ public final class NomadSim
         }
         String[] pool = RARE.equals(tier) ? RARE_BOONS : COMMON_BOONS;
         Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
+        Waystone w = stone(l, o[1], RARE.equals(tier) ? RARE : COMMON, pool[(int) (rng.next() * pool.length)]);
+        Circle c = circles.get(w.circle);
+        return "A waystone rose at " + l.name + (w.circle == bound ? " in your circle" : " in " + c.name())
+            + ", holding " + w.boon + " (" + (RARE.equals(tier) ? "rare" : "common") + ").";
+    }
+
+    /** A legendary stone: the landmark in your circle furthest from its middle. It never fades. */
+    private String placeLegendary(List<int[]> options)
+    {
+        if (options.isEmpty()) return null;
+        Circle c = bound();
+        int[] best = null;
+        double bestD = -1;
+        for (int[] o : options)
+        {
+            Landmarks.Landmark l = Landmarks.ALL.get(o[0]);
+            double d = Circle.dist(l.x - c.x, l.y - c.y);
+            if (d > bestD)
+            {
+                best = o;
+                bestD = d;
+            }
+        }
+        Rng rng = new Rng(seed ^ ((summons + 1) * 0x9E3779B9));
+        summons++;
+        Landmarks.Landmark l = Landmarks.ALL.get(best[0]);
+        Waystone w = stone(l, best[1], LEGENDARY, LEGENDARY_BOONS[(int) (rng.next() * LEGENDARY_BOONS.length)]);
+        return "A legendary waystone rose at " + l.name + ", holding the " + w.boon + ". It never fades.";
+    }
+
+    private Waystone stone(Landmarks.Landmark l, int circle, String tier, String boon)
+    {
         Waystone w = new Waystone();
         w.landmark = l.name;
         w.x = l.x;
         w.y = l.y;
-        w.circle = o[1];
-        w.boon = pool[(int) (rng.next() * pool.length)];
+        w.circle = circle;
+        w.boon = boon;
+        w.tier = tier;
         waystones.add(w);
-        Circle c = circles.get(w.circle);
-        return "A waystone rose at " + l.name + (w.circle == bound ? " in your circle" : " in " + c.name())
-            + ", holding " + w.boon + " (" + (RARE.equals(tier) ? "rare" : "common") + ").";
+        return w;
     }
 
     /** The option in your circle nearest the lit Lantern, or null if none is in your circle. */
@@ -892,6 +1221,17 @@ public final class NomadSim
         }
         else if (c.voyage != null)
         {
+            if (c.voyage.wreck != null && Circle.dist(c.voyage.tx - c.x, c.voyage.ty - c.y) <= c.voyage.wreckAt)
+            {
+                Geography.Port w = Geography.port(c.voyage.wreck);
+                log.add("Castaway! A storm at sea blew the Main circle off course. It will wash up at " + w.name
+                    + " instead of " + c.voyage.to + ".");
+                c.voyage.to = w.name;
+                c.voyage.tx = w.tile.x;
+                c.voyage.ty = w.tile.y;
+                c.voyage.wreck = null;
+                c.voyage.wreckAt = 0;
+            }
             double d = Circle.dist(c.voyage.tx - c.x, c.voyage.ty - c.y);
             if (d <= SAIL_SPEED)
             {
@@ -899,6 +1239,7 @@ public final class NomadSim
                 c.y = c.voyage.ty;
                 if (yours) log.add("Your circle docked at " + c.voyage.to + ".");
                 c.voyage = null;
+                c.shore = SHORE_LEAVE;
                 c.heading = rng.next() * Math.PI * 2;
                 c.turn = 0;
                 c.moodLeft = 0;
@@ -911,33 +1252,55 @@ public final class NomadSim
         }
         else
         {
+            if (c.shore > 0) c.shore--;
             if (c.moodLeft <= 0) startMood(c, t, rng, allowed, yours, log);
             c.moodLeft--;
             int m = c.mood;
             // In a peninsula or cove, Main forgets its mood and keeps a steady pace until it's out,
             // and deep inside one it heads for the way out.
-            int depth = c.isMain() ? Geography.pocketDepth(c.x, c.y) : 0;
+            // Bound for a port, it goes into the cove the port sits in.
+            int depth = c.isMain() && c.port == null ? Geography.pocketDepth(c.x, c.y) : 0;
             boolean cramped = depth >= CRAMPED_DEPTH;
             boolean pocket = depth >= POCKET_DEPTH;
+            // Bound for a port, it keeps a steady pace and holds its course whatever its mood.
+            boolean steady = cramped || c.port != null;
 
             // The turn rate eases toward the mood's own (straight, a held loop, or a meander's swing)
             // and wobbles, so the heading curves rather than running in straight lines.
-            double target = cramped ? 0
+            double target = steady ? 0
                 : m == Temperament.LOOP ? c.bend
                 : m == Temperament.MEANDER ? c.bend * StrictMath.sin(c.swing * MEANDER_STEP) : 0;
             c.swing++;
             c.turn += (target - c.turn) * TURN_EASE + (rng.next() - 0.5) * 2 * MOOD_WOBBLE[m];
             c.turn = clamp(c.turn, -TURN_MAX, TURN_MAX);
             c.heading += c.turn;
-            c.speed += ((cramped ? 1 : MOOD_SPEED[m]) - c.speed) * SPEED_EASE;
+            c.speed += ((steady ? 1 : MOOD_SPEED[m]) - c.speed) * SPEED_EASE;
 
             if (c.wx != 0 && Circle.dist(c.wx - c.x, c.wy - c.y) < c.radius / 2)
             {
                 // Arrived: it'll pick a new mood, and somewhere new to head for, next minute.
                 c.wx = c.wy = 0;
                 c.moodLeft = 0;
+                c.port = null;
             }
-            if (c.wx != 0 && MOOD_PULL[m] > 0 && !cramped) steer(c, c.wx, c.wy, MOOD_PULL[m]);
+            if (c.port != null)
+            {
+                // Bound for a port: it follows the walk there over land, round coasts and into coves.
+                double[] way = Geography.wayTo(Geography.port(c.port), c.x, c.y, PORT_LOOKAHEAD);
+                if (way != null)
+                {
+                    steer(c, way[0], way[1], PORT_PULL);
+                }
+                else
+                {
+                    c.port = null;
+                    c.wx = c.wy = 0;
+                }
+            }
+            else if (c.wx != 0 && MOOD_PULL[m] > 0 && !cramped)
+            {
+                steer(c, c.wx, c.wy, MOOD_PULL[m]);
+            }
             if (toward != null)
             {
                 steer(c, toward.x, toward.y, pull);
@@ -958,7 +1321,7 @@ public final class NomadSim
             // Feel the way ahead and bend away from a coast or border before reaching it. A stranded
             // circle doesn't, since it's meant to wait at the border nearest Main, and nor does a circle
             // finding its way out of a peninsula, whose way out is often a narrow neck.
-            if (toward == null && !pocket && !feelClear(c, c.heading, v, allowed))
+            if (toward == null && !pocket && c.port == null && !feelClear(c, c.heading, v, allowed))
             {
                 boolean left = feelClear(c, c.heading + FEEL_SPLAY, v, allowed);
                 boolean right = feelClear(c, c.heading - FEEL_SPLAY, v, allowed);
@@ -971,6 +1334,7 @@ public final class NomadSim
                     c.wx = c.wy = 0;
                     c.moodLeft = 0;
                     c.avoid = 0;
+                    c.port = null;
                 }
             }
             else
@@ -1014,7 +1378,7 @@ public final class NomadSim
                     }
                     if (yours && waitingForMain) c.waiting = true;
                 }
-                else if (yours && !c.atEdge)
+                else if (yours && !c.atEdge && c.port == null)
                 {
                     log.add("Your circle hit the coast and turned back inland.");
                 }
@@ -1051,7 +1415,7 @@ public final class NomadSim
      * on it, a waypoint. The waypoint is the best of a few random spots, the one furthest from where
      * the circle has headed lately, so it tours the map over many moods.
      */
-    private static void startMood(Circle c, Temperament t, Rng rng, Allowed allowed, boolean yours, List<String> log)
+    private void startMood(Circle c, Temperament t, Rng rng, Allowed allowed, boolean yours, List<String> log)
     {
         double total = 0;
         for (int k = 0; k < Temperament.MOODS; k++)
@@ -1082,6 +1446,20 @@ public final class NomadSim
         }
         int[] range = c.isMain() ? MAIN_WAY : REGION_WAY;
         boolean island = c.isMain() && Geography.pocketDepth(c.x, c.y) < 0;
+        if (c.isMain() && (helmsTo != null || (c.shore <= 0 && Geography.pocketDepth(c.x, c.y) == 0)))
+        {
+            // A port of call, from open land only and on its own dice, so the drift's stay as they
+            // were. A Helmsman always heads for the nearest port.
+            Rng call = new Rng(seed ^ ((minutes + 1) * 0x2F0B3A49));
+            Geography.Port p = helmsTo != null ? nearestPort(c, helmsTo, Double.MAX_VALUE)
+                : call.next() < PORT_CALL_CHANCE ? nearestPort(c, null, PORT_CALL_RANGE) : null;
+            if (p != null)
+            {
+                setCourse(c, p);
+                if (yours) log.add("Your circle " + MOOD_LOG[mood] + ", setting course for " + p.name + " to board a boat.");
+                return;
+            }
+        }
         double bestScore = -1;
         int bx = 0, by = 0;
         for (int k = 0; k < WAY_TRIES; k++)
@@ -1150,11 +1528,76 @@ public final class NomadSim
                 break;
             }
         }
-        if (port == null || rng.next() >= BOARD_CHANCE) return;
-        List<String> routes = Geography.routesFrom(port.name, dockLevel(),
-            questsMissing == null ? java.util.Collections.<String>emptyList() : questsMissing);
-        if (routes.isEmpty()) return;
+        // At its port of call, it boards there.
+        Geography.Port call = c.port == null ? null : Geography.port(c.port);
+        boolean arrived = call != null && c.contains(call.tile.x, call.tile.y);
+        if (arrived) port = call;
+        if (port != null && helmsTo != null && !port.name.equals(helmsTo))
+        {
+            // Helmsman: it boards at once for the port you chose, and nothing blows it off course.
+            board(c, port, helmsTo, log);
+            log.add("The Helmsman holds the course: no storm will blow it off.");
+            helmsTo = null;
+            return;
+        }
+        if (port == null || (!arrived && (c.shore > 0 || rng.next() >= BOARD_CHANCE))) return;
+        List<String> missing = questsMissing == null ? java.util.Collections.<String>emptyList() : questsMissing;
+        List<String> routes = Geography.routesFrom(port.name, dockLevel(), missing);
+        if (routes.isEmpty())
+        {
+            if (arrived) c.port = null;
+            return;
+        }
         String to = routes.get((int) (rng.next() * routes.size()));
+        board(c, port, to, log);
+        // Castaway: its own dice, so it never changes the drift.
+        Rng cast = new Rng(seed ^ (voyages * 0x7FEB352D));
+        if (cast.next() >= CASTAWAY_CHANCE) return;
+        List<String> wrecks = new ArrayList<>();
+        for (Geography.Port p : Geography.PORTS)
+        {
+            // Only docks Main can sail away from again, so a wreck never strands it.
+            if (p.name.equals(port.name) || p.name.equals(to)) continue;
+            if (Geography.routesFrom(p.name, dockLevel(), missing).isEmpty()) continue;
+            wrecks.add(p.name);
+        }
+        if (wrecks.isEmpty()) return;
+        c.voyage.wreck = wrecks.get((int) (cast.next() * wrecks.size()));
+        c.voyage.wreckAt = Circle.dist(c.voyage.tx - c.x, c.voyage.ty - c.y) / 2;
+    }
+
+    /**
+     * The nearest port, in a straight line, that Main can walk to and that isn't already inside it,
+     * within {@code range} tiles. With {@code helm} the port to sail for, any such port but that
+     * one; without, only ports with a route Main can sail. Null if none.
+     */
+    private Geography.Port nearestPort(Circle c, String helm, double range)
+    {
+        List<String> missing = questsMissing == null ? java.util.Collections.<String>emptyList() : questsMissing;
+        Geography.Port best = null;
+        double bestD = range;
+        for (Geography.Port p : Geography.PORTS)
+        {
+            if (p.name.equals(helm) || c.contains(p.tile.x, p.tile.y)) continue;
+            if (helm == null && Geography.routesFrom(p.name, dockLevel(), missing).isEmpty()) continue;
+            double d = dist(c, p.tile);
+            if (d > bestD || Geography.harbourSteps(p, c.x, c.y) < 0) continue;
+            best = p;
+            bestD = d;
+        }
+        return best;
+    }
+
+    private static void setCourse(Circle c, Geography.Port p)
+    {
+        c.port = p.name;
+        c.wx = p.tile.x;
+        c.wy = p.tile.y;
+        c.avoid = 0;
+    }
+
+    private void board(Circle c, Geography.Port port, String to, List<String> log)
+    {
         Geography.Port dest = Geography.port(to);
         c.x = port.tile.x;
         c.y = port.tile.y;
@@ -1162,6 +1605,9 @@ public final class NomadSim
         c.voyage.to = to;
         c.voyage.tx = dest.tile.x;
         c.voyage.ty = dest.tile.y;
+        voyages++;
+        c.port = null;
+        c.wx = c.wy = 0;
         log.add("The Main circle boarded a boat at " + port.name + ", bound for " + to + ".");
         lastBig = minutes;
     }
@@ -1289,6 +1735,116 @@ public final class NomadSim
         log.add("A storm is brewing over the Main circle: a " + (stormKind == GALE ? "gale" : "squall") + " in " + STORM_WARN + " minutes.");
     }
 
+    /**
+     * Reunion: the lost half drifts straight on at half pace, turning along coasts. Once it has
+     * parted 10 tiles from Main, touching Main again merges it back in.
+     */
+    private void ghost(List<String> log)
+    {
+        if (ghost == null) return;
+        if (--ghostLeft <= 0)
+        {
+            ghost = null;
+            ghostApart = false;
+            log.add("The lost half of the last fork has faded for good.");
+            return;
+        }
+        for (double turn : new double[]{0, 0.5, -0.5, 1, -1, 2, -2, Math.PI})
+        {
+            double nx = ghost.x + StrictMath.cos(ghost.heading + turn) * GHOST_DRIFT;
+            double ny = ghost.y + StrictMath.sin(ghost.heading + turn) * GHOST_DRIFT;
+            if (!Geography.onLand(nx, ny)) continue;
+            ghost.x = nx;
+            ghost.y = ny;
+            ghost.heading += turn;
+            break;
+        }
+        Circle m = main();
+        if (twin != null || m.voyage != null) return;
+        double gap = m.gap(ghost);
+        if (gap >= GHOST_APART) ghostApart = true;
+        if (!ghostApart || gap > 0) return;
+        double r = Math.min(m.radiusMax, m.radius + ghost.radius / 2);
+        log.add("Reunion! The lost half drifted back into the Main circle and merged with it. Main grows to "
+            + Math.round(r) + " tiles.");
+        m.radius = r;
+        m.radiusTarget = r;
+        m.pulse = 45;
+        ghost = null;
+        ghostApart = false;
+        ghostLeft = 0;
+        lastBig = minutes;
+    }
+
+    /** Schedules, announces and flies comets; see {@link #COMET_EVERY_MIN}. */
+    private void comet(Tile player, List<String> log)
+    {
+        if (comet != null)
+        {
+            if (comet.warn > 0)
+            {
+                if (--comet.warn == 0) log.add("The comet is streaking across the sky now. Stand in its path!");
+                return;
+            }
+            double ox = comet.x;
+            double oy = comet.y;
+            comet.x += comet.dx;
+            comet.y += comet.dy;
+            comet.left--;
+            if (player != null && segmentDist(player.x, player.y, ox, oy, comet.x, comet.y) <= COMET_RADIUS)
+            {
+                comet = null;
+                comets++;
+                nextComet = 0;
+                lastBig = minutes;
+                pending.add(RARE);
+                log.add("You caught the comet! A rare waystone answers its call.");
+                return;
+            }
+            if (comet.left > 0) return;
+            comet = null;
+            comets++;
+            nextComet = 0;
+            log.add("The comet passed over and was gone.");
+            return;
+        }
+        if (nextComet <= 0)
+        {
+            Rng dice = new Rng(seed ^ ((comets + 1) * 0x5BD1E995));
+            nextComet = minutes + COMET_EVERY_MIN + (int) (dice.next() * (COMET_EVERY_MAX - COMET_EVERY_MIN));
+        }
+        if (minutes < nextComet) return;
+        Circle m = main();
+        if (m.voyage != null)
+        {
+            nextComet = minutes + COMET_RETRY;
+            return;
+        }
+        Rng dice = new Rng(seed ^ ((comets + 1) * 0x1B873593));
+        double a = round(dice.next() * Math.PI * 2 * 1e4) / 1e4;
+        double half = COMET_SPEED * COMET_MINUTES / 2.0;
+        Comet k = new Comet();
+        k.dx = StrictMath.cos(a) * COMET_SPEED;
+        k.dy = StrictMath.sin(a) * COMET_SPEED;
+        k.x = m.x - StrictMath.cos(a) * half;
+        k.y = m.y - StrictMath.sin(a) * half;
+        k.warn = COMET_WARN;
+        k.left = COMET_MINUTES;
+        comet = k;
+        log.add("A comet is coming! In " + COMET_WARN + " minutes it streaks " + compass(a)
+            + " across the map, straight through the Main circle. Stand in its path to catch it.");
+    }
+
+    /** Distance from (px, py) to the segment from (ax, ay) to (bx, by). */
+    static double segmentDist(double px, double py, double ax, double ay, double bx, double by)
+    {
+        double vx = bx - ax;
+        double vy = by - ay;
+        double len2 = vx * vx + vy * vy;
+        double t = len2 == 0 ? 0 : clamp(((px - ax) * vx + (py - ay) * vy) / len2, 0, 1);
+        return Circle.dist(px - (ax + t * vx), py - (ay + t * vy));
+    }
+
     /** Storms that have blown over Main and passed. */
     public int storms()
     {
@@ -1362,6 +1918,13 @@ public final class NomadSim
             keepTwin = depth != twinDepth ? twinDepth < depth : new Rng(seed ^ ((forks + 1) * 0x27D4EB2F)).next() < 0.5;
         }
         Circle kept = keepTwin ? twin : m;
+        // Reunion: the lost half drifts on as a ghost for a while.
+        ghost = (keepTwin ? m : twin).copy();
+        ghost.voyage = null;
+        ghost.crownLeft = 0;
+        ghost.port = null;
+        ghostLeft = GHOST_MINUTES;
+        ghostApart = false;
         kept.moodLeft = 0;
         kept.wx = kept.wy = 0;
         kept.turn = 0;

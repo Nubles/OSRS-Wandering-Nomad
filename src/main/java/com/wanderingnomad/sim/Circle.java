@@ -55,12 +55,21 @@ public final class Circle
     int expandLeft;
     int tailwindLeft;
     int anchorLeft;
+    /** Minutes left on the Wanderer's Crown, while this circle follows you. */
+    int crownLeft;
+    /** The port Main has set course for, to board a boat when it gets there, or null. */
+    String port;
+    /** Minutes after docking before Main boards a boat again, unless a Helmsman sends it. */
+    int shore;
 
     static final class Voyage
     {
         String to;
         double tx;
         double ty;
+        /** Castaway: the port a storm at sea washes it up at instead, once it's this close to where it meant to go. */
+        String wreck;
+        double wreckAt;
     }
 
     Circle copy()
@@ -82,6 +91,8 @@ public final class Circle
             c.voyage.to = voyage.to;
             c.voyage.tx = voyage.tx;
             c.voyage.ty = voyage.ty;
+            c.voyage.wreck = voyage.wreck;
+            c.voyage.wreckAt = voyage.wreckAt;
         }
         c.atEdge = atEdge;
         c.waiting = waiting;
@@ -100,6 +111,9 @@ public final class Circle
         c.expandLeft = expandLeft;
         c.tailwindLeft = tailwindLeft;
         c.anchorLeft = anchorLeft;
+        c.crownLeft = crownLeft;
+        c.port = port;
+        c.shore = shore;
         return c;
     }
 
@@ -211,6 +225,18 @@ public final class Circle
     public int anchorLeft()
     {
         return anchorLeft;
+    }
+
+    /** Played minutes left on the Wanderer's Crown, 0 when not worn. */
+    public int crownLeft()
+    {
+        return crownLeft;
+    }
+
+    /** The port Main has set course for, or null. */
+    public String portOfCall()
+    {
+        return port;
     }
 
     public boolean pulsing()

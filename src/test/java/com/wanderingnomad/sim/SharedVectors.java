@@ -26,15 +26,19 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
+    /** Left alone, sets course for a port, sails, and is blown off course: a castaway. */
+    static final int CASTAWAY_SEED = 26;
     /** Sails with Sailing at level 20 and two docks' quests not done. */
     static final int DOCK_SEED = 123;
     /** Stays in Main and summons often, so waystones get claimed and every boon spent. */
     static final int BOON_SEED = 2024;
     /** Hands out a Lantern and Calms, lit where Main is and spent as a fork and a storm come. */
     static final int CALM_SEED = 77;
+    /** Comets, the Wanderer's Crown, Gathering, Helmsman, Homeward, pilgrim, ripening and legendary stones. */
+    static final int WAVE_SEED = 9001;
 
     private SharedVectors()
     {
@@ -63,7 +67,7 @@ public final class SharedVectors
     static JsonArray script(int seed)
     {
         // Left alone, this seed's Main circle boards a boat, which covers voyages and docking.
-        if (seed == VOYAGE_SEED) return new JsonArray();
+        if (seed == VOYAGE_SEED || seed == CASTAWAY_SEED) return new JsonArray();
         if (seed == DOCK_SEED)
         {
             // The voyage seed again, with Sailing at a low level and a dock's quest not done.
@@ -74,6 +78,7 @@ public final class SharedVectors
         }
         if (seed == BOON_SEED) return boonScript(seed);
         if (seed == CALM_SEED) return calmScript(seed);
+        if (seed == WAVE_SEED) return waveScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
         Circle m = probe.main();
@@ -166,6 +171,107 @@ public final class SharedVectors
         return events;
     }
 
+    static JsonArray waveScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        events.add(event(0, "sailing", true));
+        // A comet, caught by standing where its line crosses Main's middle.
+        events.add(event(5, "comet"));
+        int announced = firstMinute(seed, events, s -> s.comet() != null);
+        Comet k = probe(seed, events, announced).comet();
+        int cx = (int) Math.round(k.x() + k.dx * COMET_HALF);
+        int cy = (int) Math.round(k.y() + k.dy * COMET_HALF);
+        events.add(event(announced, "player", cx, cy));
+        events.add(event(announced + NomadSim.COMET_WARN + NomadSim.COMET_MINUTES, "player"));
+        // The Wanderer's Crown: Main follows you as you walk away from its middle.
+        int crown = Math.max(120, announced + 60);
+        Circle m = probe(seed, events, crown).main();
+        int mx = (int) Math.round(m.x);
+        int my = (int) Math.round(m.y);
+        events.add(event(crown, "give", NomadSim.CROWN));
+        events.add(event(crown, "player", mx + 4, my));
+        events.add(event(crown, "boon", last(seed, events, crown), 0, mx + 4, my));
+        events.add(event(crown + 5, "player", mx + 40, my + 10));
+        events.add(event(crown + 20, "player"));
+        // Gathering and Helmsman.
+        events.add(event(crown + 80, "give", NomadSim.GATHERING));
+        events.add(event(crown + 80, "boon", last(seed, events, crown + 80), 0));
+        events.add(event(crown + 150, "give", NomadSim.HELMSMAN));
+        NomadSim helm = probe(seed, events, crown + 150);
+        events.add(event(crown + 150, "helmsman", helm.boons().size() - 1, helm.helmsmanPorts().get(helm.helmsmanPorts().size() / 2)));
+        // Spend whatever else is held (Rudder turns left), so there's room to claim.
+        for (int i = 0; i < 3; i++) events.add(event(crown + 151 + i, "boon", 0, 1));
+        // Homeward from Main's middle to Lumbridge, then again while it cools down.
+        int home = crown + 240;
+        Circle h = probe(seed, events, home).main();
+        events.add(event(home, "homeward", (int) Math.round(h.x), (int) Math.round(h.y), Geography.LUMBRIDGE.x, Geography.LUMBRIDGE.y));
+        events.add(event(home + 1, "homeward", Geography.LUMBRIDGE.x, Geography.LUMBRIDGE.y, Geography.LUMBRIDGE.x + 3, Geography.LUMBRIDGE.y));
+        // Rare summons until one rises as a pilgrim stone, which is claimed from outside.
+        int at = home + 30;
+        for (int tries = 0; tries < 8 && at < 1300; tries++)
+        {
+            events.add(event(at, "summon", NomadSim.RARE));
+            final int from = at;
+            int found = firstMinute(seed, events, s -> s.minutes() >= from && pilgrimOf(s) != null);
+            if (found >= 0 && found < at + 5)
+            {
+                Waystone w = pilgrimOf(probe(seed, events, found));
+                events.add(event(found + 1, "player", w.x(), w.y()));
+                events.add(event(found + 4, "player"));
+                at = found + 20;
+                break;
+            }
+            at += 30;
+        }
+        // A common stone left alone to ripen, and a legendary one walked onto.
+        events.add(event(at, "summon", NomadSim.COMMON));
+        int legend = Math.min(at + 60, 1400);
+        events.add(event(legend, "summon", NomadSim.LEGENDARY));
+        int rose = firstMinute(seed, events, s -> s.minutes() >= legend && legendaryOf(s) != null);
+        if (rose >= 0)
+        {
+            Waystone w = legendaryOf(probe(seed, events, rose));
+            events.add(event(rose + 1, "player", w.x(), w.y()));
+            events.add(event(rose + 3, "player"));
+        }
+        return events;
+    }
+
+    /** The index of the last boon held at {@code minute}, once its events are applied. */
+    private static int last(int seed, JsonArray events, int minute)
+    {
+        return probe(seed, events, minute).boons().size() - 1;
+    }
+
+    /** A comet reaches Main's old middle this many minutes into its flight. */
+    static final int COMET_HALF = NomadSim.COMET_MINUTES / 2;
+
+    private static Waystone pilgrimOf(NomadSim s)
+    {
+        for (Waystone w : s.waystones()) if (w.pilgrim()) return w;
+        return null;
+    }
+
+    private static Waystone legendaryOf(NomadSim s)
+    {
+        for (Waystone w : s.waystones()) if (w.legendary()) return w;
+        return null;
+    }
+
+    /** The run as the script leaves it at the start of {@code minute}, its events applied. */
+    static NomadSim probe(int seed, JsonArray events, int minute)
+    {
+        NomadSim sim = NomadSim.start(seed);
+        Tile[] player = {null};
+        for (int t = 0; t < minute; t++)
+        {
+            apply(sim, events, t, player);
+            sim.step(player[0]);
+        }
+        apply(sim, events, minute, player);
+        return sim;
+    }
+
     /** The first minute the script reaches where {@code when} holds, or -1. */
     static int firstMinute(int seed, JsonArray events, java.util.function.Predicate<NomadSim> when)
     {
@@ -244,6 +350,15 @@ public final class SharedVectors
                 case "boon":
                     line = sim.useBoon(a.get(0).getAsInt(), a.get(1).getAsInt(),
                         a.size() >= 4 ? new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()) : null);
+                    break;
+                case "comet":
+                    sim.cometSoonForTesting();
+                    break;
+                case "helmsman":
+                    line = sim.useHelmsman(a.get(0).getAsInt(), a.get(1).getAsString());
+                    break;
+                case "homeward":
+                    line = sim.homeward(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));
                     break;
                 default:
                     throw new IllegalArgumentException(e.toString());

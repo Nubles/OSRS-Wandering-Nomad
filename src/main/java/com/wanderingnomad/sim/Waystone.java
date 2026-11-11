@@ -12,6 +12,12 @@ public final class Waystone
     /** The circle it stands in, by index. */
     int circle;
     String boon;
+    /** Its tier: common, rare or legendary (null in runs saved before tiers were kept). */
+    String tier;
+    /** Played minutes since it rose. A common stone left alone ripens into a rare one. */
+    int age;
+    /** A pilgrim stone rises just outside your circle and can be claimed from outside it. */
+    boolean pilgrim;
 
     public String landmark()
     {
@@ -38,6 +44,32 @@ public final class Waystone
         return boon;
     }
 
+    public String tier()
+    {
+        return tier == null ? NomadSim.COMMON : tier;
+    }
+
+    public int age()
+    {
+        return age;
+    }
+
+    public boolean pilgrim()
+    {
+        return pilgrim;
+    }
+
+    public boolean legendary()
+    {
+        return NomadSim.LEGENDARY.equals(tier);
+    }
+
+    /** Minutes until a common stone ripens into a rare one, or -1 if it won't. */
+    public int ripensIn()
+    {
+        return NomadSim.COMMON.equals(tier) && !pilgrim ? Math.max(0, NomadSim.RIPEN - age) : -1;
+    }
+
     Waystone copy()
     {
         Waystone w = new Waystone();
@@ -46,6 +78,9 @@ public final class Waystone
         w.y = y;
         w.circle = circle;
         w.boon = boon;
+        w.tier = tier;
+        w.age = age;
+        w.pilgrim = pilgrim;
         return w;
     }
 }
