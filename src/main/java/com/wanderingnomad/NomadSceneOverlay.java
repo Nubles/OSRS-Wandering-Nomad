@@ -7,6 +7,11 @@ import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
 import com.wanderingnomad.sim.Tile;
 import com.wanderingnomad.sim.Waystone;
+import com.wanderingnomad.look.Ceremony;
+import com.wanderingnomad.look.ClearSight;
+import com.wanderingnomad.look.ForkTear;
+import com.wanderingnomad.look.Lean;
+import com.wanderingnomad.look.Skies;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -174,7 +179,13 @@ class NomadSceneOverlay extends Overlay
             }
             drawFeet(graphics, view, sim, at);
             if (sim.ghost() != null) drawGhost(graphics, view, sim.ghost(), at);
+            if (config.visibleLean() && !NomadPlugin.photoMode) drawLean(graphics, view, sim, at);
         }
+        if (config.forkTear() && sim.forkWarning() > 0) drawTear(graphics, view, sim, at, now);
+        if (plugin.stormOverYou()) drawStorm(graphics, view, sim, at, now);
+        Ceremony ceremony = plugin.ceremony();
+        double show = ceremony.progress(now);
+        if (show >= 0) drawFirework(graphics, view, player, ceremony.tier(), show);
         // The tide line is the Radar's: the backseat shield keeps it off the game view.
         if (config.tideLine() && !plugin.shielded()) drawTide(graphics, view, at);
         boolean hud = config.compass() && !NomadPlugin.photoMode;
@@ -201,7 +212,7 @@ class NomadSceneOverlay extends Overlay
             Polygon poly = Perspective.getCanvasTilePoly(client, local);
             if (poly == null) continue;
             OverlayUtil.renderPolygon(graphics, poly, NomadPlugin.colour(c, yours ? 220 : 140),
-                NomadPlugin.colour(c, yours ? 40 : 20), yours ? YOURS : OTHER);
+                NomadPlugin.colour(c, yours ? 40 : 20), stroke(c, yours ? YOURS : OTHER));
         }
     }
 
@@ -1062,7 +1073,10 @@ class NomadSceneOverlay extends Overlay
         if (tide == null) return;
         double r = tide[2];
         int n = Math.max(48, (int) Math.ceil(Math.PI * 2 * r));
-        graphics.setColor(new Color(255, 255, 255, 120));
+        // Faded while you fight, so it never gets in the way of a fight's own tiles.
+        Player you = client.getLocalPlayer();
+        boolean fighting = you != null && you.getInteracting() != null;
+        graphics.setColor(new Color(255, 255, 255, fighting ? 40 : 120));
         for (int i = 0; i < n; i++)
         {
             double a = i * Math.PI * 2 / n;
@@ -1206,6 +1220,169 @@ class NomadSceneOverlay extends Overlay
             ? Math.max(0, Math.min(d, (d - to.radius() + yours.radius()) / 2))
             : yours.radius();
         return new double[]{yours.x() + dx / d * along, yours.y() + dy / d * along};
+    }
+
+    /** High contrast: a circle's edge stroke made thick and patterned by its kind (Main solid, kingdoms dashed, the caravan dotted). */
+    static BasicStroke stroke(Circle c, BasicStroke base)
+    {
+        if (!NomadPlugin.highContrast()) return base;
+        float w = base.getLineWidth() * ClearSight.THICK;
+        float[] dash = ClearSight.pattern(c.isMain(), c.isCaravan(), w);
+        return dash == null ? new BasicStroke(w) : new BasicStroke(w, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, dash, 0f);
+    }
+
+    /** A world point's place on screen at its ground height, or null off the scene or screen. */
+    private Point ground(WorldView view, double wx, double wy, int lift)
+    {
+        LocalPoint lp = local(view, wx, wy);
+        if (lp == null) return null;
+        int z = Perspective.getTileHeight(client, lp, view.getPlane());
+        return Perspective.localToCanvas(client, lp.getX(), lp.getY(), z - lift);
+    }
+
+    /**
+     * The fork tear: a glowing crack across Main where it will split, spreading from the middle
+     * outward as the warning runs out. Only the stretch near you is drawn.
+     */
+    private void drawTear(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at, long now)
+    {
+        Circle main = sim.main();
+        double progress = ForkTear.progress(sim.forkWarning(), NomadSim.FORK_WARN);
+        double[][] pts = ForkTear.crack(main.x(), main.y(), main.radius(), sim.forkAxis(), progress, sim.seed() * 7 + sim.forks());
+        Path2D path = new Path2D.Float();
+        boolean open = false;
+        for (double[] p : pts)
+        {
+            boolean near = Math.abs(p[0] - at.getX()) <= REACH && Math.abs(p[1] - at.getY()) <= REACH;
+            Point g = near ? ground(view, p[0], p[1], 2) : null;
+            if (g == null)
+            {
+                open = false;
+                continue;
+            }
+            if (open) path.lineTo(g.getX(), g.getY());
+            else path.moveTo(g.getX(), g.getY());
+            open = true;
+        }
+        double flicker = 0.75 + 0.25 * Math.sin(now / 90.0) * Math.sin(now / 37.0);
+        graphics.setStroke(new BasicStroke(9f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.setColor(alpha(NomadStatusOverlay.FORK, (int) (60 * flicker)));
+        graphics.draw(path);
+        graphics.setStroke(new BasicStroke(4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.setColor(alpha(NomadStatusOverlay.FORK, (int) (150 * flicker)));
+        graphics.draw(path);
+        graphics.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.setColor(alpha(Color.WHITE, (int) (230 * flicker)));
+        graphics.draw(path);
+    }
+
+    /**
+     * Storm skies: rain falling inside Main near you, slanted along Main's way in a Gale, and the
+     * whole view flickering when lightning strikes.
+     */
+    private void drawStorm(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at, long now)
+    {
+        boolean gale = sim.stormKind() == NomadSim.GALE;
+        double wind = gale ? 0.9 : 0.12;
+        double wx = Math.cos(sim.main().heading()) * wind;
+        double wy = Math.sin(sim.main().heading()) * wind;
+        graphics.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        Color rain = new Color(200, 220, 255);
+        for (int i = 0; i < Skies.DROPS; i++)
+        {
+            double[] d = Skies.drop(i, now + i * 13L);
+            double x = at.getX() + d[0];
+            double y = at.getY() + d[1];
+            if (!sim.main().contains(x, y) && (sim.twin() == null || !sim.twin().contains(x, y))) continue;
+            int top = (int) (520 * (1 - d[2]));
+            Point a = ground(view, x - wx * (1 - d[2]), y - wy * (1 - d[2]), top);
+            Point b = ground(view, x - wx * (1 - d[2]) + wx * 0.25, y - wy * (1 - d[2]) + wy * 0.25, Math.max(0, top - 70));
+            if (a == null || b == null) continue;
+            graphics.setColor(alpha(rain, (int) (60 + 90 * d[2])));
+            graphics.drawLine(a.getX(), a.getY(), b.getX(), b.getY());
+        }
+        double flash = Skies.flash(now);
+        if (flash > 0)
+        {
+            graphics.setColor(alpha(new Color(225, 235, 255), (int) (70 * flash)));
+            graphics.fillRect(client.getViewportXOffset(), client.getViewportYOffset(), client.getViewportWidth(), client.getViewportHeight());
+        }
+    }
+
+    /** The claim ceremony's firework: sparks bursting over you and falling, more and brighter for rarer stones. */
+    private void drawFirework(Graphics2D graphics, WorldView view, Player player, String tier, double t)
+    {
+        LocalPoint lp = player.getLocalLocation();
+        if (lp == null) return;
+        int rank = Ceremony.rank(tier);
+        Color colour = SidebarParts.tone(tier);
+        int sparks = 18 + rank * 14;
+        double reach = 90 + rank * 50;
+        int plane = view.getPlane();
+        int z = Perspective.getTileHeight(client, lp, plane);
+        // The shell rises for the first fifth, then bursts.
+        double rise = Math.min(1, t / 0.2);
+        int burstHeight = 340 + rank * 60;
+        if (t < 0.2)
+        {
+            Point p = Perspective.localToCanvas(client, lp.getX(), lp.getY(), z - (int) (burstHeight * rise));
+            if (p != null)
+            {
+                graphics.setColor(alpha(Color.WHITE, 230));
+                graphics.fillOval(p.getX() - 3, p.getY() - 3, 6, 6);
+            }
+            return;
+        }
+        double u = (t - 0.2) / 0.8;
+        double spread = 1 - Math.pow(1 - u, 3);
+        int alpha = (int) (255 * (1 - u));
+        for (int k = 0; k < sparks; k++)
+        {
+            double a = k * Math.PI * 2 / sparks;
+            double tilt = (k % 3 - 1) * 0.5;
+            double dx = Math.cos(a) * reach * spread;
+            double dy = Math.sin(a) * reach * spread;
+            double dz = burstHeight + Math.sin(tilt) * reach * spread - 120 * u * u;
+            Point p = Perspective.localToCanvas(client, (int) (lp.getX() + dx), (int) (lp.getY() + dy), z - (int) dz);
+            if (p == null) continue;
+            Color c = k % 2 == 0 ? colour : Color.WHITE;
+            int size = rank == 0 ? 4 : 5;
+            graphics.setColor(alpha(c, alpha));
+            graphics.fillOval(p.getX() - size / 2, p.getY() - size / 2, size, size);
+            graphics.setColor(alpha(c, alpha / 3));
+            graphics.fillOval(p.getX() - size, p.getY() - size, size * 2, size * 2);
+        }
+    }
+
+    /**
+     * Visible lean: near your circle's edge, a chevron on the edge nearest you pointing out, showing
+     * the circle turning toward you. It's faint once the turn is done, bold while there's turning to come.
+     */
+    private void drawLean(Graphics2D graphics, WorldView view, NomadSim sim, WorldPoint at)
+    {
+        Circle c = sim.bound();
+        if (!c.contains(at.getX(), at.getY())) return;
+        double[] m = Lean.mark(c, at.getX(), at.getY());
+        if (m == null) return;
+        double ex = m[0];
+        double ey = m[1];
+        double ux = m[2];
+        double uy = m[3];
+        double size = 0.5 + 0.5 * m[4];
+        Point tip = ground(view, ex + ux * 0.9 * size, ey + uy * 0.9 * size, 4);
+        Point left = ground(view, ex - uy * 0.8 * size - ux * 0.1, ey + ux * 0.8 * size - uy * 0.1, 4);
+        Point right = ground(view, ex + uy * 0.8 * size - ux * 0.1, ey - ux * 0.8 * size - uy * 0.1, 4);
+        Point notch = ground(view, ex + ux * 0.35 * size, ey + uy * 0.35 * size, 4);
+        if (tip == null || left == null || right == null || notch == null) return;
+        Polygon chevron = new Polygon(
+            new int[]{tip.getX(), left.getX(), notch.getX(), right.getX()},
+            new int[]{tip.getY(), left.getY(), notch.getY(), right.getY()}, 4);
+        Color colour = brighter(c);
+        graphics.setColor(alpha(colour, (int) (60 + 120 * m[4])));
+        graphics.fill(chevron);
+        graphics.setStroke(new BasicStroke(1.5f));
+        graphics.setColor(alpha(Color.WHITE, (int) (90 + 120 * m[4])));
+        graphics.draw(chevron);
     }
 
     /** A local point for a world position between tile centres, or null outside the scene. */

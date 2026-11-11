@@ -73,6 +73,27 @@ Everything here frames the run for streams and videos; nothing changes a rule. I
 - **Chat paints the wall:** paste chat's `!colour`, `!tone` and `!name` votes to set the edge colour, narrator and circle name for the episode. **Viewer flags:** paste chat's `!flag 3222 3218` or `!flag Varrock Square` lines; when the circle takes a flag in, a banner names its viewer. Both are pasted, so no relay is needed, and names are filtered.
 - **Photo mode** (a hotkey) hides the Nomad HUD and turns the glow and shade up full. **Backseat shield** moves the Radar's countdowns and the Forecast into the sidebar. **Dead-air cards** (off by default) offer a talking point in the sidebar after 15 quiet minutes. **Stream feed** (off by default) writes text files for OBS to `.runelite/nomad-uim/stream`, and **Streamer layout** enlarges the status box's key numbers.
 
+### How it looks
+
+The pure parts live in `look/` (with tests); the drawing is in the overlays, `EdgeWall3D.java` and the sidebar. Each has its own setting.
+
+- **The 3D wall's motion** follows your circle's mood: quick streaks when it dashes, a slow swell when it lingers, a shimmer when it meanders. **Wall motion** can make it one steady wave or still.
+- **Fork tear:** during a fork's warning, a glowing crack spreads across Main where it will split, on the ground, the wall and the world map.
+- **Standing stones:** each waystone stands as a stone obelisk under a pillar of light you can see from far off. You can't click it, and it goes when claimed.
+- **Storm skies:** while a Gale or Squall blows, rain falls inside Main near you and lightning flickers. Never in instances.
+- **Visible lean:** near your circle's edge, a chevron on the edge shows it turning toward you. The **tide line** fades while you fight.
+- **Comet tails:** the world map draws the last three hours of Main's path and your circle's, thicker where they lingered. Hovering a circle also shows its temperament, and past the Radar it says a touch is "later".
+- **Kingdom title cards:** walking into a kingdom for the first time in a run fades in its name and temperament; after that, a small banner. **Kingdom stingers:** crossing into a circle plays that circle's own chime.
+- **Claim ceremony:** a firework over you and a rising chime, bigger for rares; a rarer claim always takes over a commoner one.
+- **Gains and losses:** when the edge moves past a bank, altar, furnace, range, anvil, fairy ring or spirit tree near you, a banner says "Gained: Furnace" or "Lost: Bank". They're told apart by their own names and menu options, so there's no list to keep.
+- **Black box:** the sidebar's **Replay the black box** plays your last 3 minutes and your circle's edge from above, ten times as fast. After a death, chat points you to it.
+- **Almanac:** past the Radar's 15 minutes, the sidebar reads the Forecast in four vague words (unlikely, possible, likely, almost certain).
+- **Coach marks:** in your first run, a one-time tip the first time each thing happens. **Show tips again** brings them back.
+- **Moment camera** (off by default): a captioned screenshot at each big moment, saved to `.runelite/nomad-uim/moments`, 20 a session at most.
+- **Edge alerts:** RuneLite notifications for the edge reaching you while you stand still, a fork coming and a waystone rising, one setting each.
+- **Boons and timers** can show as RuneLite infoboxes, in the status box, or both.
+- **Clear sight:** one accessibility setting. Colour safe swaps in a colour-blind-safe palette, high contrast makes edges thick and patterned by kind (Main solid, kingdoms dashed, the caravan dotted), and All does both and tells every banner in chat too.
+
 Not yet:
 
 - Campfire (the fourth-circle boon), Forks, Passport, the hash-chained run log and Season mode.

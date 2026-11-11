@@ -760,4 +760,105 @@ final class SidebarParts
         g.setColor(colour);
         g.fill(new RoundRectangle2D.Float(x, y, Math.max(h, filled), h, h, h));
     }
+
+    /**
+     * The black box's replay: you and your circle's edge from above, a game tick every 60 ms (ten
+     * times as fast as it happened), with your path behind you, green inside and red outside.
+     */
+    static final class Replay extends JPanel
+    {
+        private static final int SIZE = 340;
+        private static final int STEP_MS = 60;
+        private final List<com.wanderingnomad.look.BlackBox.Frame> frames;
+        private final javax.swing.Timer timer;
+        private int shown;
+        private final double minX;
+        private final double minY;
+        private final double scale;
+
+        Replay(List<com.wanderingnomad.look.BlackBox.Frame> frames)
+        {
+            this.frames = frames;
+            setPreferredSize(new Dimension(SIZE, SIZE + 22));
+            setBackground(new Color(18, 16, 13));
+            double x0 = Double.MAX_VALUE;
+            double y0 = Double.MAX_VALUE;
+            double x1 = -Double.MAX_VALUE;
+            double y1 = -Double.MAX_VALUE;
+            // Framed on your path and the edge's stretch near it, not the whole circle.
+            for (com.wanderingnomad.look.BlackBox.Frame f : frames)
+            {
+                x0 = Math.min(x0, f.x - 12);
+                y0 = Math.min(y0, f.y - 12);
+                x1 = Math.max(x1, f.x + 12);
+                y1 = Math.max(y1, f.y + 12);
+            }
+            double span = Math.max(x1 - x0, y1 - y0);
+            minX = (x0 + x1) / 2 - span / 2;
+            minY = (y0 + y1) / 2 - span / 2;
+            scale = (SIZE - 20) / span;
+            timer = new javax.swing.Timer(STEP_MS, e ->
+            {
+                if (shown < this.frames.size() - 1) shown++;
+                else ((javax.swing.Timer) e.getSource()).stop();
+                repaint();
+            });
+        }
+
+        void restart()
+        {
+            shown = 0;
+            timer.restart();
+        }
+
+        void stop()
+        {
+            timer.stop();
+        }
+
+        private double px(double x)
+        {
+            return 10 + (x - minX) * scale;
+        }
+
+        private double py(double y)
+        {
+            return 10 + (SIZE - 20) - (y - minY) * scale;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g0)
+        {
+            super.paintComponent(g0);
+            Graphics2D g = (Graphics2D) g0;
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            if (frames.isEmpty()) return;
+            com.wanderingnomad.look.BlackBox.Frame now = frames.get(Math.min(shown, frames.size() - 1));
+            Color colour = new Color(now.colour);
+            Ellipse2D ring = new Ellipse2D.Double(px(now.cx - now.r), py(now.cy + now.r), now.r * 2 * scale, now.r * 2 * scale);
+            g.setColor(new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 40));
+            g.fill(ring);
+            g.setStroke(new BasicStroke(2.5f));
+            g.setColor(colour);
+            g.draw(ring);
+            // Your path so far, each step coloured by whether you were inside.
+            g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            for (int k = 1; k <= shown && k < frames.size(); k++)
+            {
+                com.wanderingnomad.look.BlackBox.Frame a = frames.get(k - 1);
+                com.wanderingnomad.look.BlackBox.Frame b = frames.get(k);
+                g.setColor(b.inside ? new Color(143, 224, 162, 150) : new Color(255, 138, 128, 170));
+                g.drawLine((int) px(a.x), (int) py(a.y), (int) px(b.x), (int) py(b.y));
+            }
+            g.setColor(now.inside ? IN : OUT);
+            g.fill(new Ellipse2D.Double(px(now.x) - 5, py(now.y) - 5, 10, 10));
+            g.setColor(Color.WHITE);
+            g.draw(new Ellipse2D.Double(px(now.x) - 5, py(now.y) - 5, 10, 10));
+            int ago = (frames.size() - 1 - Math.min(shown, frames.size() - 1)) * 600 / 1000;
+            g.setFont(FontManager.getRunescapeSmallFont());
+            g.setColor(MUTED);
+            g.drawString(ago == 0 ? "now" : ago / 60 + ":" + String.format("%02d", ago % 60) + " before the end", 10, SIZE + 14);
+            g.drawString(now.inside ? "inside" : "outside", SIZE - 60, SIZE + 14);
+        }
+    }
 }

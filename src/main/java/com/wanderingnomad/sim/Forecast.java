@@ -61,6 +61,12 @@ public final class Forecast
         return minutes;
     }
 
+    /** How many circles it imagined. */
+    public int circles()
+    {
+        return points[0].length;
+    }
+
     /** Where circle {@code circle} might be at horizon {@code horizon}, as x, y pairs. */
     public double[] points(int horizon, int circle)
     {

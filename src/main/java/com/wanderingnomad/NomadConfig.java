@@ -490,6 +490,130 @@ public interface NomadConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "titleCards",
+        name = "Kingdom title cards",
+        description = "Walking into a kingdom for the first time in a run fades in its name and temperament; "
+            + "after that, a small banner.",
+        section = MOMENTS,
+        position = 45
+    )
+    default boolean titleCards()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "claimCeremony",
+        name = "Claim ceremony",
+        description = "Claiming a waystone sets off a firework over you and a rising chime, bigger for rares.",
+        section = MOMENTS,
+        position = 46
+    )
+    default boolean claimCeremony()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "kingdomStingers",
+        name = "Kingdom stingers",
+        description = "Crossing into a circle plays that circle's own short chime.",
+        section = MOMENTS,
+        position = 47
+    )
+    default boolean kingdomStingers()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "gainsLosses",
+        name = "Gains and losses",
+        description = "When the edge moves past a bank, altar, furnace, range, anvil, fairy ring or spirit tree "
+            + "near you, a banner says \"Gained: Furnace\" or \"Lost: Bank\".",
+        section = MOMENTS,
+        position = 48
+    )
+    default boolean gainsLosses()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "coachMarks",
+        name = "Coach marks",
+        description = "In your first run, a one-time tip the first time each thing happens. Never shown once you've "
+            + "finished a run, unless you ask for them again below.",
+        section = MOMENTS,
+        position = 49
+    )
+    default boolean coachMarks()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "coachAgain",
+        name = "Show tips again",
+        description = "Switch on to see every coach tip again, once each, even after a finished run.",
+        section = MOMENTS,
+        position = 50
+    )
+    default boolean coachAgain()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "momentCamera",
+        name = "Moment camera",
+        description = "Saves a captioned screenshot at each big moment into .runelite/nomad-uim/moments, "
+            + "20 a session at most.",
+        section = MOMENTS,
+        position = 51
+    )
+    default boolean momentCamera()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "notifyEdge",
+        name = "Notify: edge",
+        description = "A RuneLite notification when the edge is about to reach you while you stand still.",
+        section = MOMENTS,
+        position = 52
+    )
+    default boolean notifyEdge()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "notifyFork",
+        name = "Notify: fork",
+        description = "A RuneLite notification when Main is about to fork.",
+        section = MOMENTS,
+        position = 53
+    )
+    default boolean notifyFork()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "notifyWaystone",
+        name = "Notify: waystone",
+        description = "A RuneLite notification when a waystone rises.",
+        section = MOMENTS,
+        position = 54
+    )
+    default boolean notifyWaystone()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "debugShade",
         name = "Debug: outline the shade",
         description = "For testing: outlines each shaded patch outside your circle in red, and ones dropped as "
@@ -500,6 +624,89 @@ public interface NomadConfig extends Config
     default boolean debugShade()
     {
         return false;
+    }
+
+    enum WallMotion
+    {
+        MOOD,
+        WAVE,
+        STILL
+    }
+
+    @ConfigItem(
+        keyName = "wallMotion",
+        name = "Wall motion",
+        description = "How the 3D wall moves: with your circle's mood (streaks when it dashes, a slow swell when it lingers, "
+            + "a shimmer when it meanders), one steady wave, or still.",
+        section = LIVING_EDGE,
+        position = 27
+    )
+    default WallMotion wallMotion()
+    {
+        return WallMotion.MOOD;
+    }
+
+    @ConfigItem(
+        keyName = "forkTear",
+        name = "Fork tear",
+        description = "During a fork's warning, a glowing crack spreads across Main where it will split, on the ground, the "
+            + "wall and the world map.",
+        section = LIVING_EDGE,
+        position = 28
+    )
+    default boolean forkTear()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "standingStones",
+        name = "Standing stones",
+        description = "Waystones stand in the world as stone obelisks under a pillar of light you can see from "
+            + "far off. You can't click them; they go when claimed.",
+        section = LIVING_EDGE,
+        position = 30
+    )
+    default boolean standingStones()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "stormSkies",
+        name = "Storm skies",
+        description = "While a Gale or Squall blows, rain falls inside Main near you and lightning flickers over it. "
+            + "Never in instances.",
+        section = LIVING_EDGE,
+        position = 31
+    )
+    default boolean stormSkies()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "visibleLean",
+        name = "Visible lean",
+        description = "Standing near your circle's edge, a chevron on the edge shows it turning toward you.",
+        section = LIVING_EDGE,
+        position = 32
+    )
+    default boolean visibleLean()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "cometTails",
+        name = "Comet tails",
+        description = "The world map draws the last three hours of Main's path and your circle's, thicker where they lingered.",
+        section = LIVING_EDGE,
+        position = 33
+    )
+    default boolean cometTails()
+    {
+        return true;
     }
 
     enum EdgeStyle
@@ -759,6 +966,45 @@ public interface NomadConfig extends Config
     default String rivals()
     {
         return "";
+    }
+
+    enum BoonDisplay
+    {
+        STATUS_BOX,
+        INFOBOXES,
+        BOTH
+    }
+
+    @ConfigItem(
+        keyName = "boonDisplay",
+        name = "Boons and timers",
+        description = "Where active boons, the omen, a coming fork and storms show: in the status box, "
+            + "as RuneLite infoboxes, or both.",
+        position = 5
+    )
+    default BoonDisplay boonDisplay()
+    {
+        return BoonDisplay.STATUS_BOX;
+    }
+
+    enum Sight
+    {
+        OFF,
+        COLOUR_SAFE,
+        HIGH_CONTRAST,
+        ALL
+    }
+
+    @ConfigItem(
+        keyName = "clearSight",
+        name = "Clear sight",
+        description = "Accessibility. Colour safe: a colour-blind-safe palette. High contrast: thick edges, "
+            + "patterned by kind (Main solid, kingdoms dashed, the caravan dotted). All: both, and every banner told in chat too.",
+        position = 10
+    )
+    default Sight clearSight()
+    {
+        return Sight.OFF;
     }
 
     @ConfigItem(

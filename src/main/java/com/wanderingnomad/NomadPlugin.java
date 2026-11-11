@@ -49,6 +49,15 @@ import com.wanderingnomad.sim.SavedRun;
 import com.wanderingnomad.sim.Surface;
 import com.wanderingnomad.sim.Tile;
 import com.wanderingnomad.sim.Waystone;
+import com.wanderingnomad.look.Almanac;
+import com.wanderingnomad.look.Amenities;
+import com.wanderingnomad.look.BlackBox;
+import com.wanderingnomad.look.Ceremony;
+import com.wanderingnomad.look.ClearSight;
+import com.wanderingnomad.look.Coach;
+import com.wanderingnomad.look.Firsts;
+import com.wanderingnomad.look.Stingers;
+import com.wanderingnomad.look.Trails;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -57,6 +66,13 @@ import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.image.BufferedImage;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.io.File;
+import java.io.IOException;
+import java.awt.Font;
+import java.awt.Image;
+import javax.imageio.ImageIO;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -81,6 +97,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.NPCComposition;
+import net.runelite.api.ObjectComposition;
 import net.runelite.api.Player;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
@@ -111,6 +128,10 @@ import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.Notifier;
+import net.runelite.client.ui.DrawManager;
+import net.runelite.client.RuneLite;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.NpcLootReceived;
 import net.runelite.client.input.KeyManager;
@@ -206,6 +227,35 @@ public class NomadPlugin extends Plugin
     private KeyManager keyManager;
     /** Streaming: the episode desk, and the hotkeys that mark a moment and toggle photo mode. */
     private StreamDesk desk;
+    @Inject
+    private NomadInfoBoxes infoBoxes;
+    @Inject
+    private Notifier notifier;
+    @Inject
+    private DrawManager drawManager;
+    /** Wave 8's looks: amenities in the loaded scene, the black box, comet tails and the claim ceremony. */
+    private final Amenities amenities = new Amenities();
+    private final BlackBox blackBox = new BlackBox();
+    private final Trails trails = new Trails();
+    private final Ceremony ceremony = new Ceremony();
+    /** The kingdom you last stood in, for its title card. */
+    private Region kingdomHere;
+    private Firsts titleCards;
+    private Firsts coachSeen;
+    static final String TITLE_CARDS_KEY = "titleCards";
+    static final String COACH_KEY = "coach";
+    static final String COACH_FORCE_KEY = "coachForce";
+    /** Screenshots the moment camera took this session, and its cap. */
+    private int momentShots;
+    static final int MOMENT_SHOTS = 20;
+    /** Game ticks you've stood on the same tile, for the edge alert. */
+    private int stillTicks;
+    /** Clear sight's setting, read by every overlay's colours: 0 off, 1 colour safe, 2 high contrast, 3 all. */
+    static volatile int sight;
+    /** The almanac's lines, and what they were read from. */
+    private List<String> almanac = java.util.Collections.emptyList();
+    private Forecast almanacFrom;
+    private Tile almanacAt;
     /** The account the desk was read for, or -1. */
     private long deskAccount = -1;
     static final String STREAM_KEY = StreamDesk.KEY;
@@ -384,6 +434,8 @@ public class NomadPlugin extends Plugin
         panel.onLegacy(this::retireFromPanel, this::wagerFromPanel, this::sealFromPanel);
         panel.onSocial(this::socialFromPanel);
         panel.onStream(this::streamFromPanel);
+        panel.onBlackBox(() -> SwingUtilities.invokeLater(() -> panel.showBlackBox(blackBox.frames())));
+        sight = config.clearSight().ordinal();
         desk = new StreamDesk(this, gson, executor, this::show, this::chat);
         keyManager.registerKeyListener(markerHotkey);
         keyManager.registerKeyListener(photoHotkey);
@@ -451,6 +503,8 @@ public class NomadPlugin extends Plugin
         keyManager.unregisterKeyListener(photoHotkey);
         photoMode = false;
         votedColour = -1;
+        sight = 0;
+        clientThread.invoke(infoBoxes::clear);
         deskAccount = -1;
         bannerOverlay.clear();
         clientThread.invoke(edgeWall::clear);
@@ -467,7 +521,12 @@ public class NomadPlugin extends Plugin
         GameState state = ev.getGameState();
         // A new scene drops what was placed in the old one; the next tick builds the edge again.
         if (state != GameState.LOGGED_IN) edgeWall.clear();
-        if (state == GameState.LOADING) loadingTick = tickCount;
+        if (state == GameState.LOADING)
+        {
+            loadingTick = tickCount;
+            // The new scene's objects arrive again as it loads.
+            amenities.clear();
+        }
         if (state == GameState.LOGGED_IN && sim == null)
         {
             // The account's profile may not be known yet; the first tick that knows it loads the run.
@@ -492,13 +551,36 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onClientTick(ClientTick tick)
     {
-        edgeWall.animate();
+        long now = System.currentTimeMillis();
+        NomadSim s = sim;
+        String motion = config.wallMotion().name().toLowerCase();
+        String mood = s == null ? null : s.bound().moodName();
+        double[] tear = s != null && config.forkTear() && s.forkWarning() > 0
+            ? new double[]{s.forkAxis() + Math.PI / 2, com.wanderingnomad.look.ForkTear.progress(s.forkWarning(), NomadSim.FORK_WARN)} : null;
+        boolean flash = s != null && stormOverYou() && com.wanderingnomad.look.Skies.flash(now) > 0.5;
+        edgeWall.animate(motion, mood, tear, flash);
+        int note = ceremony.due(now);
+        if (note >= 0 && config.momentSounds()) client.playSoundEffect(Ceremony.sound(ceremony.tier(), note), SOUND_VOLUME);
+    }
+
+    /** A Gale or Squall blowing over Main while you stand in it, outside instances: when storm skies show. */
+    boolean stormOverYou()
+    {
+        NomadSim s = sim;
+        Tile at = surface;
+        if (s == null || at == null || !config.stormSkies() || s.stormLeft() <= 0) return false;
+        WorldView view = client.getTopLevelWorldView();
+        if (view == null || view.getScene() == null || view.getScene().isInstance()) return false;
+        return s.main().contains(at.x, at.y) || s.twin() != null && s.twin().contains(at.x, at.y);
     }
 
     @Subscribe
     public void onGameTick(GameTick tick)
     {
         edgeWall.update(sim, config.drawEdge() && config.edge3d() && config.edgeStyle() != NomadConfig.EdgeStyle.TILES);
+        edgeWall.updateStones(sim, config.standingStones() && !retired);
+        sight = config.clearSight().ordinal();
+        infoBoxes.sync(this, retired ? null : sim, omen(), config.boonDisplay() != NomadConfig.BoonDisplay.STATUS_BOX);
         spots.check(client.getTopLevelWorldView());
         if (sim == null)
         {
@@ -524,6 +606,12 @@ public class NomadPlugin extends Plugin
         }
         delve();
         if (before != null && surface != null) stats.walked(surface.x - before.x, surface.y - before.y);
+        stillTicks = before != null && before.equals(surface) ? stillTicks + 1 : 0;
+        if (surface != null)
+        {
+            blackBox.add(new BlackBox.Frame(surface.x, surface.y, sim.bound(), !outsideNow(), colour(sim.bound(), 255).getRGB()));
+            titleCard();
+        }
         homeward(before);
         watchGuest();
         watchPlots();
@@ -714,7 +802,9 @@ public class NomadPlugin extends Plugin
         // Sheltered (delving, carried off, in a plot circle or an intermission), you count as inside
         // wherever the circle goes: the rules get no tile to judge.
         double before = desk.margin();
+        java.util.Set<String> had = config.gainsLosses() ? amenities.inside(sim.bound()) : null;
         lines.addAll(sim.step(sheltered() ? null : surface));
+        trails.sample(sim);
         if (delveLeft > 0 && --delveLeft == 0)
         {
             delveWait = DELVE_MINUTES;
@@ -733,6 +823,12 @@ public class NomadPlugin extends Plugin
             lines.add("The coordinate tide ebbs: three hours went by without the clue being dug up.");
         }
         report(lines);
+        if (had != null && sim.boundIndex() == boundBefore)
+        {
+            // Gains and losses: what the edge moved past this minute, among the objects loaded near you.
+            List<String> changes = Amenities.changes(had, amenities.inside(sim.bound()));
+            if (!changes.isEmpty()) show(Moments.amenities(changes));
+        }
         for (Curiosities.Curio c : curiosities.spot(sim, surface, lines)) curio(c);
         String born = Lineage.sync(journey, sim.seed(), sim.forks(), sim.minutes());
         if (born != null) report(java.util.Collections.singletonList(born + " is born: the half that lived carries Main's line on."));
@@ -812,6 +908,10 @@ public class NomadPlugin extends Plugin
                 scar("death", "You died at " + NomadPanel.time(sim.minutes()) + ".");
                 if (surface != null) journey.died(surface.x, surface.y);
                 desk.died();
+                if (!blackBox.frames().isEmpty())
+                {
+                    chat("The black box kept your last 3 minutes: Replay them from the sidebar's Run section.");
+                }
                 if (config.hardcore() && !fallen)
                 {
                     fallen = true;
@@ -877,8 +977,9 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned ev)
     {
-        if (sim == null) return;
         GameObject o = ev.getGameObject();
+        noteAmenity(o);
+        if (sim == null) return;
         int size = WorldWays.starSize(o.getId());
         if (size == 0) return;
         WorldPoint wp = o.getWorldLocation();
@@ -916,10 +1017,31 @@ public class NomadPlugin extends Plugin
     @Subscribe
     public void onGameObjectDespawned(GameObjectDespawned ev)
     {
+        WorldPoint gone = ev.getGameObject().getWorldLocation();
+        if (gone != null && amenityKind(ev.getGameObject()) != null) amenities.remove(gone.getX(), gone.getY());
         if (sim == null || WorldWays.starSize(ev.getGameObject().getId()) == 0) return;
         WorldPoint wp = ev.getGameObject().getWorldLocation();
         Tile held = sim.star();
         if (held != null && wp != null && held.x == wp.getX() && held.y == wp.getY()) starGoneTick = tickCount;
+    }
+
+    /** Gains and losses: notes a bank, altar, furnace, range, anvil, fairy ring or spirit tree, told by its own name and actions. */
+    private void noteAmenity(GameObject o)
+    {
+        WorldPoint wp = o.getWorldLocation();
+        if (wp != null) amenities.add(wp.getX(), wp.getY(), amenityKind(o));
+    }
+
+    private String amenityKind(GameObject o)
+    {
+        ObjectComposition def = client.getObjectDefinition(o.getId());
+        if (def == null) return null;
+        if (def.getImpostorIds() != null)
+        {
+            ObjectComposition real = def.getImpostor();
+            if (real != null) def = real;
+        }
+        return Amenities.kind(def.getName(), def.getActions());
     }
 
     /** Spends a boon from the sidebar; {@code side} turns a Rudder left (1) or right (-1). */
@@ -1376,9 +1498,159 @@ public class NomadPlugin extends Plugin
             stats.count(b.event);
             saveStats();
         }
-        if (b.quiet || !config.momentBanners()) return;
-        bannerOverlay.show(b);
-        if (config.momentSounds() && b.sound >= 0) client.playSoundEffect(b.sound, SOUND_VOLUME);
+        if (b.quiet) return;
+        alert(b);
+        if (sight == NomadConfig.Sight.ALL.ordinal()) chat(b.title + ": " + b.subtitle);
+        boolean ceremonyPlays = false;
+        if (b.event == Moments.Event.CLAIMED && config.claimCeremony())
+        {
+            ceremonyPlays = ceremony.offer(NomadSim.tierOf(Ceremony.boonOf(b.subtitle)), now);
+        }
+        if (b.big && config.momentCamera()) snap(b);
+        if (config.momentBanners())
+        {
+            bannerOverlay.show(b);
+            int sound = b.event == Moments.Event.CROSSED && config.kingdomStingers() && sim != null ? Stingers.of(sim.bound()) : b.sound;
+            // The claim ceremony's own chime plays in place of the banner's sound.
+            if (config.momentSounds() && sound >= 0 && !ceremonyPlays) client.playSoundEffect(sound, SOUND_VOLUME);
+        }
+        coach(b.title);
+    }
+
+    /** Edge alerts: RuneLite notifications for the edge closing on you while you stand still, a fork coming, a waystone rising. */
+    private void alert(Moments.Banner b)
+    {
+        if (b.title.equals("The edge is on you") && config.notifyEdge() && stillTicks >= 5)
+        {
+            notifier.notify("Nomad UIM: the edge reaches you in about a minute. Head toward the middle.");
+        }
+        else if (b.title.equals("Main is about to fork") && config.notifyFork())
+        {
+            notifier.notify("Nomad UIM: " + b.title + ". " + b.subtitle);
+        }
+        else if (b.title.endsWith("stone risen") && config.notifyWaystone())
+        {
+            notifier.notify("Nomad UIM: " + b.title + ". " + b.subtitle);
+        }
+    }
+
+    /** Coach marks: in a first run, a one-time tip the first time each thing happens. */
+    private void coach(String title)
+    {
+        if (!config.coachMarks() || coachSeen == null || sim == null) return;
+        boolean forced = "true".equals(configManager.getRSProfileConfiguration(NomadConfig.GROUP, COACH_FORCE_KEY));
+        if (!forced && !legacy().isEmpty()) return;
+        Coach.Tip tip = Coach.tipFor(title, coachSeen.all());
+        if (tip == null) return;
+        coachSeen.first(tip.key);
+        configManager.setRSProfileConfiguration(NomadConfig.GROUP, COACH_KEY, coachSeen.write());
+        chat("Tip: " + tip.text);
+        if (config.momentBanners()) bannerOverlay.show(Moments.tip(tip.text));
+    }
+
+    /** "Show tips again": clears the tips seen and lets them show even after a finished run, then switches itself back off. */
+    @Subscribe
+    public void onConfigChanged(ConfigChanged ev)
+    {
+        if (!NomadConfig.GROUP.equals(ev.getGroup())) return;
+        if ("clearSight".equals(ev.getKey())) sight = config.clearSight().ordinal();
+        if (!"coachAgain".equals(ev.getKey()) || !"true".equals(ev.getNewValue())) return;
+        clientThread.invokeLater(() ->
+        {
+            if (coachSeen != null) coachSeen.clear();
+            configManager.setRSProfileConfiguration(NomadConfig.GROUP, COACH_KEY, "0|");
+            configManager.setRSProfileConfiguration(NomadConfig.GROUP, COACH_FORCE_KEY, "true");
+            configManager.setConfiguration(NomadConfig.GROUP, "coachAgain", false);
+            reply("Coach tips will show again, each once, as things happen.");
+        });
+    }
+
+    /** Kingdom title cards: walking into a kingdom, its name and temperament the first time in a run, a small banner after. */
+    private void titleCard()
+    {
+        Region here = Geography.regionAt(surface.x, surface.y);
+        if (here == null || here == kingdomHere) return;
+        boolean moved = kingdomHere != null;
+        kingdomHere = here;
+        if (!config.titleCards() || titleCards == null || retired) return;
+        Circle kingdom = null;
+        for (Circle c : sim.circles()) if (c.region() == here) kingdom = c;
+        String line = kingdom == null ? "A kingdom of its own" : kingdom.temperament() + " circle · " + kingdom.moodName().toLowerCase() + " now";
+        Color colour = kingdom == null ? Moments.GOLD : colour(kingdom, 255);
+        if (titleCards.first(here.name))
+        {
+            configManager.setRSProfileConfiguration(NomadConfig.GROUP, TITLE_CARDS_KEY, titleCards.write());
+            if (config.momentBanners() && !photoMode) bannerOverlay.titleCard(here.name.toUpperCase(), line, colour);
+        }
+        else if (moved && config.momentBanners())
+        {
+            bannerOverlay.show(Moments.kingdom(here.name, line, colour));
+        }
+    }
+
+    /** The moment camera: the next frame, captioned, saved to .runelite/nomad-uim/moments. Off the client thread. */
+    private void snap(Moments.Banner b)
+    {
+        if (momentShots >= MOMENT_SHOTS) return;
+        momentShots++;
+        String title = b.title;
+        String subtitle = b.subtitle;
+        Color colour = b.colour;
+        String played = sim == null ? "" : NomadPanel.time(sim.minutes());
+        drawManager.requestNextFrameListener(image -> executor.execute(() -> saveShot(image, title, subtitle, colour, played)));
+    }
+
+    private static void saveShot(Image image, String title, String subtitle, Color colour, String played)
+    {
+        int w = image.getWidth(null);
+        int h = image.getHeight(null);
+        if (w <= 0 || h <= 0) return;
+        int bar = 64;
+        BufferedImage shot = new BufferedImage(w, h + bar, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = shot.createGraphics();
+        g.drawImage(image, 0, 0, null);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setColor(new Color(16, 13, 10));
+        g.fillRect(0, h, w, bar);
+        g.setColor(colour);
+        g.fillRect(0, h, 6, bar);
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 20));
+        g.drawString(title, 18, h + 27);
+        g.setColor(new Color(0xE8E2D4));
+        g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 14));
+        g.drawString(subtitle, 18, h + 50);
+        String tag = "Nomad UIM · " + played;
+        g.setColor(new Color(0xB8B0A0));
+        g.drawString(tag, w - g.getFontMetrics().stringWidth(tag) - 14, h + 27);
+        g.dispose();
+        File dir = new File(new File(RuneLite.RUNELITE_DIR, "nomad-uim"), "moments");
+        if (!dir.isDirectory() && !dir.mkdirs()) return;
+        String name = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")) + " "
+            + title.replaceAll("[^A-Za-z0-9 ]", "").trim() + ".png";
+        try
+        {
+            ImageIO.write(shot, "png", new File(dir, name));
+        }
+        catch (IOException e)
+        {
+            log.warn("Nomad UIM: couldn't save a moment's screenshot", e);
+        }
+    }
+
+    BlackBox blackBox()
+    {
+        return blackBox;
+    }
+
+    Trails trails()
+    {
+        return trails;
+    }
+
+    Ceremony ceremony()
+    {
+        return ceremony;
     }
 
     /** The test shortcuts, typed as ::nomadmoments, ::nomadfork [now] or ::nomadstep N. */
@@ -1728,6 +2000,13 @@ public class NomadPlugin extends Plugin
         }
         forksSampled = sim.forks();
         buildAncestors();
+        titleCards = Firsts.read(configManager.getRSProfileConfiguration(NomadConfig.GROUP, TITLE_CARDS_KEY), sim.seed());
+        coachSeen = Firsts.read(configManager.getRSProfileConfiguration(NomadConfig.GROUP, COACH_KEY), 0);
+        kingdomHere = null;
+        momentShots = 0;
+        stillTicks = 0;
+        trails.clear();
+        blackBox.clear();
         // The desk is read once per account: a new run started mid-session keeps the episode's latest beats.
         if (client.getAccountHash() != deskAccount)
         {
@@ -3336,6 +3615,19 @@ public class NomadPlugin extends Plugin
             config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
         view.stream = desk == null ? java.util.Collections.emptyList() : desk.lines(sim != null && !retired);
+        Forecast f = forecast;
+        if (sim == null || retired)
+        {
+            almanac = java.util.Collections.emptyList();
+        }
+        else if (f != almanacFrom || !java.util.Objects.equals(surface, almanacAt))
+        {
+            // Each Forecast rolls fresh dice, so the almanac's words shift a little every quarter hour.
+            almanac = Almanac.of(sim, f, surface);
+            almanacFrom = f;
+            almanacAt = surface;
+        }
+        view.almanac = almanac;
         if (sim != null && retired)
         {
             view.state = "Laid down: the run has ended";
@@ -3415,6 +3707,12 @@ public class NomadPlugin extends Plugin
     }
 
     /** A storm's name: Gale or Squall, or in season (with Holiday weather on) a Haunt or Snowfall one. */
+    /** High contrast: thick, patterned edges. */
+    static boolean highContrast()
+    {
+        return sight == NomadConfig.Sight.HIGH_CONTRAST.ordinal() || sight == NomadConfig.Sight.ALL.ordinal();
+    }
+
     static String stormName(boolean gale)
     {
         return holidays ? Holidays.storm(LocalDate.now(), gale) : gale ? "Gale" : "Squall";
@@ -3423,6 +3721,11 @@ public class NomadPlugin extends Plugin
     static Color colour(Circle c, int alpha)
     {
         int rgb = c.isMain() ? mainColour : c.colour();
+        if (sight == NomadConfig.Sight.COLOUR_SAFE.ordinal() || sight == NomadConfig.Sight.ALL.ordinal())
+        {
+            int index = c.isMain() ? 0 : c.isCaravan() ? 7 : 1 + Math.max(0, Geography.REGIONS.indexOf(c.region()));
+            rgb = ClearSight.colour(index, c.isMain());
+        }
         return new Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, alpha);
     }
 }

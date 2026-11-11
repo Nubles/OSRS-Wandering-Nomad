@@ -558,6 +558,36 @@ final class Moments
     /** Streaming's own colour: a broadcast violet. */
     static final Color STREAM = new Color(0xB89CFF);
 
+    /** Gains and losses: what the edge moved past near you this minute. */
+    static Banner amenities(List<String> changes)
+    {
+        boolean lost = false;
+        boolean gained = false;
+        for (String c : changes)
+        {
+            if (c.startsWith("Lost")) lost = true;
+            else gained = true;
+        }
+        String title = changes.size() == 1 ? changes.get(0) : String.join(" · ", changes);
+        String sub = lost && gained ? "The edge moved past them as your circle drifted."
+            : lost ? "It's outside your circle now." : "It's inside your circle now.";
+        return new Banner(title, sub, lost && !gained ? WARM : IN, Icon.RING, false, -1);
+    }
+
+    /** A kingdom you've already seen this run, as a small banner where its title card was the first time. */
+    static Banner kingdom(String name, String line, Color colour)
+    {
+        return new Banner(name, line, colour, Icon.CROSSING, false, -1);
+    }
+
+    /** A coach mark: a one-time tip in your first run. */
+    static Banner tip(String text)
+    {
+        return new Banner("Tip", text, TIP, Icon.MOOD, false, SoundEffectID.UI_BOOP);
+    }
+
+    static final Color TIP = new Color(0x9FD8FF);
+
     static Banner closeCall(int seconds, int count)
     {
         return new Banner("Close call", "The edge came within a tile, " + seconds + (seconds == 1 ? " second" : " seconds") + " to spare. Close call "
@@ -701,6 +731,9 @@ final class Moments
         out.add(torch("the Wanderers"));
         out.add(grave("Generation 2, Main the Seaborn"));
         out.add(closeCall(12, 3));
+        out.add(amenities(java.util.Arrays.asList("Gained: Furnace", "Lost: Bank")));
+        out.add(kingdom("Kandarin", "Restless: it wanders far and fast.", other));
+        out.add(tip("This is the edge: step back in. While you're outside, your circle drifts five times faster and shrinks."));
         out.add(echo("Kandarin", "Comet caught! A rare waystone answers its call.", 14 * 60 + 5));
         out.add(flagSwallowed("Zezima", "Asgarnia"));
         out.add(prophecyTonight("Salt water will carry the circle before the night is out."));

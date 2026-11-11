@@ -101,6 +101,12 @@ class NomadPanel extends PluginPanel
     private List<String> shownStream;
     private final JButton streamMenu = small("Streaming...", "Recording, chapters, Run wrapped, chat's votes, viewer flags and photo mode",
         this::showStreamMenu);
+    /** The fog of odds: the almanac's lines, and the black box's replay button. */
+    private final JLabel almanac = note(" ");
+    private List<String> shownAlmanac;
+    private Runnable onBlackBox = () -> { };
+    private final JButton blackBoxButton = small("Replay the black box", "The last 3 minutes of you and your circle's edge, "
+        + "as a fast animation from above", () -> onBlackBox.run());
     private final SidebarParts.Header header = new SidebarParts.Header();
     private final SidebarParts.MiniMap map = new SidebarParts.MiniMap();
     private final JLabel boonsTitle = heading("Boons");
@@ -167,9 +173,19 @@ class NomadPanel extends PluginPanel
         add(gap(4));
         add(crossings);
         add(gap(10));
+        add(heading("Almanac"));
+        add(gap(4));
+        almanac.setAlignmentX(LEFT_ALIGNMENT);
+        almanac.setToolTipText("Past the Radar's 15 minutes, the Forecast's imagined futures in four vague words: unlikely, possible, "
+            + "likely, almost certain. Each Forecast rolls fresh dice, so the words never harden into a promise.");
+        add(almanac);
+        add(gap(10));
         add(heading("Run"));
         add(gap(4));
         add(stats);
+        add(gap(4));
+        fix(blackBoxButton, 24);
+        add(blackBoxButton);
         add(gap(10));
         add(heading("Journey"));
         add(gap(4));
@@ -350,6 +366,42 @@ class NomadPanel extends PluginPanel
         this.onStream = onStream;
     }
 
+    void onBlackBox(Runnable onBlackBox)
+    {
+        this.onBlackBox = onBlackBox;
+    }
+
+    /** The black box: the last 3 minutes replayed from above, ten times as fast, then held on the last frame. */
+    void showBlackBox(List<com.wanderingnomad.look.BlackBox.Frame> frames)
+    {
+        if (frames.isEmpty())
+        {
+            JOptionPane.showMessageDialog(this, "The black box is empty: it fills as you play.", "Nomad UIM", JOptionPane.PLAIN_MESSAGE);
+            return;
+        }
+        SidebarParts.Replay replay = new SidebarParts.Replay(frames);
+        javax.swing.JDialog dialog = new javax.swing.JDialog(javax.swing.SwingUtilities.getWindowAncestor(this), "Nomad UIM: black box",
+            java.awt.Dialog.ModalityType.MODELESS);
+        JPanel buttons = new JPanel();
+        buttons.add(button("Replay", "From the start again", replay::restart));
+        buttons.add(button("Close", "Close the replay", dialog::dispose));
+        dialog.getContentPane().add(replay, java.awt.BorderLayout.CENTER);
+        dialog.getContentPane().add(buttons, java.awt.BorderLayout.SOUTH);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.addWindowListener(new java.awt.event.WindowAdapter()
+        {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e)
+            {
+                replay.stop();
+            }
+        });
+        dialog.setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setVisible(true);
+        replay.restart();
+    }
+
     void onSocial(BiConsumer<String, String> onSocial)
     {
         this.onSocial = onSocial;
@@ -437,6 +489,16 @@ class NomadPanel extends PluginPanel
             for (int i = 0; i < shownFellowship.size(); i++) html.append(i == 0 ? "" : "<br>").append(escape(shownFellowship.get(i)));
             fellowship.setText(html.append("</html>").toString());
             fix(fellowship, 4 + 14 * Math.max(1, shownFellowship.size()));
+            revalidate();
+        }
+        if (!v.almanac.equals(shownAlmanac))
+        {
+            shownAlmanac = v.almanac;
+            StringBuilder html = new StringBuilder("<html>");
+            if (shownAlmanac.isEmpty()) html.append("Reads the Forecast; it fills in a minute or two after you log in.");
+            for (int i = 0; i < shownAlmanac.size(); i++) html.append(i == 0 ? "" : "<br>").append(escape(shownAlmanac.get(i)));
+            almanac.setText(html.append("</html>").toString());
+            fix(almanac, 4 + 14 * Math.max(1, wrapped(shownAlmanac)));
             revalidate();
         }
         if (!v.stream.equals(shownStream))
@@ -1431,6 +1493,8 @@ class NomadPanel extends PluginPanel
         List<String> log = Collections.emptyList();
         /** The Streaming section's lines. */
         List<String> stream = Collections.emptyList();
+        /** The almanac's lines: the fog of odds past the Radar. */
+        List<String> almanac = Collections.emptyList();
 
         static View of(NomadSim sim, Tile at, List<String> log, Radar radar, RuleGuard guard, Forecast forecast,
             RunStats stats, List<Moment> moments, boolean outsideNow)

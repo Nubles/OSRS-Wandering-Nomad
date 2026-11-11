@@ -109,6 +109,7 @@ class NomadWorldMapOverlay extends Overlay
             drawForecast(graphics, forecast, circles, sim.boundIndex(), bounds, west, south, zoom);
         }
         int yours = sim.boundIndex();
+        if (plugin.config().cometTails()) drawTrails(graphics, sim, bounds, west, south, zoom);
         drawWakes(graphics, sim, bounds, west, south, zoom);
         drawGhosts(graphics, bounds, west, south, zoom);
         Ellipse2D[] rings = new Ellipse2D[circles.size()];
@@ -171,6 +172,7 @@ class NomadWorldMapOverlay extends Overlay
         }
         drawCircle(graphics, circles.get(yours), rings[yours], true, false);
         drawOverlaps(graphics, sim, rings, now);
+        if (sim.forkWarning() > 0 && plugin.config().forkTear()) drawTear(graphics, sim, bounds, west, south, zoom, now);
         if (sim.forkWarning() > 0) drawForkArrows(graphics, sim, rings[NomadSim.MAIN]);
         if (plugin.config().legacyMarks()) drawLegacy(graphics, sim, rings[yours], rings[NomadSim.MAIN], bounds, west, south, zoom);
 
@@ -212,10 +214,11 @@ class NomadWorldMapOverlay extends Overlay
         graphics.setColor(NomadPlugin.colour(c, yours ? 60 : c.isMain() ? 40 : linked ? 34 : 24));
         graphics.fill(ring);
         // A dark band under the rim keeps it readable over busy parts of the map.
-        graphics.setStroke(yours ? YOURS_SHADOW : SHADOW);
-        graphics.setColor(new Color(0, 0, 0, 150));
+        boolean contrast = NomadPlugin.highContrast();
+        graphics.setStroke(contrast ? new BasicStroke((yours ? YOURS_SHADOW : SHADOW).getLineWidth() * 1.8f) : yours ? YOURS_SHADOW : SHADOW);
+        graphics.setColor(new Color(0, 0, 0, contrast ? 220 : 150));
         graphics.draw(ring);
-        graphics.setStroke(yours ? YOURS : c.isMain() ? MAIN : REGION);
+        graphics.setStroke(contrast ? NomadSceneOverlay.stroke(c, yours ? YOURS : REGION) : yours ? YOURS : c.isMain() ? MAIN : REGION);
         graphics.setColor(NomadPlugin.colour(c, yours || c.isMain() ? 255 : linked ? 235 : 200));
         graphics.draw(ring);
 
@@ -774,7 +777,9 @@ class NomadWorldMapOverlay extends Overlay
         Circle c = sim.circles().get(pick);
         List<String> lines = new ArrayList<>();
         lines.add(c.name() + (pick == sim.boundIndex() ? " · your circle" : c.isMain() ? " · Main" : ""));
-        lines.add("Radius " + Math.round(c.radius()) + " tiles");
+        com.wanderingnomad.sim.Region over = com.wanderingnomad.sim.Geography.regionAt(c.x(), c.y());
+        if (c.isMain() && over != null) lines.add("Over " + over.name);
+        lines.add("Temperament: " + c.temperament().toLowerCase() + " · radius " + Math.round(c.radius()) + " tiles");
         lines.add("Mood: " + c.moodName().toLowerCase() + (c.sailing() ? ", at sea to " + c.voyageTo() : ""));
         String effects = NomadPanel.effects(c);
         if (!effects.isEmpty()) lines.add(effects.substring("<br>".length()));
@@ -790,9 +795,10 @@ class NomadWorldMapOverlay extends Overlay
             Radar radar = plugin.shielded() ? null : plugin.radar();
             int in = radar == null || pick >= radar.crossingIn.length ? -1 : radar.crossingIn[pick];
             double gap = sim.bound().gap(c);
+            // Past the Radar's 15 minutes nothing is sure, so it only says "later".
             lines.add(gap <= 0 ? "Touching yours: you can cross in the overlap"
                 : in > 0 ? "Touches yours in about " + in + " min"
-                : Math.round(gap) + " tiles from yours");
+                : Math.round(gap) + " tiles from yours; any touch is later");
         }
         else if (pick != sim.boundIndex())
         {
@@ -817,6 +823,58 @@ class NomadWorldMapOverlay extends Overlay
             Color colour = k == 0 ? NomadPlugin.colour(c, 255) : Color.WHITE;
             outlined(graphics, lines.get(k), x + 7, y + 5 + (k + 1) * lineH - fm.getDescent(), colour, false);
         }
+    }
+
+    /** Comet tails: the last three hours of Main's path and your circle's, fading with age, thicker where they lingered. */
+    private void drawTrails(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)
+    {
+        java.util.Set<Integer> which = new java.util.LinkedHashSet<>();
+        which.add(NomadSim.MAIN);
+        which.add(sim.boundIndex());
+        for (int j : which)
+        {
+            if (j >= sim.circles().size()) continue;
+            List<double[]> pts = plugin.trails().of(j);
+            Color colour = NomadPlugin.colour(sim.circles().get(j), 255);
+            for (int k = 1; k < pts.size(); k++)
+            {
+                double[] a = pts.get(k - 1);
+                double[] b = pts.get(k);
+                double moved = Math.hypot(b[0] - a[0], b[1] - a[1]);
+                // A jump of more than a few tiles is a fork, a hop or a sailing, not drift: no line across it.
+                if (moved > 12) continue;
+                double age = k / (double) pts.size();
+                graphics.setStroke(new BasicStroke(com.wanderingnomad.look.Trails.width(moved), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                graphics.setColor(NomadSceneOverlay.alpha(colour, (int) (20 + 170 * age)));
+                graphics.draw(new Line2D.Double(
+                    bounds.x + (a[0] - west) * zoom, bounds.y + bounds.height - (a[1] - south) * zoom,
+                    bounds.x + (b[0] - west) * zoom, bounds.y + bounds.height - (b[1] - south) * zoom));
+            }
+        }
+    }
+
+    /** The fork tear across Main on the map, spreading from the middle as the warning runs out. */
+    private static void drawTear(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom, long now)
+    {
+        Circle main = sim.main();
+        double progress = com.wanderingnomad.look.ForkTear.progress(sim.forkWarning(), NomadSim.FORK_WARN);
+        double[][] pts = com.wanderingnomad.look.ForkTear.crack(main.x(), main.y(), main.radius(), sim.forkAxis(), progress,
+            sim.seed() * 7 + sim.forks());
+        Path2D.Double path = new Path2D.Double();
+        for (int k = 0; k < pts.length; k++)
+        {
+            double x = bounds.x + (pts[k][0] - west) * zoom;
+            double y = bounds.y + bounds.height - (pts[k][1] - south) * zoom;
+            if (k == 0) path.moveTo(x, y);
+            else path.lineTo(x, y);
+        }
+        double flicker = 0.75 + 0.25 * Math.sin(now / 90.0);
+        graphics.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.setColor(NomadSceneOverlay.alpha(NomadStatusOverlay.FORK, (int) (90 * flicker)));
+        graphics.draw(path);
+        graphics.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.setColor(NomadSceneOverlay.alpha(Color.WHITE, (int) (230 * flicker)));
+        graphics.draw(path);
     }
 
     /** A name on a dark rounded tag edged in the circle's colour, so it can't be mistaken for a map label. */

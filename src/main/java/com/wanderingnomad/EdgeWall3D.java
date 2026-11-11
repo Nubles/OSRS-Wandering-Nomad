@@ -2,6 +2,8 @@ package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
 import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Waystone;
+import com.wanderingnomad.look.Motion;
 import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +55,17 @@ class EdgeWall3D
     private final List<Panel> panels = new ArrayList<>();
     private ModelData quad;
     private String builtFor;
+    /** Standing stones: an obelisk and a pillar of light on each waystone in the scene. */
+    private final List<RuneLiteObject> stones = new ArrayList<>();
+    private String stonesFor;
+    /** A waystone's obelisk and its pillar of light, in local units (128 to a tile). */
+    private static final int OBELISK_HEIGHT = 300;
+    private static final int OBELISK_TIP = 360;
+    private static final int OBELISK_BASE = 30;
+    private static final int OBELISK_TOP = 19;
+    private static final int PILLAR_HEIGHT = 1500;
+    private static final int PILLAR_WIDTH = 34;
+    private static final Color STONE = new Color(0xB9B1A2);
 
     /** One stretch of curtain, with its models from dimmest to brightest. */
     private static final class Panel
@@ -60,6 +73,10 @@ class EdgeWall3D
         RuneLiteObject object;
         Model[] levels;
         double along;
+        /** Its angle round its circle, and whether that circle is Main, for the fork tear. */
+        double angle;
+        boolean main;
+        int index;
         boolean gate;
         int shown;
     }
@@ -77,7 +94,7 @@ class EdgeWall3D
         WorldView view = client.getTopLevelWorldView();
         if (!on || sim == null || player == null || view == null || view.getScene() == null || view.getScene().isInstance())
         {
-            clear();
+            clearPanels();
             return;
         }
         WorldPoint at = player.getWorldLocation();
@@ -85,7 +102,7 @@ class EdgeWall3D
 
         String key = key(sim, view, at);
         if (key.equals(builtFor)) return;
-        clear();
+        clearPanels();
         if (quad == null) quad = client.loadModelData(QUAD_MODEL);
         if (quad == null) return;
         builtFor = key;
@@ -122,25 +139,152 @@ class EdgeWall3D
         return (c == sim.twin() || c == sim.rift()) && sim.boundIndex() == NomadSim.MAIN;
     }
 
-    /** Runs the wave of light along the curtain. Called every client tick; only swaps models. */
-    void animate()
+    /**
+     * Runs light along the curtain, as {@code motion} and your circle's {@code mood} say. The fork
+     * tear ({@code tear}: the angle where it meets Main's edge and how far it has spread) lights
+     * Main's wall where it will split; a lightning {@code flash} lights it all. Called every client
+     * tick; only swaps models.
+     */
+    void animate(String motion, String mood, double[] tear, boolean flash)
     {
-        double phase = System.currentTimeMillis() / 1000.0;
+        double t = System.currentTimeMillis() / 1000.0;
         for (Panel p : panels)
         {
-            double band = 0.5 + 0.5 * Math.sin(p.along - phase * (p.gate ? 3.2 : 1.8));
-            int level = Math.min(LEVELS - 1, (int) (band * LEVELS));
+            double band = flash ? 1 : Motion.band(motion, mood, p.along, p.index, t, p.gate);
+            if (tear != null && p.main) band = Math.max(band, Motion.tear(p.angle, tear[0], tear[1], t));
+            int level = Math.max(0, Math.min(LEVELS - 1, (int) (band * LEVELS)));
             if (level == p.shown) continue;
             p.shown = level;
             p.object.setModel(p.levels[level]);
         }
     }
 
+    /** Takes down the curtain and the standing stones. */
     void clear()
+    {
+        clearPanels();
+        clearStones();
+    }
+
+    private void clearPanels()
     {
         for (Panel p : panels) p.object.setActive(false);
         panels.clear();
         builtFor = null;
+    }
+
+    private void clearStones()
+    {
+        for (RuneLiteObject o : stones) o.setActive(false);
+        stones.clear();
+        stonesFor = null;
+    }
+
+    /**
+     * Standing stones: each waystone in the scene as a stone obelisk under a tall pillar of light in
+     * its tier's colour (or its circle's, if you can't claim it from yours). They have no menu, and
+     * go when the stone is claimed or fades.
+     */
+    void updateStones(NomadSim sim, boolean on)
+    {
+        WorldView view = client.getTopLevelWorldView();
+        if (!on || sim == null || view == null || view.getScene() == null || view.getScene().isInstance())
+        {
+            clearStones();
+            return;
+        }
+        StringBuilder b = new StringBuilder();
+        b.append(view.getBaseX()).append(',').append(view.getBaseY()).append(',').append(view.getPlane()).append(',').append(NomadPlugin.sight);
+        for (Waystone w : sim.waystones())
+        {
+            b.append('|').append(w.x()).append(',').append(w.y()).append(',').append(w.tier()).append(',')
+                .append(w.circle() == sim.boundIndex());
+        }
+        String key = b.toString();
+        if (key.equals(stonesFor)) return;
+        clearStones();
+        if (quad == null) quad = client.loadModelData(QUAD_MODEL);
+        if (quad == null) return;
+        stonesFor = key;
+        int plane = view.getPlane();
+        for (Waystone w : sim.waystones())
+        {
+            LocalPoint lp = LocalPoint.fromWorld(view, w.x(), w.y());
+            if (lp == null) continue;
+            boolean claimable = w.circle() == sim.boundIndex();
+            Color light = !claimable && w.circle() < sim.circles().size() ? NomadPlugin.colour(sim.circles().get(w.circle()), 255)
+                : SidebarParts.tone(w.legendary() ? NomadSim.LEGENDARY : w.tier());
+            stones.add(place(obelisk(), lp, plane));
+            stones.add(place(pillar(light), lp, plane));
+        }
+    }
+
+    private RuneLiteObject place(Model model, LocalPoint lp, int plane)
+    {
+        RuneLiteObject o = client.createRuneLiteObject();
+        o.setModel(model);
+        o.setLocation(lp, plane);
+        o.setActive(true);
+        return o;
+    }
+
+    /** A tapering four-sided stone with a pointed cap, lit like stone. */
+    private Model obelisk()
+    {
+        short hsl = hsl(STONE, 0.05f);
+        List<ModelData> parts = new ArrayList<>();
+        int[][] base = {{-OBELISK_BASE, -OBELISK_BASE}, {OBELISK_BASE, -OBELISK_BASE}, {OBELISK_BASE, OBELISK_BASE}, {-OBELISK_BASE, OBELISK_BASE}};
+        int[][] top = {{-OBELISK_TOP, -OBELISK_TOP}, {OBELISK_TOP, -OBELISK_TOP}, {OBELISK_TOP, OBELISK_TOP}, {-OBELISK_TOP, OBELISK_TOP}};
+        for (int k = 0; k < 4; k++)
+        {
+            int m = (k + 1) % 4;
+            float[][] side = {
+                {base[k][0], 0, base[k][1]},
+                {base[m][0], 0, base[m][1]},
+                {top[m][0], -OBELISK_HEIGHT, top[m][1]},
+                {top[k][0], -OBELISK_HEIGHT, top[k][1]},
+            };
+            parts.add(sheet(side, false, hsl, 0));
+            parts.add(sheet(side, true, hsl, 0));
+            // The cap: a triangle, as a quad with two corners at the tip.
+            float[][] cap = {
+                {top[k][0], -OBELISK_HEIGHT, top[k][1]},
+                {top[m][0], -OBELISK_HEIGHT, top[m][1]},
+                {0, -OBELISK_TIP, 0},
+                {0, -OBELISK_TIP, 0},
+            };
+            parts.add(sheet(cap, false, hsl, 0));
+            parts.add(sheet(cap, true, hsl, 0));
+        }
+        return client.mergeModels(parts.toArray(new ModelData[0])).light(64, 850, -30, -50, -30);
+    }
+
+    /** Two crossed sheets of light rising far above the stone, clearer the higher they go. */
+    private Model pillar(Color colour)
+    {
+        short hsl = hsl(colour, 0.35f);
+        List<ModelData> parts = new ArrayList<>();
+        int[] tops = {OBELISK_TIP, 600, 1000, PILLAR_HEIGHT};
+        int[] clear = {120, 165, 200, 230};
+        for (int axis = 0; axis < 2; axis++)
+        {
+            int bottom = 0;
+            for (int k = 0; k < tops.length; k++)
+            {
+                int ax = axis == 0 ? -PILLAR_WIDTH : 0;
+                int ay = axis == 0 ? 0 : -PILLAR_WIDTH;
+                float[][] sheet = {
+                    {ax, -bottom, ay},
+                    {-ax, -bottom, -ay},
+                    {-ax, -tops[k], -ay},
+                    {ax, -tops[k], ay},
+                };
+                parts.add(sheet(sheet, false, hsl, clear[k]));
+                parts.add(sheet(sheet, true, hsl, clear[k]));
+                bottom = tops[k];
+            }
+        }
+        return client.mergeModels(parts.toArray(new ModelData[0])).light(128, 300, -50, -50, -10);
     }
 
     /** What the panels depend on: the circles near you to the nearest quarter tile, and roughly where you are. */
@@ -148,7 +292,8 @@ class EdgeWall3D
     {
         StringBuilder b = new StringBuilder();
         b.append(view.getBaseX()).append(',').append(view.getBaseY()).append(',').append(view.getPlane())
-            .append('|').append(Math.floorDiv(at.getX(), REBUILD_STEP)).append(',').append(Math.floorDiv(at.getY(), REBUILD_STEP));
+            .append('|').append(Math.floorDiv(at.getX(), REBUILD_STEP)).append(',').append(Math.floorDiv(at.getY(), REBUILD_STEP))
+            .append('|').append(NomadPlugin.sight);
         int k = 0;
         for (Circle c : edges(sim))
         {
@@ -201,6 +346,9 @@ class EdgeWall3D
                     p1.getX() - mid.getX(), p1.getY() - mid.getY(), g1 - gm, colour, lift, level, scale);
             }
             p.along = (a0 + a1) / 2 * r * 0.9;
+            p.angle = (a0 + a1) / 2;
+            p.main = c.isMain();
+            p.index = panels.size();
             p.gate = gate;
             p.object = client.createRuneLiteObject();
             p.object.setModel(p.levels[0]);

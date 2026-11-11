@@ -60,8 +60,8 @@ public final class NomadSim
     static final double LOOK_SHARE = 0.75;
 
     /** Lean: within this many tiles of the edge, your circle turns toward you, up to 3 degrees a minute. */
-    static final double LEAN_BAND = 2;
-    static final double LEAN = 3 * Math.PI / 180;
+    public static final double LEAN_BAND = 2;
+    public static final double LEAN = 3 * Math.PI / 180;
 
     static final String[] MOOD_NAMES = {"Roaming", "Meandering", "Looping", "Dashing", "Lingering", "Drifting"};
     private static final String[] MOOD_LOG = {
@@ -117,6 +117,14 @@ public final class NomadSim
     private static final String[] COMMON_BOONS = {EXPAND, TAILWIND, ANCHOR, LANTERN, CALM, FORESIGHT, WARD};
     private static final String[] RARE_BOONS = {RUDDER, BRIDGE, WAKE, LEAP, LODESTONE, KEYSTONE};
     private static final String[] LEGENDARY_BOONS = {CROWN, HELMSMAN, GATHERING};
+
+    /** A boon's tier: {@link #COMMON}, {@link #RARE} or {@link #LEGENDARY}; common for one it doesn't know. */
+    public static String tierOf(String boon)
+    {
+        for (String b : LEGENDARY_BOONS) if (b.equals(boon)) return LEGENDARY;
+        for (String b : RARE_BOONS) if (b.equals(boon)) return RARE;
+        return COMMON;
+    }
     public static final int BOONS_HELD = 3;
     public static final int CLAIM_REACH = 3;
     static final int EXPAND_TILES = 12;
