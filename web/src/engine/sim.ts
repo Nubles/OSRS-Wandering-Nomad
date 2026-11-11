@@ -2005,8 +2005,9 @@ export class NomadSim {
     this.board(c, port, to, log);
     const cast = new Rng(s.seed ^ Math.imul(s.voyages, 0x7feb352d));
     if (cast.next() >= CASTAWAY_CHANCE) return;
+    const from = port.name;
     const wrecks = this.geo.ports
-      .filter((p) => p.name !== port.name && p.name !== to && this.geo.routesFrom(p.name, level, missing).length > 0)
+      .filter((p) => p.name !== from && p.name !== to && this.geo.routesFrom(p.name, level, missing).length > 0)
       .map((p) => p.name);
     if (!wrecks.length) return;
     c.voyage!.wreck = wrecks[Math.floor(cast.next() * wrecks.length)];
