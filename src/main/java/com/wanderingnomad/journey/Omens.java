@@ -226,9 +226,34 @@ public final class Omens
         return new Rng(seed ^ ((index + 1) * 0x2C1B3C6D) ^ 0x5EED0E5);
     }
 
+    /**
+     * Inspiration (a wildcard): swaps the omen under way for a fresh one of another kind, from its
+     * own dice. Returns the new omen, or null if there's none to reroll.
+     */
+    public static Omen reroll(Journey j, NomadSim sim, Tile at)
+    {
+        Omen o = j.omen;
+        if (o == null || o.clan) return null;
+        for (int k = 1; k <= 8; k++)
+        {
+            Omen next = deal(j, sim, at, sim.minutes(), 5000 + j.omensDealt * 16 + k);
+            if (next != null && !next.kind.equals(o.kind))
+            {
+                j.omen = next;
+                return next;
+            }
+        }
+        return null;
+    }
+
     static Omen deal(Journey j, NomadSim sim, Tile at, int now)
     {
-        Rng dice = dice(sim.seed(), j.omensDealt + 1000);
+        return deal(j, sim, at, now, j.omensDealt + 1000);
+    }
+
+    private static Omen deal(Journey j, NomadSim sim, Tile at, int now, int index)
+    {
+        Rng dice = dice(sim.seed(), index);
         List<String> kinds = new ArrayList<>();
         kinds.add(Omen.HOLD_FAST);
         kinds.add(Omen.WANDERLUST);

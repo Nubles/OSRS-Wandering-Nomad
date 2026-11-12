@@ -74,7 +74,9 @@ class NomadStatusOverlay extends OverlayPanel
         }
         else if (plugin.sheltered())
         {
-            state = plugin.kidnapped() ? "Carried off" : sim.intermission() ? "Intermission" : plugin.plotHeld() ? "In a plot" : "Delving";
+            String wild = plugin.wildShelter();
+            state = plugin.kidnapped() ? "Carried off" : sim.intermission() ? "Intermission" : plugin.plotHeld() ? "In a plot"
+                : plugin.delveLeft() > 0 ? "Delving" : wild != null ? wild : "Inside";
             colour = INSIDE;
         }
         else

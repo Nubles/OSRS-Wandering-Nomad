@@ -106,6 +106,28 @@ The site (`web/`) is playable with no account and no server; the shared pages re
 - **Play:** the **Circle Guesser** (`#/guess`, five circles a day, the 3D view turning inside each, a shareable grid), **Seed prophecy** (`#/prophecy`, one vague line about a seed's opening hours, as a card) and the **living rulebook** (each law on the Rules page has a demo to poke).
 - **Link cards:** the sidebar's **Copy Discord card link** gives a relay link that unfurls as a picture of your circles with Main's mood and size and a LIVE badge, cached for an hour.
 
+### Wildcards
+
+Seventeen odd rules borrowed from other games, under the **Wildcards** settings section, each off by default. Turn on only the ones you want in your run: some bend the usual laws. The rules live in `wild/` (pure, with tests); they act on the circles only through fields a run already saves, so run codes and the website need nothing new. What's going on shows in the sidebar's **Wildcards** section, and its **Wildcards...** menu holds what you can do now.
+
+- **Quantum waystones:** half the rare waystones get two more spots in their circle. Out of sight for 3 seconds, one jumps to another spot, so keep it in view as you walk to it. The spots show as ghosts on the maps.
+- **The Drop:** a new run opens with a huge circle over Lumbridge that closes for an hour onto a landing zone up to 150 tiles away, where Main is born. Inside the closing circle counts as inside, and the circles wait until it lands.
+- **Porter's contract:** now and then your next pickup becomes Cargo. Hold it 2 hours, then stand in your circle in another kingdom for 40 renown. A minute to swap it; dropping it only voids the contract.
+- **Meteor shower:** once or twice a run, for 15 minutes, a common waystone lands on every landmark inside Main. Three boons in hand still, so you choose.
+- **Redeploy:** after a death, a small carrier circle rises at your respawn and walks you home over land while your circle dashes to meet it. Inside the carrier counts as inside.
+- **Bonfire:** a fire you light inside your circle leaves a 6-tile ember pocket that stays legal for 30 minutes after the circle moves off it. One at a time, 2 hours apart.
+- **Inspiration:** a comeback earns one Inspiration (one at most, outside the boon cap), spent to give your circle a new mood, turn the coming fork to a new axis, or swap the omen.
+- **Egg steps:** every third trial lays an Egg that hatches into a random boon after 1,500 new tiles walked inside your circle.
+- **The Roamer:** a fast wisp roams the land. When it wanders into Main it holds still 5 minutes: step in for a rare boon. After three escapes it lingers an hour.
+- **Visa:** a kingdom's circle stamps a 3-hour visa (30 minutes more per diary tier). Overstay and that circle dashes for Main to deport you. Nothing is blocked.
+- **Fog bank:** every 4 to 12 hours, after 10 minutes' warning, the world map, minimap circles, Radar and Forecast go dark for 30 minutes and Main lingers. Only the wall shows the circle.
+- **Chaos rift:** now and then a rift opens in your circle. Step on it for an hour's handicap (a gale, a dash or a squeeze); stay inside the whole hour for a rare boon. Never while a storm brews or blows.
+- **The Chart:** every 6 hours, pick one of three routes of three nodes (or one is picked after 15 minutes) and Main heads through them. The last node summons a common waystone.
+- **Tide tables:** a 6-hour tide nudges Main's heading toward the nearest coast as it rises, and inland as it falls, every half hour.
+- **Wayguess:** once a day, guess which kingdom Main will be in tomorrow (UTC), settled at your first minute that day, and copy your streak as a grid of squares.
+- **Pasture:** skilling grazes the 64-tile square you're in for a day. Main won't linger on grazed ground, and lingers a while when it reaches fresh pasture.
+- **Altar favour:** Prayer XP from offerings at an altar inside your circle fills Favour; each 500 summons a common waystone, one a played day.
+
 Not yet:
 
 - Campfire (the fourth-circle boon), Forks, Passport, the hash-chained run log and Season mode.

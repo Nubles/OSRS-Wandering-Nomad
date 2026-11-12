@@ -21,6 +21,7 @@ import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -92,6 +93,19 @@ class NomadWorldMapOverlay extends Overlay
         Shape before = graphics.getClip();
         graphics.clip(bounds);
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // A fog bank (a wildcard): the map goes dark, and only the wall shows the circle.
+        if (plugin.fogged())
+        {
+            Font was = graphics.getFont();
+            graphics.setColor(new Color(150, 156, 160, 235));
+            graphics.fill(bounds);
+            graphics.setFont(FontManager.getRunescapeBoldFont());
+            outlined(graphics, "Fog bank: the map is dark for " + plugin.fogLeft() + " more minutes", (float) bounds.getCenterX(),
+                (float) bounds.getCenterY(), Color.WHITE, true);
+            graphics.setFont(was);
+            graphics.setClip(before);
+            return null;
+        }
         // Focus: a dark veil over the map and its icons, so the circles drawn on top stand out.
         int focus = plugin.config().mapFocus();
         if (focus > 0)
@@ -196,6 +210,7 @@ class NomadWorldMapOverlay extends Overlay
         drawWanderings(graphics, sim, bounds, west, south, zoom, now);
         drawWorldWays(graphics, sim, plugin.config().plotCircles() ? plugin.plots() : java.util.Collections.emptyList(), bounds, west, south,
             zoom, now);
+        drawWild(graphics, bounds, west, south, zoom);
         if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
         drawOmen(graphics, bounds, west, south, zoom);
         drawRivals(graphics, bounds, west, south, zoom);
@@ -1166,6 +1181,36 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setColor(NomadSceneOverlay.alpha(PLOT, 200));
             graphics.draw(new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2));
             if (zoom >= 2) outlined(graphics, "Plot · " + NomadPanel.time(p[2]), (float) px, (float) (py - pr - 3), PLOT, true);
+        }
+    }
+
+    /** Wildcards: the drop, the carrier, embers, the Roamer, a chaos rift, the Chart's nodes, quantum spots and grazed ground. */
+    private void drawWild(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        for (NomadPlugin.WildMark m : plugin.wildMarks())
+        {
+            double px = bounds.x + (m.x - west) * zoom;
+            double py = bounds.y + bounds.height - (m.y - south) * zoom;
+            double pr = Math.max(3, m.r * zoom);
+            if (px + pr < bounds.x || px - pr > bounds.getMaxX() || py + pr < bounds.y || py - pr > bounds.getMaxY()) continue;
+            Ellipse2D ring = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
+            if (m.fill)
+            {
+                graphics.setColor(NomadSceneOverlay.alpha(m.colour, 40));
+                graphics.fill(ring);
+            }
+            graphics.setStroke(m.dashed ? DOTTED : THIN);
+            graphics.setColor(NomadSceneOverlay.alpha(m.colour, 220));
+            graphics.draw(ring);
+            if (m.label != null && (zoom >= 2 || m.r * zoom >= 12)) outlined(graphics, m.label, (float) px, (float) (py - pr - 3), m.colour, true);
+        }
+        for (int[] g : plugin.grazedSquares())
+        {
+            double gx = bounds.x + (g[0] - west) * zoom;
+            double gy = bounds.y + bounds.height - (g[1] + com.wanderingnomad.wild.Pasture.SQUARE - south) * zoom;
+            double size = com.wanderingnomad.wild.Pasture.SQUARE * zoom;
+            graphics.setColor(new Color(170, 200, 90, (int) (60.0 * g[2] / com.wanderingnomad.wild.Pasture.FADE) + 10));
+            graphics.fill(new Rectangle2D.Double(gx, gy, size, size));
         }
     }
 

@@ -1300,6 +1300,165 @@ public final class NomadSim
         return true;
     }
 
+    // Wildcards (settings): the plugin plays these through the fields a run already saves, so the
+    // website's twin needs nothing new. Each rolls its own dice and never touches the run's.
+
+    /** Wildcards: hands you a random boon of the tier ({@link #COMMON}, {@link #RARE}). Null if your hands are full. */
+    public String grantBoon(String tier, int salt)
+    {
+        if (boons.size() >= BOONS_HELD) return null;
+        String[] pool = RARE.equals(tier) ? RARE_BOONS : COMMON_BOONS;
+        Rng dice = new Rng(seed ^ (salt * 0x27D4EB2F) ^ (minutes * 0x165667B1));
+        String boon = pool[(int) (dice.next() * pool.length)];
+        boons.add(boon);
+        return boon;
+    }
+
+    /**
+     * Meteor shower: a common waystone lands on every free landmark inside Main (up to {@link #METEORS}),
+     * each lasting {@code life} minutes. Returns how many landed.
+     */
+    public int meteorShower(int life)
+    {
+        Circle m = main();
+        if (m.voyage != null) return 0;
+        Rng dice = new Rng(seed ^ (minutes * 0x7FEB352D) ^ 0x3E7E0);
+        int n = 0;
+        for (Landmarks.Landmark l : Landmarks.ALL)
+        {
+            if (n >= METEORS) break;
+            if (!m.contains(l.x, l.y) || !Geography.onLand(l.x, l.y) || taken(l)) continue;
+            Waystone w = stone(l, MAIN, COMMON, COMMON_BOONS[(int) (dice.next() * COMMON_BOONS.length)]);
+            w.life = life;
+            n++;
+        }
+        return n;
+    }
+
+    static final int METEORS = 12;
+
+    /**
+     * Quantum waystone: moves a waystone to a tile on land inside the same circle, under a new name.
+     * False if the tile isn't inside that circle, is at sea or already holds a stone.
+     */
+    public boolean moveWaystone(Waystone w, int x, int y, String name)
+    {
+        if (w == null || !waystones.contains(w) || w.circle < 0 || w.circle >= circles.size()) return false;
+        if (!circles.get(w.circle).contains(x, y) || !Geography.onLand(x, y) || takenAt(x, y)) return false;
+        w.landmark = name;
+        w.x = x;
+        w.y = y;
+        return true;
+    }
+
+    /**
+     * Sets a circle's mood for a while, heading for a tile (or nowhere in particular when x is 0).
+     * Refuses a circle at sea, bound for a port, orbiting or eclipsed. Mood is one of
+     * {@link #ROAM}, {@link #DASH}, {@link #LINGER} and the rest of {@link Temperament}'s.
+     */
+    public boolean steer(int index, int x, int y, int mood, int forMinutes)
+    {
+        if (index < 0 || index >= circles.size() || mood < 0 || mood >= Temperament.MOODS) return false;
+        Circle c = circles.get(index);
+        if (c.voyage != null || c.port != null || c.orbitLeft > 0 || c.isCaravan() || (eclipse > 0 && index == eclipse)) return false;
+        if (index == MAIN && twin != null) return false;
+        c.mood = mood;
+        c.moodLeft = Math.max(1, forMinutes);
+        c.wx = x;
+        c.wy = x == 0 ? 0 : y;
+        c.avoid = 0;
+        return true;
+    }
+
+    public static final int ROAM = Temperament.ROAM;
+    public static final int DASH = Temperament.DASH;
+    public static final int LINGER = Temperament.LINGER;
+
+    /** Where a circle is heading, as x, y, or null when nowhere in particular. */
+    public int[] waypoint(int index)
+    {
+        if (index < 0 || index >= circles.size()) return null;
+        Circle c = circles.get(index);
+        return c.wx == 0 ? null : new int[]{c.wx, c.wy};
+    }
+
+    /** The circle's mood, by its {@link Temperament} index. */
+    public int mood(int index)
+    {
+        return index < 0 || index >= circles.size() ? -1 : circles.get(index).mood;
+    }
+
+    /** Inspiration: the circle forgets its mood and picks a new one next minute (never the same). False at sea or bound for a port. */
+    public boolean rerollMood(int index)
+    {
+        if (index < 0 || index >= circles.size()) return false;
+        Circle c = circles.get(index);
+        if (c.voyage != null || c.port != null || c.isCaravan()) return false;
+        c.moodLeft = 0;
+        c.orbitLeft = 0;
+        c.wx = c.wy = 0;
+        return true;
+    }
+
+    /**
+     * Inspiration: the fork that's coming turns to a new axis, at least 45 degrees off the old one,
+     * and its warning starts again. Returns the log line, or null if no fork is coming.
+     */
+    public String rerollFork()
+    {
+        if (forkWarn <= 0 || twin != null) return null;
+        Circle m = main();
+        Rng dice = new Rng(seed ^ (minutes * 0x2545F491) ^ ((forks + 1) * 0x9E3779B9));
+        double best = -1;
+        double axis = forkAxis;
+        for (int k = 0; k < FORK_TRIES * 2; k++)
+        {
+            double a = round(dice.next() * Math.PI * 2 * 1e4) / 1e4;
+            double off = Math.abs(StrictMath.atan2(StrictMath.sin(2 * (a - forkAxis)), StrictMath.cos(2 * (a - forkAxis)))) / 2;
+            if (off < Math.PI / 4) continue;
+            double score = Math.min(reach(m, a), reach(m, a + Math.PI));
+            if (score > best)
+            {
+                best = score;
+                axis = a;
+            }
+        }
+        if (best < 0) return null;
+        forkAxis = axis;
+        forkWarn = FORK_WARN;
+        foreseen = 0;
+        return "The fork turns: in " + FORK_WARN + " minutes Main splits, one half heading " + compass(forkAxis) + " and the other "
+            + compass(forkAxis + Math.PI) + ".";
+    }
+
+    /** Tide tables: turns a circle's heading by up to a few degrees. */
+    public void nudge(int index, double radians)
+    {
+        if (index < 0 || index >= circles.size()) return;
+        Circle c = circles.get(index);
+        if (c.voyage != null || c.port != null || c.orbitLeft > 0) return;
+        c.heading += clamp(radians, -NUDGE_MAX, NUDGE_MAX);
+    }
+
+    static final double NUDGE_MAX = 15 * Math.PI / 180;
+
+    /** Chaos rift: a Tailwind on a circle for a while, doubling its drift. */
+    public void tailwind(int index, int forMinutes)
+    {
+        if (index < 0 || index >= circles.size()) return;
+        Circle c = circles.get(index);
+        c.tailwindLeft = Math.max(c.tailwindLeft, forMinutes);
+    }
+
+    /** Chaos rift: the circle shrinks by a share of its radius, no smaller than its least; it breathes back in time. */
+    public void squeeze(int index, double share)
+    {
+        if (index < 0 || index >= circles.size()) return;
+        Circle c = circles.get(index);
+        c.radius = Math.max(c.radiusMin, c.radius * (1 - clamp(share, 0, 0.5)));
+        c.radiusTarget = c.radius;
+    }
+
     /** Spellbook temperament: your spellbook, by its index in {@link #BOOKS} (0 if not known). */
     public void setSpellbook(int book)
     {

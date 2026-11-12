@@ -478,6 +478,14 @@ final class Moments
             SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE);
     }
 
+    static final Color WILD = new Color(0xD39BFF);
+
+    /** A wildcard's moment. */
+    static Banner wild(String title, String line, boolean big)
+    {
+        return new Banner(title, line, WILD, big ? Icon.STAR : Icon.RING, big, big ? SoundEffectID.PRAYER_ACTIVATE_MYSTIC_LORE : -1);
+    }
+
     /** A comeback, in the words the run log keeps. */
     static Banner comeback(String title, String words)
     {

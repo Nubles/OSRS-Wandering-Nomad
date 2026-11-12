@@ -97,6 +97,13 @@ class NomadPanel extends PluginPanel
         + "tale of the tape", this::showFellowshipMenu);
     /** Streaming: an action and what was pasted for it; the lines shown, and the menu's button. */
     private BiConsumer<String, String> onStream = (action, input) -> { };
+    /** Wildcards: their lines, and a menu of what you can do with them now. */
+    private BiConsumer<String, String> onWild = (action, input) -> { };
+    private final JPanel wildBox = column();
+    private final JLabel wildcards = note(" ");
+    private List<String> shownWild;
+    private volatile List<String[]> wildActions = Collections.emptyList();
+    private final JButton wildMenu = small("Wildcards...", "Spend Inspiration, pick the Chart's route, make a Wayguess", this::showWildMenu);
     private final JLabel streaming = note(" ");
     private List<String> shownStream;
     private final JButton streamMenu = small("Streaming...", "Recording, chapters, Run wrapped, chat's votes, viewer flags and photo mode",
@@ -251,6 +258,17 @@ class NomadPanel extends PluginPanel
         add(gap(4));
         fix(streamMenu, 24);
         add(streamMenu);
+        wildBox.add(gap(10));
+        wildBox.add(heading("Wildcards"));
+        wildBox.add(gap(4));
+        wildcards.setAlignmentX(LEFT_ALIGNMENT);
+        wildBox.add(wildcards);
+        wildBox.add(gap(4));
+        fix(wildMenu, 24);
+        wildBox.add(wildMenu);
+        wildBox.setAlignmentX(LEFT_ALIGNMENT);
+        wildBox.setVisible(false);
+        add(wildBox);
         add(gap(10));
         add(heading("Moments"));
         add(gap(4));
@@ -362,6 +380,11 @@ class NomadPanel extends PluginPanel
     void onEncore(Runnable onEncore)
     {
         this.onEncore = onEncore;
+    }
+
+    void onWild(BiConsumer<String, String> onWild)
+    {
+        this.onWild = onWild;
     }
 
     void onStream(BiConsumer<String, String> onStream)
@@ -509,6 +532,22 @@ class NomadPanel extends PluginPanel
             fix(almanac, 4 + 14 * Math.max(1, wrapped(shownAlmanac)));
             revalidate();
         }
+        wildActions = v.wildActions;
+        if (wildBox.isVisible() != v.wildOn)
+        {
+            wildBox.setVisible(v.wildOn);
+            revalidate();
+        }
+        if (!v.wild.equals(shownWild))
+        {
+            shownWild = v.wild;
+            StringBuilder html = new StringBuilder("<html>");
+            if (shownWild.isEmpty()) html.append("Quiet for now.");
+            for (int i = 0; i < shownWild.size(); i++) html.append(i == 0 ? "" : "<br>").append(escape(shownWild.get(i)));
+            wildcards.setText(html.append("</html>").toString());
+            fix(wildcards, 4 + 14 * Math.max(1, wrapped(shownWild)));
+            revalidate();
+        }
         if (!v.stream.equals(shownStream))
         {
             shownStream = v.stream;
@@ -640,6 +679,37 @@ class NomadPanel extends PluginPanel
         int n = 0;
         for (String line : lines) n += 1 + line.length() / 38;
         return n;
+    }
+
+    /** The Wildcards menu: what can be done now, as the plugin listed it (id, label, tip); a Wayguess asks for a kingdom. */
+    private void showWildMenu()
+    {
+        JPopupMenu menu = new JPopupMenu();
+        List<String[]> actions = wildActions;
+        if (actions.isEmpty()) item(menu, "Nothing to do right now", "Wildcards you've turned on list their actions here", () -> { });
+        for (String[] a : actions)
+        {
+            if ("wayguess".equals(a[0]))
+            {
+                item(menu, a[1], a[2], () ->
+                {
+                    JComboBox<String> pick = new JComboBox<>();
+                    for (com.wanderingnomad.sim.Region r : com.wanderingnomad.sim.Geography.REGIONS) pick.addItem(r.name);
+                    pick.addItem("Open water");
+                    int ok = JOptionPane.showConfirmDialog(this, new Object[]{"Which kingdom will Main's middle be in tomorrow (UTC)?", pick},
+                        "Wayguess", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+                    if (ok != JOptionPane.OK_OPTION) return;
+                    int i = pick.getSelectedIndex();
+                    onWild.accept("wayguess", i < com.wanderingnomad.sim.Geography.REGIONS.size()
+                        ? com.wanderingnomad.sim.Geography.REGIONS.get(i).id : "sea");
+                });
+            }
+            else
+            {
+                item(menu, a[1], a[2], () -> onWild.accept(a[0], ""));
+            }
+        }
+        menu.show(wildMenu, 0, wildMenu.getHeight());
     }
 
     /** The Streaming menu: recording, chapters, Run wrapped, chat's votes, viewer flags and photo mode. */
@@ -1501,6 +1571,10 @@ class NomadPanel extends PluginPanel
         List<String> log = Collections.emptyList();
         /** The Streaming section's lines. */
         List<String> stream = Collections.emptyList();
+        /** Wildcards: whether any is on, their lines, and the actions open now as id, label, tip. */
+        boolean wildOn;
+        List<String> wild = Collections.emptyList();
+        List<String[]> wildActions = Collections.emptyList();
         /** The almanac's lines: the fog of odds past the Radar. */
         List<String> almanac = Collections.emptyList();
 

@@ -84,6 +84,19 @@ public final class Amenities
         return out;
     }
 
+    /** Whether a loaded amenity of the kind stands within {@code reach} tiles of x, y. */
+    public boolean near(String kind, int x, int y, int reach)
+    {
+        for (Map.Entry<Long, String> e : at.entrySet())
+        {
+            if (!e.getValue().equals(kind)) continue;
+            int ax = (int) (e.getKey() >> 32);
+            int ay = (int) (long) e.getKey();
+            if (Math.abs(ax - x) <= reach && Math.abs(ay - y) <= reach) return true;
+        }
+        return false;
+    }
+
     /** "Gained: Furnace" and "Lost: Bank" for the kinds that came into the circle or left it entirely. */
     public static List<String> changes(Set<String> before, Set<String> after)
     {

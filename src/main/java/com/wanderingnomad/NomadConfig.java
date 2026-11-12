@@ -76,6 +76,15 @@ public interface NomadConfig extends Config
     )
     String WEBSITE = "website";
 
+    @ConfigSection(
+        name = "Wildcards",
+        description = "Seventeen odd rules borrowed from other games, each off by default. Some bend the usual laws "
+            + "(The Drop, Redeploy and Bonfire count you inside places the circle isn't), so turn on only what you want in your run.",
+        position = 61,
+        closedByDefault = true
+    )
+    String WILDCARDS = "wildcards";
+
     @ConfigItem(
         keyName = "lobby",
         name = "Join the Nomad lobby",
@@ -1156,6 +1165,227 @@ public interface NomadConfig extends Config
         position = 6
     )
     default boolean plotCircles()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildQuantum",
+        name = "Quantum waystones",
+        description = "Half the rare waystones are quantum: out of sight for 3 seconds, one jumps to another of its three spots. "
+            + "Keep it in view as you walk to it. Its spots show as ghosts on the maps.",
+        section = WILDCARDS,
+        position = 80
+    )
+    default boolean wildQuantum()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildDrop",
+        name = "The Drop",
+        description = "A new run opens with a huge circle over Lumbridge that closes for an hour onto a landing zone, where Main "
+            + "is born. Inside the closing circle counts as inside; the circles wait until it lands.",
+        section = WILDCARDS,
+        position = 81
+    )
+    default boolean wildDrop()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildPorter",
+        name = "Porter's contract",
+        description = "Now and then an omen marks your next pickup as Cargo. Hold it 2 hours, then stand in your circle in "
+            + "another kingdom for renown. A minute to swap it; dropping it only voids the contract.",
+        section = WILDCARDS,
+        position = 82
+    )
+    default boolean wildPorter()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildMeteors",
+        name = "Meteor shower",
+        description = "Once or twice a run, for 15 minutes, a common waystone lands on every landmark inside Main. Your hands "
+            + "still hold three boons, so you choose.",
+        section = WILDCARDS,
+        position = 83
+    )
+    default boolean wildMeteors()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildRedeploy",
+        name = "Redeploy",
+        description = "After a death, a small carrier circle rises where you respawn and walks you back toward your circle, "
+            + "which dashes to meet it. Inside the carrier counts as inside. Your pile still can't be reclaimed.",
+        section = WILDCARDS,
+        position = 84
+    )
+    default boolean wildRedeploy()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildBonfire",
+        name = "Bonfire",
+        description = "A fire you light inside your circle leaves a 6-tile ember pocket that stays legal for 30 minutes after "
+            + "your circle moves off it. One ember at a time, 2 hours apart.",
+        section = WILDCARDS,
+        position = 85
+    )
+    default boolean wildBonfire()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildInspiration",
+        name = "Inspiration",
+        description = "A comeback (a photo finish, back from the brink, a last breath) earns one Inspiration. Spend it from the "
+            + "sidebar to reroll the coming fork, the omen or your circle's mood. One at most.",
+        section = WILDCARDS,
+        position = 86
+    )
+    default boolean wildInspiration()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildEggs",
+        name = "Egg steps",
+        description = "Every third trial you finish lays an Egg. It hatches into a random boon after 1,500 new tiles walked "
+            + "inside your circle.",
+        section = WILDCARDS,
+        position = 87
+    )
+    default boolean wildEggs()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildRoamer",
+        name = "The Roamer",
+        description = "A tiny wisp circle roams the land fast. When it wanders into Main it holds still 5 minutes: step into it "
+            + "for a rare boon. After three escapes it lingers an hour.",
+        section = WILDCARDS,
+        position = 88
+    )
+    default boolean wildRoamer()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildVisa",
+        name = "Visa",
+        description = "Each kingdom's circle stamps a 3-hour visa (30 minutes more per diary tier). Overstay it and that circle "
+            + "dashes for Main to deport you. Nothing is blocked.",
+        section = WILDCARDS,
+        position = 89
+    )
+    default boolean wildVisa()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildFog",
+        name = "Fog bank",
+        description = "Now and then, for 30 minutes, the world map, minimap circles, Radar and Forecast go dark and only the "
+            + "wall shows the circle. Ten minutes' warning, and Main lingers.",
+        section = WILDCARDS,
+        position = 90
+    )
+    default boolean wildFog()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildChaos",
+        name = "Chaos rift",
+        description = "Now and then a purple rift opens in your circle. Step on it for an hour's visible handicap (a gale, a "
+            + "dash or a squeeze); stay inside the whole hour for a rare boon. Never during storms.",
+        section = WILDCARDS,
+        position = 91
+    )
+    default boolean wildChaos()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildChart",
+        name = "The Chart",
+        description = "Every 6 hours, pick one of three routes from the sidebar and they become Main's waypoints (one is picked "
+            + "for you if you don't). The last node summons a waystone.",
+        section = WILDCARDS,
+        position = 92
+    )
+    default boolean wildChart()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildTides",
+        name = "Tide tables",
+        description = "A 6-hour tide: while it rises Main leans a little toward the nearest coast, and while it falls a little "
+            + "inland.",
+        section = WILDCARDS,
+        position = 93
+    )
+    default boolean wildTides()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildWayguess",
+        name = "Wayguess",
+        description = "Once a day, guess from the sidebar which kingdom Main will be in tomorrow (UTC), and copy your streak as "
+            + "a coloured grid.",
+        section = WILDCARDS,
+        position = 94
+    )
+    default boolean wildWayguess()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildPasture",
+        name = "Pasture",
+        description = "Skilling grazes the 64-tile map square you're in for a day. Main won't linger on grazed ground, and "
+            + "lingers a while when it reaches fresh pasture.",
+        section = WILDCARDS,
+        position = 95
+    )
+    default boolean wildPasture()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "wildFavour",
+        name = "Altar favour",
+        description = "Prayer XP from offerings at an altar inside your circle fills Favour. Each 500 summons a common waystone, "
+            + "one a day.",
+        section = WILDCARDS,
+        position = 96
+    )
+    default boolean wildFavour()
     {
         return false;
     }

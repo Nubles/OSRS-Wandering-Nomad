@@ -60,6 +60,7 @@ import com.wanderingnomad.look.Coach;
 import com.wanderingnomad.look.Firsts;
 import com.wanderingnomad.look.Stingers;
 import com.wanderingnomad.look.Trails;
+import com.wanderingnomad.wild.Wild;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -116,6 +117,7 @@ import net.runelite.api.events.GameObjectDespawned;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.events.StatChanged;
@@ -171,6 +173,7 @@ public class NomadPlugin extends Plugin
     static final String MILESTONES_KEY = "milestones";
     /** The run's trials, and the account's renown, rank and edge colour, which outlive every run. */
     static final String JOURNEY_KEY = "journey";
+    static final String WILD_KEY = "wild";
     static final String RENOWN_KEY = "renown";
     /** Ticks after a run loads before milestones are read, so the account's totals have arrived. */
     private static final int MILESTONE_DELAY = 10;
@@ -341,6 +344,14 @@ public class NomadPlugin extends Plugin
     private boolean fallen;
     /** Plot circles (a house rule), and whether one holds you now because you walked into it from your circle. */
     private Plots plots = new Plots();
+    /** Wave 10's wildcards, kept per run under {@link #WILD_KEY}; and a ground item you just clicked Take on, for the porter. */
+    private Wild wild = new Wild().ready();
+    private int takeItem;
+    private int takeTick;
+    static final int TAKE_TICKS = 20;
+    static final int ALTAR_REACH = 4;
+    private static final java.util.EnumSet<Skill> COMBAT = java.util.EnumSet.of(Skill.ATTACK, Skill.STRENGTH, Skill.DEFENCE, Skill.RANGED,
+        Skill.MAGIC, Skill.HITPOINTS, Skill.PRAYER);
     private boolean plotHeld;
     private boolean lastInside;
     /** Uninvited guest: the tick a random event was accepted from inside, and whether it has carried you off. */
@@ -438,6 +449,7 @@ public class NomadPlugin extends Plugin
         panel.onLegacy(this::retireFromPanel, this::wagerFromPanel, this::sealFromPanel);
         panel.onSocial(this::socialFromPanel);
         panel.onStream(this::streamFromPanel);
+        panel.onWild(this::wildFromPanel);
         panel.onBlackBox(() -> SwingUtilities.invokeLater(() -> panel.showBlackBox(blackBox.frames())));
         panel.onCardLink(this::copyCardLink);
         sight = config.clearSight().ordinal();
@@ -624,6 +636,7 @@ public class NomadPlugin extends Plugin
         watchDock();
         readMilestones();
         watchJourney();
+        wildTick();
         desk.feed(sim, surface, radar, outsideNow());
         if (radar == null || !java.util.Objects.equals(surface, radarTile)) look();
         // Moments are read after the minute's step below too; here they catch stepping over the edge.
@@ -789,6 +802,18 @@ public class NomadPlugin extends Plugin
     /** Plays one minute of the run and everything that follows from it. Client thread. */
     private void minute()
     {
+        wild.on = wildFlags();
+        if (wild.dropping())
+        {
+            // The Drop: the circles wait while the drop closes over the land; only it plays this minute.
+            com.wanderingnomad.wild.Out o = new com.wanderingnomad.wild.Out();
+            wild.dropMinute(o);
+            tell(o);
+            saveWild();
+            look();
+            publish();
+            return;
+        }
         sim.setSailingUnlocked(config.sailingUnlocked());
         sim.setSailing(client.getRealSkillLevel(Skill.SAILING), docksQuestsMissing());
         sim.setBorderKiss(config.borderKiss());
@@ -840,6 +865,7 @@ public class NomadPlugin extends Plugin
         String born = Lineage.sync(journey, sim.seed(), sim.forks(), sim.minutes());
         if (born != null) report(java.util.Collections.singletonList(born + " is born: the half that lived carries Main's line on."));
         journey.minute(!outsideNow());
+        wildMinute();
         legacyMinute();
         fellowshipMinute();
         desk.minute(sim, before, journey);
@@ -916,6 +942,7 @@ public class NomadPlugin extends Plugin
                 if (inside) line = sim.superior(surface);
                 break;
             case DEATH:
+                wild.died(surface);
                 scar("death", "You died at " + NomadPanel.time(sim.minutes()) + ".");
                 if (surface != null) journey.died(surface.x, surface.y);
                 if (config.graveyard() && surface != null)
@@ -1192,6 +1219,7 @@ public class NomadPlugin extends Plugin
         if (before != null && ev.getXp() > before && skill == Skill.FIREMAKING) rite(Waystone.FIRE);
         if (before != null && ev.getXp() > before && nearEdge()) edgeXp = true;
         if (before != null && ev.getXp() > before && skill == Skill.FIREMAKING) sharedFire();
+        if (before != null && ev.getXp() > before && sim != null && !retired) wildXp(skill, ev.getXp() - before);
         if (before == null || sim == null || !config.ruleGuard() || !outsideNow()) return;
         guard.xp(skill.getName(), ev.getXp() - before);
     }
@@ -1264,11 +1292,17 @@ public class NomadPlugin extends Plugin
     public void onMenuOptionClicked(MenuOptionClicked ev)
     {
         if (sim != null && config.uninvitedGuest() && "Talk-to".equals(ev.getMenuOption())) acceptGuest(ev.getMenuEntry().getNpc());
-        if (sim == null || !config.ruleGuard() || !outsideNow()) return;
         MenuAction action = ev.getMenuAction();
         boolean take = action == MenuAction.GROUND_ITEM_FIRST_OPTION || action == MenuAction.GROUND_ITEM_SECOND_OPTION
             || action == MenuAction.GROUND_ITEM_THIRD_OPTION || action == MenuAction.GROUND_ITEM_FOURTH_OPTION
             || action == MenuAction.GROUND_ITEM_FIFTH_OPTION;
+        if (sim != null && take && "Take".equals(ev.getMenuOption()) && config.wildPorter())
+        {
+            // Porter's contract: the item becomes Cargo once it lands in your inventory.
+            takeItem = ev.getId();
+            takeTick = tickCount;
+        }
+        if (sim == null || !config.ruleGuard() || !outsideNow()) return;
         if (!take || !"Take".equals(ev.getMenuOption())) return;
         report(java.util.Collections.singletonList(guard.pickUp(sim.minutes(), Text.removeTags(ev.getMenuTarget()))));
         saveGuard();
@@ -1366,10 +1400,14 @@ public class NomadPlugin extends Plugin
         return sim != null && surface != null && !sheltered() && !sim.inYours(surface.x, surface.y);
     }
 
-    /** Counting as inside wherever your circle is: delving, carried off by a random event, held by a plot circle, or in an intermission. */
+    /**
+     * Counting as inside wherever your circle is: delving, carried off by a random event, held by a plot circle, in an
+     * intermission, or outside your circle in a wildcard's shelter (the drop, a carrier, embers).
+     */
     boolean sheltered()
     {
-        return sim != null && (delveLeft > 0 || kidnapped || plotHeld || batonGrace || sim.intermission());
+        return sim != null && (delveLeft > 0 || kidnapped || plotHeld || batonGrace || sim.intermission()
+            || (surface != null && !sim.inYours(surface.x, surface.y) && wild.shelters(surface)));
     }
 
     boolean kidnapped()
@@ -1963,6 +2001,7 @@ public class NomadPlugin extends Plugin
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, MILESTONES_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, STATS_KEY);
             configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, JOURNEY_KEY);
+            configManager.unsetRSProfileConfiguration(NomadConfig.GROUP, WILD_KEY);
             List<String> lines = new ArrayList<>();
             if (batonPending != null)
             {
@@ -1998,6 +2037,7 @@ public class NomadPlugin extends Plugin
         loadStats();
         loadJourney();
         loadRenown();
+        loadWild();
         curiosities.reset();
         Lineage.sync(journey, sim.seed(), sim.forks(), sim.minutes());
         if (run == null || run.sim == null)
@@ -2016,6 +2056,7 @@ public class NomadPlugin extends Plugin
             else
             {
                 ancestralStart();
+                beginDrop();
             }
             batonPending = null;
         }
@@ -3162,6 +3203,9 @@ public class NomadPlugin extends Plugin
             Rank up = renown.award(t);
             journey.earn(t.tier.renown);
             show(Moments.trial(t));
+            com.wanderingnomad.wild.Out laid = new com.wanderingnomad.wild.Out();
+            wild.trial(laid);
+            tell(laid);
             if (t.id.equals(journey.oath()))
             {
                 Rank oathUp = renown.keepOath();
@@ -3352,7 +3396,18 @@ public class NomadPlugin extends Plugin
     /** Backseat shield: the Radar's countdowns and the Forecast stay off the game view. */
     boolean shielded()
     {
-        return config.backseatShield();
+        return config.backseatShield() || fogged();
+    }
+
+    /** A fog bank (a wildcard) is down: the map, minimap circles, Radar and Forecast go dark. */
+    boolean fogged()
+    {
+        return sim != null && !retired && wild.fogged();
+    }
+
+    int fogLeft()
+    {
+        return wild.fog().left();
     }
 
     /** The account's ended runs, oldest first. */
@@ -3360,6 +3415,352 @@ public class NomadPlugin extends Plugin
     {
         Renown r = renown;
         return r == null ? java.util.Collections.emptyList() : r.legacy();
+    }
+
+    // Wave 10: the wildcards. The rules live in com.wanderingnomad.wild; this feeds them the game's events.
+
+    private Wild.Flags wildFlags()
+    {
+        Wild.Flags f = new Wild.Flags();
+        f.quantum = config.wildQuantum();
+        f.drop = config.wildDrop();
+        f.porter = config.wildPorter();
+        f.meteors = config.wildMeteors();
+        f.redeploy = config.wildRedeploy();
+        f.bonfire = config.wildBonfire();
+        f.inspiration = config.wildInspiration();
+        f.eggs = config.wildEggs();
+        f.roamer = config.wildRoamer();
+        f.visa = config.wildVisa();
+        f.fog = config.wildFog();
+        f.chaos = config.wildChaos();
+        f.chart = config.wildChart();
+        f.tides = config.wildTides();
+        f.wayguess = config.wildWayguess();
+        f.pasture = config.wildPasture();
+        f.favour = config.wildFavour();
+        return f;
+    }
+
+    private void loadWild()
+    {
+        String saved = configManager.getRSProfileConfiguration(NomadConfig.GROUP, WILD_KEY);
+        Wild loaded = null;
+        try
+        {
+            loaded = saved == null ? null : gson.fromJson(saved, Wild.class);
+        }
+        catch (JsonParseException e)
+        {
+            log.warn("Nomad UIM: couldn't read the run's wildcards, so they start fresh", e);
+        }
+        wild = loaded == null ? new Wild() : loaded;
+        wild.ready();
+        wild.on = wildFlags();
+    }
+
+    private void saveWild()
+    {
+        if (sim != null) configManager.setRSProfileConfiguration(NomadConfig.GROUP, WILD_KEY, gson.toJson(wild));
+    }
+
+    /** The Drop (a wildcard): a fresh run's Main is born where the drop lands, an hour from now. Client thread. */
+    private void beginDrop()
+    {
+        wild.on = wildFlags();
+        com.wanderingnomad.sim.Tile land = wild.beginDrop(sim.seed());
+        if (land == null) return;
+        sim.startMainAt(land);
+        report(java.util.Collections.singletonList("The Drop: a huge circle over Lumbridge closes for an hour onto where Main will be born, "
+            + "near " + NomadSim.compass(Math.atan2(land.y - Geography.LUMBRIDGE.y, land.x - Geography.LUMBRIDGE.x))
+            + " of Lumbridge. Inside it counts as inside, and the circles wait until it lands."));
+        saveWild();
+        save();
+    }
+
+    /** Once a played minute, after the circles moved. Client thread. */
+    private void wildMinute()
+    {
+        if (!wild.on.any()) return;
+        com.wanderingnomad.wild.Out o = new com.wanderingnomad.wild.Out();
+        wild.minute(sim, surface, surface != null && !outsideNow(), journey.value(Trials.COMEBACKS), cargoHeld(),
+            LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(), o);
+        tell(o);
+        if (sim.minutes() % 5 == 0) saveWild();
+    }
+
+    /** Each game tick: egg steps, the carrier's start, touching the Roamer and quantum stones out of sight. Client thread. */
+    private void wildTick()
+    {
+        if (!wild.on.any()) return;
+        boolean[] seen = null;
+        List<com.wanderingnomad.wild.Quantum.Stone> stones = wild.quantum().stones();
+        if (wild.on.quantum && !stones.isEmpty())
+        {
+            seen = new boolean[stones.size()];
+            for (int i = 0; i < seen.length; i++) seen[i] = onScreen(stones.get(i).x(), stones.get(i).y());
+        }
+        com.wanderingnomad.wild.Out o = new com.wanderingnomad.wild.Out();
+        wild.tick(sim, surface, surface != null && !outsideNow(), seen, o);
+        tell(o);
+    }
+
+    /** XP gained: a fire for Bonfire, an offering at an altar for Altar favour, and skilling for Pasture. Client thread. */
+    private void wildXp(Skill skill, int gain)
+    {
+        if (!wild.on.any() || surface == null) return;
+        boolean inside = !outsideNow();
+        com.wanderingnomad.wild.Out o = new com.wanderingnomad.wild.Out();
+        if (skill == Skill.FIREMAKING) wild.fire(sim, surface, inside, o);
+        if (skill == Skill.PRAYER && inside && amenities.near(Amenities.ALTAR, surface.x, surface.y, ALTAR_REACH)) wild.offered(sim, gain, o);
+        if (!COMBAT.contains(skill)) wild.skilled(sim, surface);
+        tell(o);
+    }
+
+    @Subscribe
+    public void onItemContainerChanged(ItemContainerChanged ev)
+    {
+        if (sim == null || takeItem == 0 || ev.getContainerId() != InventoryID.INV) return;
+        if (tickCount - takeTick > TAKE_TICKS)
+        {
+            takeItem = 0;
+            return;
+        }
+        if (!ev.getItemContainer().contains(takeItem)) return;
+        int id = takeItem;
+        takeItem = 0;
+        net.runelite.api.ItemComposition def = client.getItemDefinition(id);
+        com.wanderingnomad.wild.Out o = new com.wanderingnomad.wild.Out();
+        wild.pickup(sim, id, def == null ? "your pickup" : def.getName(), surface, o);
+        tell(o);
+    }
+
+    /** Whether your Cargo is still in your inventory or worn; true if there's none, or the game hasn't said. */
+    private boolean cargoHeld()
+    {
+        int item = wild.porter().item();
+        if (item == 0) return true;
+        boolean known = false;
+        for (int id : new int[]{InventoryID.INV, InventoryID.WORN})
+        {
+            ItemContainer c = client.getItemContainer(id);
+            if (c == null) continue;
+            known = true;
+            if (c.contains(item)) return true;
+        }
+        return !known;
+    }
+
+    /** Whether a tile is drawn in the game view now, for quantum stones. */
+    private boolean onScreen(int x, int y)
+    {
+        net.runelite.api.WorldView view = client.getTopLevelWorldView();
+        if (view == null) return false;
+        net.runelite.api.coords.LocalPoint lp = net.runelite.api.coords.LocalPoint.fromWorld(view, x, y);
+        if (lp == null) return false;
+        net.runelite.api.Point p = net.runelite.api.Perspective.localToCanvas(client, lp, view.getPlane(), 80);
+        if (p == null) return false;
+        int vx = client.getViewportXOffset();
+        int vy = client.getViewportYOffset();
+        return p.getX() >= vx && p.getY() >= vy && p.getX() <= vx + client.getViewportWidth() && p.getY() <= vy + client.getViewportHeight();
+    }
+
+    /** Tells what the wildcards did: banners, run log lines, summons and renown. Client thread. */
+    private void tell(com.wanderingnomad.wild.Out o)
+    {
+        if (o.isEmpty()) return;
+        for (com.wanderingnomad.wild.Out.Banner b : o.banners) show(Moments.wild(b.title, b.line, b.big));
+        report(new ArrayList<>(o.lines));
+        for (String[] due : o.summons) summon(due[0], due[1]);
+        if (o.renown > 0)
+        {
+            Rank up = renown.add(o.renown);
+            journey.earn(o.renown);
+            if (up != null) show(Moments.rankUp(up));
+            applyPalette();
+            saveRenown();
+            saveJourney();
+        }
+        saveWild();
+        save();
+        live.markDirty();
+    }
+
+    private void wildFromPanel(String action, String input)
+    {
+        clientThread.invokeLater(() ->
+        {
+            if (sim == null || retired) return;
+            wild.on = wildFlags();
+            com.wanderingnomad.wild.Out o = new com.wanderingnomad.wild.Out();
+            String line = null;
+            switch (action)
+            {
+                case "inspire-mood":
+                    line = wild.inspire(sim, com.wanderingnomad.wild.Inspiration.MOOD);
+                    break;
+                case "inspire-fork":
+                    line = wild.inspire(sim, com.wanderingnomad.wild.Inspiration.FORK);
+                    break;
+                case "inspire-omen":
+                {
+                    if (!wild.inspiration().held()) break;
+                    Omen fresh = Omens.reroll(journey, sim, surface);
+                    if (fresh != null && wild.spendInspiration())
+                    {
+                        line = "Inspired: a new omen. " + fresh.title() + ".";
+                        saveJourney();
+                    }
+                    break;
+                }
+                case "wayguess":
+                    wild.wayguess(input, LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(), o);
+                    break;
+                case "wayguess-copy":
+                {
+                    String grid = wild.wayguess().grid();
+                    SwingUtilities.invokeLater(() -> Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(grid), null));
+                }
+                    chat("Your Wayguess grid is on the clipboard.");
+                    break;
+                default:
+                    if (action.startsWith("chart-")) wild.chart(sim, Integer.parseInt(action.substring(6)), o);
+                    break;
+            }
+            if (line != null) o.lines.add(line);
+            if (o.isEmpty() && line == null && !"wayguess-copy".equals(action)) chat("Nothing to do there right now.");
+            tell(o);
+            forecast = null;
+            forecastSoon();
+            publish();
+        });
+    }
+
+    /** The wildcard actions open now, for the sidebar's menu: id, label and tip. */
+    private List<String[]> wildActions()
+    {
+        List<String[]> out = new ArrayList<>();
+        if (sim == null || retired) return out;
+        if (wild.on.inspiration && wild.inspiration().held())
+        {
+            out.add(new String[]{"inspire-mood", "Inspiration: a new mood", "Your circle forgets its mood and picks another"});
+            if (sim.forkWarning() > 0) out.add(new String[]{"inspire-fork", "Inspiration: turn the fork", "The coming fork splits along a new axis"});
+            if (Omens.current(journey) != null) out.add(new String[]{"inspire-omen", "Inspiration: a new omen", "Swaps the omen for another kind"});
+        }
+        if (wild.on.chart)
+        {
+            List<String> offers = wild.chart().offers(sim);
+            for (int i = 0; i < offers.size(); i++)
+            {
+                out.add(new String[]{"chart-" + i, "Chart route " + (char) ('A' + i) + ": " + offers.get(i), "Main heads through these three nodes"});
+            }
+        }
+        if (wild.on.wayguess)
+        {
+            out.add(new String[]{"wayguess", "Wayguess tomorrow's kingdom...", "Guess where Main's middle will be tomorrow (UTC)"});
+            out.add(new String[]{"wayguess-copy", "Copy your Wayguess grid", "Your streak as coloured squares, to paste anywhere"});
+        }
+        return out;
+    }
+
+    /** Something a wildcard draws on the maps: where, how big in tiles, its colour and label. */
+    static final class WildMark
+    {
+        final double x;
+        final double y;
+        final double r;
+        final Color colour;
+        final String label;
+        final boolean dashed;
+        final boolean fill;
+
+        WildMark(double x, double y, double r, Color colour, String label, boolean dashed, boolean fill)
+        {
+            this.x = x;
+            this.y = y;
+            this.r = r;
+            this.colour = colour;
+            this.label = label;
+            this.dashed = dashed;
+            this.fill = fill;
+        }
+    }
+
+    private static final Color DROP = new Color(0xFFB040);
+    private static final Color CARRIER = new Color(0x8FE0A2);
+    private static final Color EMBER = new Color(0xFF7A3C);
+    private static final Color ROAMER = new Color(0x9FE9FF);
+    private static final Color CHAOS = new Color(0xB04CFF);
+    private static final Color CHART = new Color(0xE8D9A8);
+    private static final Color QUANTUM = new Color(0xD39BFF);
+
+    /** What the wildcards draw on the world map and minimap now. Client thread. */
+    List<WildMark> wildMarks()
+    {
+        List<WildMark> out = new ArrayList<>();
+        Wild w = wild;
+        if (sim == null || retired || w == null) return out;
+        double[] d = w.drop().circle();
+        if (d != null) out.add(new WildMark(d[0], d[1], d[2], DROP, "The Drop · " + w.drop().left() + "m", false, true));
+        if (w.on.redeploy && w.carrier().on())
+        {
+            out.add(new WildMark(w.carrier().x(), w.carrier().y(), com.wanderingnomad.wild.Carrier.RADIUS, CARRIER, "Carrier", false, true));
+        }
+        if (w.on.bonfire && w.embers().on())
+        {
+            out.add(new WildMark(w.embers().x(), w.embers().y(), com.wanderingnomad.wild.Embers.RADIUS, EMBER, "Embers", false, true));
+        }
+        if (w.on.roamer && w.roamer().on())
+        {
+            out.add(new WildMark(w.roamer().x(), w.roamer().y(), com.wanderingnomad.wild.Roamer.RADIUS, ROAMER,
+                w.roamer().window() > 0 ? "Roamer · step in" : "Roamer", false, true));
+        }
+        if (w.on.chaos && w.chaos().rift() != null) out.add(new WildMark(w.chaos().x(), w.chaos().y(), 1.5, CHAOS, "Chaos rift", false, true));
+        if (w.on.chart)
+        {
+            int k = 1;
+            for (int[] n : w.chart().ahead()) out.add(new WildMark(n[0], n[1], 3, CHART, "Chart " + k++, false, false));
+            int[][][] offered = w.chart().offered();
+            if (offered != null)
+            {
+                for (int r = 0; r < offered.length; r++)
+                {
+                    for (int n = 0; n < offered[r].length; n++)
+                    {
+                        out.add(new WildMark(offered[r][n][0], offered[r][n][1], 2, CHART, (char) ('A' + r) + "" + (n + 1), true, false));
+                    }
+                }
+            }
+        }
+        if (w.on.quantum)
+        {
+            for (com.wanderingnomad.wild.Quantum.Stone q : w.quantum().stones())
+            {
+                for (int[] spot : q.spots())
+                {
+                    if (spot[0] == q.x() && spot[1] == q.y()) continue;
+                    out.add(new WildMark(spot[0], spot[1], 1.5, QUANTUM, "Quantum", true, false));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The wildcard that counts you inside where you stand outside your circle, in a word, or null. */
+    String wildShelter()
+    {
+        Tile at = surface;
+        if (sim == null || at == null || sim.inYours(at.x, at.y)) return null;
+        if (wild.drop().on() && wild.drop().contains(at)) return "The Drop";
+        if (wild.on.redeploy && wild.carrier().contains(at)) return "Carrier";
+        if (wild.on.bonfire && wild.embers().contains(at)) return "Embers";
+        return null;
+    }
+
+    /** Pasture: grazed squares, as their south-west corner and minutes left. */
+    List<int[]> grazedSquares()
+    {
+        return sim == null || retired || !wild.on.pasture ? java.util.Collections.emptyList() : wild.pasture().squares(sim.minutes());
     }
 
     private void saveJourney()
@@ -3428,6 +3829,7 @@ public class NomadPlugin extends Plugin
         if (sim == null) return;
         saveStats();
         saveJourney();
+        saveWild();
         SavedRun run = new SavedRun(sim, surface);
         run.delveLeft = delveLeft;
         run.delveWait = delveWait;
@@ -3686,8 +4088,9 @@ public class NomadPlugin extends Plugin
     private void publish()
     {
         if (panel == null) return;
-        NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), radar,
-            config.ruleGuard() ? guard : null, forecast, stats, new ArrayList<>(timeline), outsideNow());
+        boolean fog = fogged();
+        NomadPanel.View view = NomadPanel.View.of(sim, surface, new ArrayList<>(runLog), fog ? null : radar,
+            config.ruleGuard() ? guard : null, fog ? null : forecast, stats, new ArrayList<>(timeline), outsideNow());
         view.fade = fade(System.currentTimeMillis());
         view.stream = desk == null ? java.util.Collections.emptyList() : desk.lines(sim != null && !retired);
         Forecast f = forecast;
@@ -3703,6 +4106,19 @@ public class NomadPlugin extends Plugin
             almanacAt = surface;
         }
         view.almanac = almanac;
+        if (sim != null && !retired)
+        {
+            view.wildOn = wild.on.any() || wild.dropping();
+            view.wild = wild.lines(sim);
+            view.wildActions = wildActions();
+        }
+        if (fog)
+        {
+            // A fog bank: the sidebar's map goes dark too.
+            view.circles.clear();
+            view.stones.clear();
+            view.cone = null;
+        }
         if (sim != null && retired)
         {
             view.state = "Laid down: the run has ended";

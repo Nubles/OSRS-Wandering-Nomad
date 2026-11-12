@@ -75,7 +75,8 @@ class NomadMinimapOverlay extends Overlay
     public Dimension render(Graphics2D graphics)
     {
         NomadSim sim = plugin.sim();
-        if (sim == null || !plugin.config().drawMinimap()) return null;
+        // A fog bank (a wildcard) leaves only the wall to show the circle.
+        if (sim == null || !plugin.config().drawMinimap() || plugin.fogged()) return null;
         Player player = client.getLocalPlayer();
         WorldView view = client.getTopLevelWorldView();
         if (player == null || view == null || view.getScene() == null || view.getScene().isInstance()) return null;
@@ -231,6 +232,17 @@ class NomadMinimapOverlay extends Overlay
                 graphics.setColor(plugin.spots().colour(l));
                 graphics.fillRect(p.getX() - 2, p.getY() - 2, 5, 5);
             }
+        }
+        // Wildcards: the drop, the carrier, embers, the Roamer, a chaos rift, the Chart's nodes and quantum spots.
+        for (NomadPlugin.WildMark m : plugin.wildMarks())
+        {
+            if (m.r > 60) continue;
+            Path2D path = ring(view, m.x, m.y, Math.max(1, m.r), 48);
+            if (path == null) continue;
+            graphics.setStroke(new BasicStroke(m.dashed ? 1.5f : 2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f,
+                m.dashed ? new float[]{3f, 3f} : null, 0f));
+            graphics.setColor(new Color(m.colour.getRed(), m.colour.getGreen(), m.colour.getBlue(), 200));
+            graphics.draw(path);
         }
         graphics.setClip(before);
 
