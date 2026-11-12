@@ -27,6 +27,35 @@ public class WaystoneTest
     }
 
     @Test
+    public void flotsamIsClaimedBySailingThroughIt()
+    {
+        // Wait for flotsam to float inside Main somewhere, asking for it each minute.
+        NomadSim sim = NomadSim.start(2024);
+        sim.setSailingUnlocked(true);
+        Waystone flotsam = null;
+        for (int k = 0; k < 6000 && flotsam == null; k++)
+        {
+            sim.eventSoonForTesting("flotsam");
+            sim.step(null);
+            for (Waystone w : sim.waystones()) if (NomadSim.FLOTSAM.equals(w.landmark())) flotsam = w;
+        }
+        assertNotNull(flotsam);
+        Circle main = sim.main();
+        Tile ashore = new Tile((int) Math.round(main.x()), (int) Math.round(main.y()));
+        // Standing ashore on the deck's last land tile doesn't reach it...
+        if (Circle.dist(ashore.x - flotsam.x(), ashore.y - flotsam.y()) > NomadSim.CLAIM_REACH)
+        {
+            sim.step(ashore);
+            assertTrue(sim.waystones().contains(flotsam));
+        }
+        // ...but your boat sailing over it does.
+        sim.setAtSea(new Tile(flotsam.x(), flotsam.y()));
+        sim.step(ashore);
+        assertFalse(sim.waystones().contains(flotsam));
+        assertEquals(flotsam.boon(), sim.boons().get(sim.boons().size() - 1));
+    }
+
+    @Test
     public void summonsDoNotChangeWhereTheCirclesGo()
     {
         NomadSim plain = NomadSim.start(77);

@@ -760,6 +760,7 @@ public class NomadPlugin extends Plugin
         boolean now = view != null && !view.isTopLevel();
         boolean was = aboard;
         aboard = now;
+        sim.setAtSea(now ? boatTile(view) : null);
         if (!was || now || surface == null || !byTheWater(surface)) return;
         String line = sim.dockCross(surface);
         if (line == null) return;
@@ -769,6 +770,26 @@ public class NomadPlugin extends Plugin
         look();
         forecast = null;
         forecastSoon();
+    }
+
+    /**
+     * Where the boat whose deck you're on sits in the open world: the world entity that carries your
+     * world view. Null if it can't be found.
+     */
+    private Tile boatTile(WorldView deck)
+    {
+        WorldView top = client.getTopLevelWorldView();
+        if (top == null) return null;
+        for (net.runelite.api.WorldEntity boat : top.worldEntities())
+        {
+            WorldView carried = boat.getWorldView();
+            if (carried == null || carried.getId() != deck.getId()) continue;
+            net.runelite.api.coords.LocalPoint at = boat.getLocalLocation();
+            if (at == null) return null;
+            WorldPoint w = WorldPoint.fromLocal(top, at.getX(), at.getY(), top.getPlane());
+            return w == null ? null : new Tile(w.getX(), w.getY());
+        }
+        return null;
     }
 
     /** Whether open water lies within a few tiles of a tile, as a dock's would. */

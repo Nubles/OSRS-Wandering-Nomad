@@ -453,6 +453,12 @@ public final class NomadSim
     int laneAge;
     /** Flotsam so far and the minute the next floats up. */
     int flotsams;
+    /**
+     * Where your own boat is while you're on its deck, or null ashore. Only flotsam reads it (you claim
+     * it by sailing through it); every other rule still goes by the land tile the plugin passes to
+     * step. Not saved, and the website's twin of the engine never sets it.
+     */
+    transient Tile sea;
     int nextFlotsam;
     /** Exodus: per kingdom (in REGIONS order) the played minute + 1 Main's middle was last in it, 0 if never; where it is now and since when. */
     int[] visits;
@@ -2452,8 +2458,10 @@ public final class NomadSim
                 Waystone w = waystones.get(i);
                 // Pilgrim and legendary stones can be claimed from outside; the rest only from inside.
                 boolean anywhere = w.pilgrim || LEGENDARY.equals(w.tier);
-                if (w.circle != bound || (!anywhere && !bound().contains(player.x, player.y))) continue;
-                if (Circle.dist(player.x - w.x, player.y - w.y) > CLAIM_REACH) continue;
+                // Flotsam floats at sea, so it goes by where your boat is.
+                Tile at = sea != null && FLOTSAM.equals(w.landmark) ? sea : player;
+                if (w.circle != bound || (!anywhere && !bound().contains(at.x, at.y))) continue;
+                if (Circle.dist(at.x - w.x, at.y - w.y) > CLAIM_REACH) continue;
                 String key = w.landmark + "|" + w.circle;
                 if (rites && !w.riteDone)
                 {
@@ -3862,6 +3870,12 @@ public final class NomadSim
                 + " (common). Sail through it within the hour to claim it.");
             return;
         }
+    }
+
+    /** Where your own boat is while you're on its deck (null ashore), so you can sail through flotsam to claim it. */
+    public void setAtSea(Tile boat)
+    {
+        sea = boat;
     }
 
     /** Exodus: keeps track of the kingdom under Main's middle, and after 10 hours in one sends Main elsewhere. */
