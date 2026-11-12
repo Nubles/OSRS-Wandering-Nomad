@@ -3708,7 +3708,7 @@ public final class NomadSim
         return "A waystone rose at " + l.name + " in " + c.name() + ", holding " + w.boon + " (common).";
     }
 
-    /** Eclipse: Main's middle passing within 3 tiles of a kingdom circle's joins them for an hour. */
+    /** Eclipse: Main's middle passing within 5 tiles of a kingdom circle's joins them for an hour. */
     private void eclipse(List<String> log)
     {
         Circle m = main();
