@@ -36,7 +36,8 @@ public final class Out
     void banner(String title, String line, boolean big)
     {
         banners.add(new Banner(title, line, big));
-        lines.add(title + ": " + line);
+        // "Wayguess: right!" is already a sentence, so it takes a space, not a second colon.
+        lines.add(title + (title.endsWith("!") || title.endsWith(".") || title.endsWith("?") ? " " : ": ") + line);
     }
 
     void summon(String tier, String why)
