@@ -358,7 +358,9 @@ final class Moments
     {
         boolean legendary = NomadSim.LEGENDARY.equals(tier);
         boolean rare = NomadSim.RARE.equals(tier);
-        return new Banner(legendary ? "A legendary feat!" : rare ? "First kill!" : "Milestone reached",
+        // Rare milestones are first kills and Second wind; only the kills are "First kill!".
+        String title = legendary ? "A legendary feat!" : !rare ? "Milestone reached" : why.startsWith("Your first") ? "First kill!" : why + "!";
+        return new Banner(title,
             why + " summoned a" + (legendary ? " legendary" : rare ? " rare" : "") + " waystone.",
             legendary ? SidebarParts.LEGEND : GOLD, Icon.STAR, rare || legendary,
             legendary ? SoundEffectID.TOWN_CRIER_BELL_DONG : SoundEffectID.GE_COIN_TINKLE);
@@ -709,7 +711,7 @@ final class Moments
         out.add(fromLine("Port of call: you docked your boat inside Karamja and crossed into it. The only way out is back into Main."));
         out.add(fromLine("Superior surge! A waystone holding Tailwind (common) rose 14 tiles north-east of you."));
         out.add(fromLine("An uninvited guest! Main forgets its mood and picks a new one."));
-        out.add(fromLine("Grand tier crowns: 2 Combat Achievement tiers done, so Main can grow to 34 tiles."));
+        out.add(fromLine("Grand tier crowns: 2 Combat Achievement tiers done, so Main can grow to 52 tiles."));
         out.add(fromLine("Coordinate tide: your circle leans a tile a minute toward your clue's dig spot, for up to 3 hours."));
         out.add(fromLine("Plot circle: the patch you planted keeps a little circle of its own for up to 8 hours, until you clear it."));
         out.add(fromLine("Carried off: a random event took you away. You count as inside until you're back."));
