@@ -51,6 +51,21 @@ describe('the Saga', () => {
     expect(list[1].track.map((t) => t[0])).toEqual([1200]);
   });
 
+  it('names kingdoms and openers the way the plugin writes them into a code', () => {
+    const story: Story = {
+      ...STORY,
+      acts: [
+        { start: 0, opened: 'The run begins.' },
+        { start: 900, opened: 'voyage', kingdom: 'misthalin' },
+      ],
+      beats: [{ minute: 950, x: -1, y: -1, kind: 'moment', title: 'Main forked!', line: 'One half heads west.' }],
+    };
+    const list = chapters(story, 1500);
+    expect(list[1].title).toBe('Act II: Misthalin');
+    expect(list[1].opened).toBe('Opened by following Main across the sea');
+    expect(list[1].lines[0].text).toBe('Main forked! One half heads west.');
+  });
+
   it('makes a report card with shares that add up', () => {
     const r = report(RUN(STORY))!;
     expect(r.kingdoms[0]).toMatchObject({ name: 'Misthalin', hours: 15 });

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Geography, Tile } from './engine/geography';
+import { regionName, type Geography, type Tile } from './engine/geography';
 import { decodeRun, SavedRun, Story } from './engine/runcode';
 import { compass, MOOD_NAMES, NomadSim } from './engine/sim';
 import { Rng } from './engine/rng';
@@ -77,6 +77,21 @@ export interface Chapter {
   track: number[][];
 }
 
+/** What opened an act, worded as the plugin's Acts.why words it. Codes that already carry a sentence keep it. */
+const OPENERS: Record<string, string> = {
+  voyage: 'Opened by following Main across the sea',
+  diary: 'Opened by your first diary tier',
+  total: 'Opened by reaching 1,500 total level',
+  '99': 'Opened by your first 99',
+};
+
+/** A beat's title and line as one sentence, without doubling the title's own full stop or "!". */
+function sentence(title: string | undefined, line: string | undefined): string {
+  if (!title) return line ?? '';
+  if (!line) return title;
+  return `${title}${/[.!?]$/.test(title) ? '' : '.'} ${line}`;
+}
+
 /** A quiet stretch longer than this becomes one line in the Saga. */
 export const QUIET_HOURS = 6;
 
@@ -95,7 +110,7 @@ export function chapters(story: Story, minutes: number): Chapter[] {
     const raw: SagaLine[] = [];
     for (const b of beats) {
       if (b.minute < start || b.minute >= end) continue;
-      const text = b.title ? `${b.title}${b.line ? `. ${b.line}` : ''}` : b.line ?? '';
+      const text = sentence(b.title, b.line);
       if (text) raw.push({ minute: b.minute, text, kind: b.kind, x: b.x >= 0 ? b.x : undefined, y: b.y >= 0 ? b.y : undefined });
     }
     for (const p of partings) {
@@ -116,11 +131,11 @@ export function chapters(story: Story, minutes: number): Chapter[] {
       lines.push({ minute: last, text: `${Math.round((end - last) / 60)} quiet hours pass.`, kind: 'quiet' });
     }
     return {
-      title: `Act ${ROMAN[i] ?? i + 1}${a.kingdom ? `: ${a.kingdom}` : ''}`,
+      title: `Act ${ROMAN[i] ?? i + 1}${a.kingdom ? `: ${regionName(a.kingdom)}` : ''}`,
       start,
       end,
-      kingdom: a.kingdom,
-      opened: a.opened,
+      kingdom: a.kingdom ? regionName(a.kingdom) : undefined,
+      opened: a.opened ? OPENERS[a.opened] ?? a.opened : undefined,
       lines,
       track: track.filter((t) => t[0] >= start && t[0] <= end),
     };

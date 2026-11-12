@@ -76,6 +76,11 @@ const BOATS: string[][] = [
   ['Port Sarim', 'Musa Point', 'Brimhaven', 'Catherby', 'Port Khazard', 'Corsair Cove', 'Port Piscarilius', "Land's End"],
 ];
 
+/** A kingdom's name from its id ("misthalin" is "Misthalin"); text that isn't an id comes back as it is. */
+export function regionName(id: string): string {
+  return REGIONS.find((r) => r.id === id)?.name ?? id;
+}
+
 /** The Trade road's caravan: a small circle with no kingdom that travels between bank towns. As in Geography.java. */
 export const CARAVAN: Region = { id: 'caravan', name: 'Caravan', colour: 0xd7a86e, index: -1, diaries: [], home: { x: 0, y: 0 } };
 
