@@ -358,8 +358,8 @@ final class Moments
     {
         boolean legendary = NomadSim.LEGENDARY.equals(tier);
         boolean rare = NomadSim.RARE.equals(tier);
-        // Rare milestones are first kills and Second wind; only the kills are "First kill!".
-        String title = legendary ? "A legendary feat!" : !rare ? "Milestone reached" : why.startsWith("Your first") ? "First kill!" : why + "!";
+        // Rare milestones are first kills, Second wind, the Unbroken road and every 250th log slot; only kills are "First kill!".
+        String title = legendary ? "A legendary feat!" : !rare ? "Milestone reached" : why.startsWith("Your first") ? "First kill!" : "A rare milestone!";
         return new Banner(title,
             why + " summoned a" + (legendary ? " legendary" : rare ? " rare" : "") + " waystone.",
             legendary ? SidebarParts.LEGEND : GOLD, Icon.STAR, rare || legendary,
