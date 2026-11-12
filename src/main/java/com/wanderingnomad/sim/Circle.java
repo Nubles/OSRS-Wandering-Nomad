@@ -55,12 +55,44 @@ public final class Circle
     int expandLeft;
     int tailwindLeft;
     int anchorLeft;
+    /** Minutes left on the Wanderer's Crown, while this circle follows you. */
+    int crownLeft;
+    /** The port Main has set course for, to board a boat when it gets there, or null. */
+    String port;
+    /** Minutes after docking before Main boards a boat again, unless a Helmsman sends it. */
+    int shore;
+    /**
+     * Orbit: the landmark tile Main circles round, how far out, which way (1 anticlockwise, -1
+     * clockwise) and the minutes left before it flings off.
+     */
+    int orbitX;
+    int orbitY;
+    double orbitR;
+    int orbitSide;
+    int orbitLeft;
+    /** Lodestone: the landmark tile this circle leans toward, and the minutes left. */
+    int lodeX;
+    int lodeY;
+    int lodeLeft;
+    /** Wake: minutes left leaving a wake, and the wake itself as x, y, radius for each of the last minutes, oldest first (null if none). */
+    int wakeLeft;
+    double[] wake;
+    /** Log pop and Starfall: minutes left on each extra tile (null if none). */
+    int[] pops;
+    int[] stars;
+    /** Starfall: the fallen star holding this circle, and the most minutes it can still hold it. */
+    int starX;
+    int starY;
+    int starLeft;
 
     static final class Voyage
     {
         String to;
         double tx;
         double ty;
+        /** Castaway: the port a storm at sea washes it up at instead, once it's this close to where it meant to go. */
+        String wreck;
+        double wreckAt;
     }
 
     Circle copy()
@@ -82,6 +114,8 @@ public final class Circle
             c.voyage.to = voyage.to;
             c.voyage.tx = voyage.tx;
             c.voyage.ty = voyage.ty;
+            c.voyage.wreck = voyage.wreck;
+            c.voyage.wreckAt = voyage.wreckAt;
         }
         c.atEdge = atEdge;
         c.waiting = waiting;
@@ -100,6 +134,24 @@ public final class Circle
         c.expandLeft = expandLeft;
         c.tailwindLeft = tailwindLeft;
         c.anchorLeft = anchorLeft;
+        c.crownLeft = crownLeft;
+        c.port = port;
+        c.shore = shore;
+        c.orbitX = orbitX;
+        c.orbitY = orbitY;
+        c.orbitR = orbitR;
+        c.orbitSide = orbitSide;
+        c.orbitLeft = orbitLeft;
+        c.lodeX = lodeX;
+        c.lodeY = lodeY;
+        c.lodeLeft = lodeLeft;
+        c.wakeLeft = wakeLeft;
+        c.wake = wake == null ? null : wake.clone();
+        c.pops = pops == null ? null : pops.clone();
+        c.stars = stars == null ? null : stars.clone();
+        c.starX = starX;
+        c.starY = starY;
+        c.starLeft = starLeft;
         return c;
     }
 
@@ -115,6 +167,21 @@ public final class Circle
         c.speed = 1;
         return c;
     }
+
+    /** The caravan, small and steady, setting out from a town. */
+    static Circle caravan(Geography.Port town, String next)
+    {
+        Circle c = new Circle();
+        c.regionId = Geography.CARAVAN.id;
+        c.x = town.tile.x;
+        c.y = town.tile.y;
+        c.radius = c.radiusTarget = c.radiusMin = c.radiusMax = CARAVAN_RADIUS;
+        c.speed = 1;
+        c.port = next;
+        return c;
+    }
+
+    public static final int CARAVAN_RADIUS = 10;
 
     static Circle region(Region r, double heading)
     {
@@ -145,6 +212,112 @@ public final class Circle
     public boolean isMain()
     {
         return regionId == null;
+    }
+
+    /** The Trade road's caravan: not a kingdom, and it follows the roads between bank towns. */
+    public boolean isCaravan()
+    {
+        return Geography.CARAVAN.id.equals(regionId);
+    }
+
+    /** A kingdom's region circle. */
+    public boolean isKingdom()
+    {
+        return regionId != null && !isCaravan();
+    }
+
+    /** Minutes left circling a landmark, 0 when not orbiting. */
+    public int orbitLeft()
+    {
+        return orbitLeft;
+    }
+
+    /** While orbiting, the town or landmark tile it circles round. */
+    public Tile orbitAround()
+    {
+        return orbitLeft > 0 ? new Tile(orbitX, orbitY) : null;
+    }
+
+    /** Minutes left leaning toward a Lodestone's landmark, 0 if none; and that landmark's tile. */
+    public int lodeLeft()
+    {
+        return lodeLeft;
+    }
+
+    public Tile lode()
+    {
+        return lodeLeft > 0 ? new Tile(lodeX, lodeY) : null;
+    }
+
+    /** Extra tiles from Log pop and a mined star, right now. */
+    public int pops()
+    {
+        return pops == null ? 0 : pops.length;
+    }
+
+    public int starTiles()
+    {
+        return stars == null ? 0 : stars.length;
+    }
+
+    /** Minutes until the longest Log pop runs out, 0 if none. */
+    public int popLeft()
+    {
+        return longest(pops);
+    }
+
+    /** Minutes until the longest star layer's tile runs out, 0 if none. */
+    public int stardustLeft()
+    {
+        return longest(stars);
+    }
+
+    /** Minutes the fallen star still holds this circle, 0 if none does. */
+    public int starHold()
+    {
+        return starLeft;
+    }
+
+    private static int longest(int[] timers)
+    {
+        int best = 0;
+        if (timers != null) for (int t : timers) best = Math.max(best, t);
+        return best;
+    }
+
+    /** Minutes left leaving a Wake. */
+    public int wakeLeft()
+    {
+        return wakeLeft;
+    }
+
+    /** The Wake behind it as x, y, radius triples, oldest first, or an empty array. */
+    public double[] wake()
+    {
+        return wake == null ? new double[0] : wake.clone();
+    }
+
+    /** Whether a tile lies in the ground its Wake still holds. */
+    public boolean inWake(double px, double py)
+    {
+        if (wake == null) return false;
+        for (int k = 0; k + 2 < wake.length; k += 3)
+        {
+            if (dist(px - wake[k], py - wake[k + 1]) <= wake[k + 2]) return true;
+        }
+        return false;
+    }
+
+    /** For the caravan: the town it is heading for (or resting at), or null. */
+    public String bankTown()
+    {
+        return isCaravan() ? port : null;
+    }
+
+    /** For the caravan: minutes it still rests at a town, 0 while on the road. */
+    public int resting()
+    {
+        return isCaravan() ? shore : 0;
     }
 
     public Region region()
@@ -211,6 +384,18 @@ public final class Circle
     public int anchorLeft()
     {
         return anchorLeft;
+    }
+
+    /** Played minutes left on the Wanderer's Crown, 0 when not worn. */
+    public int crownLeft()
+    {
+        return crownLeft;
+    }
+
+    /** The port Main has set course for, or null. */
+    public String portOfCall()
+    {
+        return port;
     }
 
     public boolean pulsing()

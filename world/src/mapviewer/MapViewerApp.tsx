@@ -101,8 +101,10 @@ function MapViewerApp() {
             mapViewer.applySearchParams(searchParams);
             // Without a camera in the link, start looking at your circle.
             const yours = mapViewer.nomad?.circles().find((c) => c.yours);
+            const grave = mapViewer.nomad?.grave;
             if (yours && !searchParams.get("cx")) {
-                frameCircle(mapViewer, mapViewer.nomad!, yours);
+                // A grave flies to its tile; anything else frames your circle.
+                frameCircle(mapViewer, mapViewer.nomad!, grave ? { ...yours, x: grave.x, y: grave.y, radius: 10 } : yours);
             }
             mapViewer.init();
 

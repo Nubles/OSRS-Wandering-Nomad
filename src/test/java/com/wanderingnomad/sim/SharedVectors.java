@@ -26,15 +26,29 @@ import java.util.List;
 public final class SharedVectors
 {
     static final Path FILE = Paths.get("web", "src", "engine", "vectors.json");
-    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77};
+    static final int[] SEEDS = {1, 482913, 20261027, -7, 314, 2024, 123, 77, 9001, 26, 560, 3, 333, 404};
     static final int MINUTES = 1500;
     static final int VOYAGE_SEED = 314;
+    /** Left alone, sets course for a port, sails, and is blown off course: a castaway. */
+    static final int CASTAWAY_SEED = 26;
     /** Sails with Sailing at level 20 and two docks' quests not done. */
     static final int DOCK_SEED = 123;
     /** Stays in Main and summons often, so waystones get claimed and every boon spent. */
     static final int BOON_SEED = 2024;
     /** Hands out a Lantern and Calms, lit where Main is and spent as a fork and a storm come. */
     static final int CALM_SEED = 77;
+    /** Comets, the Wanderer's Crown, Gathering, Helmsman, Homeward, pilgrim, ripening and legendary stones. */
+    static final int WAVE_SEED = 9001;
+    /** World events: a stampede, auroras, flotsam, a rift walked into, Deep time, Gravity and riding the caravan. */
+    static final int WORLD_SEED = 560;
+    /** Border kiss: stays in Misthalin until its circle touches Asgarnia's across the border, then crosses straight over. */
+    static final int KISS_SEED = 3;
+    /** Wave 3's boons and stones: Foresight, Ward, Wake, Leap, Lodestone, Keystone, Shatter, Rites, Vigil, kingdom and wandering stones. */
+    static final int STONE_SEED = 333;
+    /** Wave 4's real OSRS systems: travel networks, spellbooks, Log pop, stars, tides, Encore, Intermission, obelisks and the rest. */
+    static final int OSRS_SEED = 404;
+    /** Kisses are rare: this seed's comes a little after the usual run length. */
+    static final int KISS_RUN = 1620;
 
     private SharedVectors()
     {
@@ -63,7 +77,7 @@ public final class SharedVectors
     static JsonArray script(int seed)
     {
         // Left alone, this seed's Main circle boards a boat, which covers voyages and docking.
-        if (seed == VOYAGE_SEED) return new JsonArray();
+        if (seed == VOYAGE_SEED || seed == CASTAWAY_SEED) return new JsonArray();
         if (seed == DOCK_SEED)
         {
             // The voyage seed again, with Sailing at a low level and a dock's quest not done.
@@ -74,6 +88,11 @@ public final class SharedVectors
         }
         if (seed == BOON_SEED) return boonScript(seed);
         if (seed == CALM_SEED) return calmScript(seed);
+        if (seed == WAVE_SEED) return waveScript(seed);
+        if (seed == WORLD_SEED) return worldScript(seed);
+        if (seed == KISS_SEED) return kissScript(seed);
+        if (seed == STONE_SEED) return stoneScript(seed);
+        if (seed == OSRS_SEED) return osrsScript(seed);
         NomadSim probe = NomadSim.start(seed);
         for (int i = 0; i < 240; i++) probe.step(null);
         Circle m = probe.main();
@@ -166,12 +185,382 @@ public final class SharedVectors
         return events;
     }
 
-    /** The first minute the script reaches where {@code when} holds, or -1. */
-    static int firstMinute(int seed, JsonArray events, java.util.function.Predicate<NomadSim> when)
+    static JsonArray waveScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        events.add(event(0, "sailing", true));
+        // A comet, caught by standing where its line crosses Main's middle.
+        events.add(event(5, "comet"));
+        int announced = firstMinute(seed, events, s -> s.comet() != null);
+        Comet k = probe(seed, events, announced).comet();
+        int cx = (int) Math.round(k.x() + k.dx * COMET_HALF);
+        int cy = (int) Math.round(k.y() + k.dy * COMET_HALF);
+        events.add(event(announced, "player", cx, cy));
+        events.add(event(announced + NomadSim.COMET_WARN + NomadSim.COMET_MINUTES, "player"));
+        // The Wanderer's Crown: Main follows you as you walk away from its middle.
+        int crown = Math.max(120, announced + 60);
+        Circle m = probe(seed, events, crown).main();
+        int mx = (int) Math.round(m.x);
+        int my = (int) Math.round(m.y);
+        events.add(event(crown, "give", NomadSim.CROWN));
+        events.add(event(crown, "player", mx + 4, my));
+        events.add(event(crown, "boon", last(seed, events, crown), 0, mx + 4, my));
+        events.add(event(crown + 5, "player", mx + 40, my + 10));
+        events.add(event(crown + 20, "player"));
+        // Gathering and Helmsman.
+        events.add(event(crown + 80, "give", NomadSim.GATHERING));
+        events.add(event(crown + 80, "boon", last(seed, events, crown + 80), 0));
+        events.add(event(crown + 150, "give", NomadSim.HELMSMAN));
+        NomadSim helm = probe(seed, events, crown + 150);
+        events.add(event(crown + 150, "helmsman", helm.boons().size() - 1, helm.helmsmanPorts().get(helm.helmsmanPorts().size() / 2)));
+        // Spend whatever else is held (Rudder turns left), so there's room to claim.
+        for (int i = 0; i < 3; i++) events.add(event(crown + 151 + i, "boon", 0, 1));
+        // Homeward from Main's middle to Lumbridge, then again while it cools down.
+        int home = crown + 240;
+        Circle h = probe(seed, events, home).main();
+        events.add(event(home, "homeward", (int) Math.round(h.x), (int) Math.round(h.y), Geography.LUMBRIDGE.x, Geography.LUMBRIDGE.y));
+        events.add(event(home + 1, "homeward", Geography.LUMBRIDGE.x, Geography.LUMBRIDGE.y, Geography.LUMBRIDGE.x + 3, Geography.LUMBRIDGE.y));
+        // Rare summons until one rises as a pilgrim stone, which is claimed from outside.
+        int at = home + 30;
+        for (int tries = 0; tries < 8 && at < 1300; tries++)
+        {
+            events.add(event(at, "summon", NomadSim.RARE));
+            final int from = at;
+            int found = firstMinute(seed, events, s -> s.minutes() >= from && pilgrimOf(s) != null);
+            if (found >= 0 && found < at + 5)
+            {
+                Waystone w = pilgrimOf(probe(seed, events, found));
+                events.add(event(found + 1, "player", w.x(), w.y()));
+                events.add(event(found + 4, "player"));
+                at = found + 20;
+                break;
+            }
+            at += 30;
+        }
+        // A common stone left alone to ripen, and a legendary one walked onto.
+        events.add(event(at, "summon", NomadSim.COMMON));
+        int legend = Math.min(at + 60, 1400);
+        events.add(event(legend, "summon", NomadSim.LEGENDARY));
+        int rose = firstMinute(seed, events, s -> s.minutes() >= legend && legendaryOf(s) != null);
+        if (rose >= 0)
+        {
+            Waystone w = legendaryOf(probe(seed, events, rose));
+            events.add(event(rose + 1, "player", w.x(), w.y()));
+            events.add(event(rose + 3, "player"));
+        }
+        return events;
+    }
+
+    static JsonArray worldScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        events.add(event(0, "sailing", true));
+        events.add(event(0, "kiss", true));
+        events.add(event(5, "event", "stampede"));
+        events.add(event(30, "event", "aurora"));
+        events.add(event(40, "event", "flotsam"));
+        // Ride the caravan: cross into it once it touches Main, ride an hour, and cross back as soon as it can.
+        int ride = firstMinute(seed, events, s -> s.minutes() >= 45 && s.boundIndex() == NomadSim.MAIN
+            && s.main().touches(s.circles().get(s.caravanIndex())));
+        int after = 300;
+        if (ride >= 0 && ride < 900)
+        {
+            events.add(event(ride, "crossto", probe(seed, events, ride).caravanIndex()));
+            int back = crossBack(seed, events, ride + 60, ride + 600);
+            after = back >= 0 ? back : ride + 600;
+        }
+        // Stand where Main and the kingdom nearest it overlap for half an hour (Gravity), and cross in.
+        // Stay two hours, crossing on through a border kiss if one opens, then head back to Main.
+        final int searchFrom = after;
+        int touch = firstMinute(seed, events, s -> s.minutes() >= searchFrom && s.boundIndex() == NomadSim.MAIN && overlap(s) != null);
+        if (touch >= 0 && touch < 1200)
+        {
+            int[] at = overlap(probe(seed, events, touch));
+            events.add(event(touch, "player", at[0], at[1]));
+            events.add(event(touch + 30, "crossto", at[2]));
+            events.add(event(touch + 31, "player"));
+            final int stay = touch + 31;
+            int kissed = firstMinute(seed, events, s -> s.minutes() >= stay && s.kissing() >= 0 || s.minutes() >= stay + 120);
+            if (kissed >= 0 && kissed < stay + 120) events.add(event(kissed, "crossto", probe(seed, events, kissed).kissing()));
+            int back = crossBack(seed, events, stay + 120, MINUTES);
+            after = back >= 0 ? back : stay + 120;
+        }
+        // Deep time for two hours.
+        events.add(event(after, "deep", true));
+        events.add(event(after + 120, "deep", false));
+        events.add(event(after + 130, "event", "aurora"));
+        int riftAt = Math.min(1300, Math.max(1000, after + 140));
+        // A rift, walked into: stand at its far half until it closes, so Main moves there.
+        events.add(event(riftAt, "event", "rift"));
+        final int asked = riftAt;
+        int opened = firstMinute(seed, events, s -> s.minutes() >= asked && s.rift() != null);
+        if (opened >= 0)
+        {
+            Circle r = probe(seed, events, opened).rift();
+            events.add(event(opened, "player", (int) Math.round(r.x), (int) Math.round(r.y)));
+            events.add(event(opened + NomadSim.RIFT_MINUTES + 2, "player"));
+        }
+        events.add(event(1400, "event", "stampede"));
+        return events;
+    }
+
+    static JsonArray kissScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        events.add(event(0, "kiss", true));
+        // Cross into the first kingdom Main touches, and stay.
+        int in = firstMinute(seed, events, s -> s.minutes() >= 30 && s.boundIndex() == NomadSim.MAIN && kingdomTouching(s) > 0, KISS_RUN);
+        if (in < 0) return events;
+        events.add(event(in, "crossto", kingdomTouching(probe(seed, events, in))));
+        final int from = in + 1;
+        int kissed = firstMinute(seed, events, s -> s.minutes() >= from && s.kissing() >= 0, KISS_RUN);
+        if (kissed < 0) return events;
+        events.add(event(kissed, "crossto", probe(seed, events, kissed).kissing()));
+        crossBack(seed, events, kissed + 20, KISS_RUN);
+        return events;
+    }
+
+    static JsonArray stoneScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        // Shatter the first waystone claimed, then claim the next one as usual.
+        events.add(event(5, "shatter", true));
+        int at = claim(seed, events, 5, NomadSim.COMMON);
+        at = claim(seed, events, Math.max(at, 40), NomadSim.COMMON);
+        // Rites: a stone that asks for one, the rite done, then claimed.
+        at = Math.max(at, 200);
+        events.add(event(at, "rites", true));
+        events.add(event(at, "summon", NomadSim.COMMON));
+        int[] found = findWaystone(seed, events, at, at + 100);
+        if (found != null)
+        {
+            events.add(event(found[0], "player", found[1], found[2]));
+            String rite = riteAt(probe(seed, events, found[0]), found[1], found[2]);
+            events.add(event(found[0] + 1, "rite", rite, found[1], found[2]));
+            events.add(event(found[0] + 3, "player"));
+            at = found[0] + 4;
+        }
+        events.add(event(at, "rites", false));
+        // Vigil: on a stone near the edge it takes two minutes.
+        events.add(event(at + 1, "vigil", true));
+        at = claim(seed, events, at + 1, NomadSim.COMMON);
+        events.add(event(at, "vigil", false));
+        // Foresight, and a Keystone armed for the fork it foresees.
+        at = Math.max(at, 300);
+        events.add(event(at, "give", NomadSim.FORESIGHT));
+        events.add(event(at, "boon", last(seed, events, at), 0));
+        events.add(event(at + 2, "give", NomadSim.KEYSTONE));
+        events.add(event(at + 2, "boon", last(seed, events, at + 2), 0));
+        // A Ward, broken by stepping outside for ten minutes.
+        events.add(event(at + 10, "give", NomadSim.WARD));
+        Circle m = probe(seed, events, at + 15).main();
+        events.add(event(at + 15, "player", (int) Math.round(m.x + m.radius + 15), (int) Math.round(m.y)));
+        events.add(event(at + 25, "player"));
+        // A Wake, then standing in the ground it holds behind the circle.
+        events.add(event(at + 30, "give", NomadSim.WAKE));
+        events.add(event(at + 30, "boon", last(seed, events, at + 30), 0));
+        int[] behind = inWakeOnly(probe(seed, events, at + 88));
+        if (behind != null)
+        {
+            events.add(event(at + 88, "player", behind[0], behind[1]));
+            events.add(event(at + 90, "player"));
+        }
+        // A Leap, and a Lodestone toward a landmark it offers.
+        events.add(event(at + 100, "give", NomadSim.LEAP));
+        events.add(event(at + 100, "boon", last(seed, events, at + 100), 0));
+        events.add(event(at + 120, "give", NomadSim.LODESTONE));
+        List<String> targets = probe(seed, events, at + 120).lodestoneTargets();
+        if (!targets.isEmpty())
+        {
+            events.add(event(at + 120, "lodestone", last(seed, events, at + 120), targets.get(Math.min(3, targets.size() - 1))));
+        }
+        // Rare stones left to wander, and common ones in kingdoms' circles.
+        for (int k = 0; k < 16; k++) events.add(event(at + 200 + k * 40, "summon", k % 4 == 3 ? NomadSim.COMMON : NomadSim.RARE));
+        // Anchor the circle once a wandering stone rises, so it has time to hop.
+        int wander = firstMinute(seed, events, s -> s.waystones().stream().anyMatch(Waystone::wanders));
+        if (wander >= 0)
+        {
+            events.add(event(wander, "give", NomadSim.ANCHOR));
+            events.add(event(wander, "boon", last(seed, events, wander), 0));
+        }
+        return events;
+    }
+
+    static JsonArray osrsScript(int seed)
+    {
+        JsonArray events = new JsonArray();
+        // Every travel network unlocked, the Lunar spellbook, and two Combat Achievement tiers.
+        events.add(event(0, "networks", 127));
+        events.add(event(0, "book", 3));
+        events.add(event(0, "ca", 2));
+        for (int k = 0; k < 3; k++) events.add(event(10 + k, "pop"));
+        events.add(event(20, "guest"));
+        Circle m = probe(seed, events, 30).main();
+        events.add(event(30, "superior", (int) Math.round(m.x), (int) Math.round(m.y)));
+        m = probe(seed, events, 40).main();
+        events.add(event(40, "star", (int) Math.round(m.x), (int) Math.round(m.y)));
+        events.add(event(45, "layer"));
+        events.add(event(50, "layer"));
+        events.add(event(70, "stargone"));
+        // A coordinate clue's dig spot at Varrock, held for an hour.
+        events.add(event(80, "tide", 3213, 3428));
+        events.add(event(140, "tide"));
+        for (int k = 0; k < 3; k++) events.add(event(150 + k, "encore"));
+        events.add(event(160, "useencore"));
+        // A minigame that runs past the cap, then the catch-up.
+        events.add(event(170, "intermission", true));
+        events.add(event(200, "intermission", false));
+        // Docking your own boat inside a kingdom's circle, then a leyline teleport back into Main.
+        NomadSim at = probe(seed, events, 250);
+        Circle k = at.circles().get(1);
+        events.add(event(250, "dockcross", (int) Math.round(k.x), (int) Math.round(k.y)));
+        at = probe(seed, events, 260);
+        events.add(event(260, "leyline", (int) Math.round(at.bound().x), (int) Math.round(at.bound().y),
+            (int) Math.round(at.main().x), (int) Math.round(at.main().y)));
+        // An obelisk the Wilderness circle covers, to the one furthest from it.
+        int wild = firstMinute(seed, events, s -> s.minutes() >= 270 && wildObelisk(s) != null);
+        if (wild >= 0)
+        {
+            Tile from = wildObelisk(probe(seed, events, wild));
+            Tile to = from;
+            for (Tile o : Networks.OBELISKS) if (Circle.dist(o.x - from.x, o.y - from.y) > Circle.dist(to.x - from.x, to.y - from.y)) to = o;
+            events.add(event(wild, "obelisk", from.x, from.y, to.x, to.y));
+        }
+        return events;
+    }
+
+    /** An obelisk inside the Wilderness circle, or null. */
+    private static Tile wildObelisk(NomadSim s)
+    {
+        for (Circle c : s.circles())
+        {
+            if (!"wilderness".equals(c.regionId)) continue;
+            for (Tile o : Networks.OBELISKS) if (c.contains(o.x, o.y)) return o;
+        }
+        return null;
+    }
+
+    /** A tile in your circle's Wake but outside the circle itself, or null. */
+    private static int[] inWakeOnly(NomadSim s)
+    {
+        Circle c = s.bound();
+        double[] wake = c.wake();
+        for (int k = 0; k + 2 < wake.length; k += 3)
+        {
+            for (int a = 0; a < 16; a++)
+            {
+                double t = a * Math.PI / 8;
+                int px = (int) Math.round(wake[k] + StrictMath.cos(t) * (wake[k + 2] - 2));
+                int py = (int) Math.round(wake[k + 1] + StrictMath.sin(t) * (wake[k + 2] - 2));
+                if (!c.contains(px, py) && s.inYours(px, py)) return new int[]{px, py};
+            }
+        }
+        return null;
+    }
+
+    /** Summons a stone at {@code at} and stands on it for 3 minutes once it's in your circle; the minute after, or {@code at} + 100. */
+    private static int claim(int seed, JsonArray events, int at, String tier)
+    {
+        events.add(event(at, "summon", tier));
+        int[] found = findWaystone(seed, events, at, at + 100);
+        if (found == null) return at + 100;
+        events.add(event(found[0], "player", found[1], found[2]));
+        events.add(event(found[0] + 3, "player"));
+        return found[0] + 4;
+    }
+
+    private static String riteAt(NomadSim s, int x, int y)
+    {
+        for (Waystone w : s.waystones())
+        {
+            if (w.x() == x && w.y() == y) return w.rite();
+        }
+        return Waystone.BOW;
+    }
+
+    /** The first kingdom's circle touching Main, by index, or 0. */
+    private static int kingdomTouching(NomadSim s)
+    {
+        for (int j = 1; j < s.circles().size(); j++)
+        {
+            if (s.circles().get(j).isKingdom() && s.main().touches(s.circles().get(j))) return j;
+        }
+        return 0;
+    }
+
+    /** Tries crossing back into Main every 20 minutes from {@code from} until one works: the minute after it, or -1. */
+    private static int crossBack(int seed, JsonArray events, int from, int until)
+    {
+        for (int t = from; t < until; t += 20)
+        {
+            events.add(event(t, "crossto", NomadSim.MAIN));
+            if (probe(seed, events, t + 1).boundIndex() == NomadSim.MAIN) return t + 1;
+        }
+        return -1;
+    }
+
+    /** Where your circle overlaps the nearest circle you could cross into, as {x, y, its index}, or null. */
+    private static int[] overlap(NomadSim s)
+    {
+        Circle b = s.bound();
+        for (int j = 0; j < s.circles().size(); j++)
+        {
+            Circle c = s.circles().get(j);
+            if (!s.linked(j) || c.isCaravan() || b.gap(c) > -2) continue;
+            double d = Circle.dist(c.x - b.x, c.y - b.y);
+            // The middle of the overlap, along the line between the two middles.
+            double t = (b.radius + (d - c.radius)) / 2 / d;
+            return new int[]{(int) Math.round(b.x + (c.x - b.x) * t), (int) Math.round(b.y + (c.y - b.y) * t), j};
+        }
+        return null;
+    }
+
+    /** The index of the last boon held at {@code minute}, once its events are applied. */
+    private static int last(int seed, JsonArray events, int minute)
+    {
+        return probe(seed, events, minute).boons().size() - 1;
+    }
+
+    /** A comet reaches Main's old middle this many minutes into its flight. */
+    static final int COMET_HALF = NomadSim.COMET_MINUTES / 2;
+
+    private static Waystone pilgrimOf(NomadSim s)
+    {
+        for (Waystone w : s.waystones()) if (w.pilgrim()) return w;
+        return null;
+    }
+
+    private static Waystone legendaryOf(NomadSim s)
+    {
+        for (Waystone w : s.waystones()) if (w.legendary()) return w;
+        return null;
+    }
+
+    /** The run as the script leaves it at the start of {@code minute}, its events applied. */
+    static NomadSim probe(int seed, JsonArray events, int minute)
     {
         NomadSim sim = NomadSim.start(seed);
         Tile[] player = {null};
-        for (int minute = 0; minute < MINUTES; minute++)
+        for (int t = 0; t < minute; t++)
+        {
+            apply(sim, events, t, player);
+            sim.step(player[0]);
+        }
+        apply(sim, events, minute, player);
+        return sim;
+    }
+
+    /** The first minute the script reaches where {@code when} holds, or -1. */
+    static int firstMinute(int seed, JsonArray events, java.util.function.Predicate<NomadSim> when)
+    {
+        return firstMinute(seed, events, when, MINUTES);
+    }
+
+    static int firstMinute(int seed, JsonArray events, java.util.function.Predicate<NomadSim> when, int until)
+    {
+        NomadSim sim = NomadSim.start(seed);
+        Tile[] player = {null};
+        for (int minute = 0; minute < until; minute++)
         {
             apply(sim, events, minute, player);
             if (when.test(sim)) return minute;
@@ -245,6 +634,90 @@ public final class SharedVectors
                     line = sim.useBoon(a.get(0).getAsInt(), a.get(1).getAsInt(),
                         a.size() >= 4 ? new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()) : null);
                     break;
+                case "comet":
+                    sim.cometSoonForTesting();
+                    break;
+                case "helmsman":
+                    line = sim.useHelmsman(a.get(0).getAsInt(), a.get(1).getAsString());
+                    break;
+                case "event":
+                    sim.eventSoonForTesting(a.get(0).getAsString());
+                    break;
+                case "kiss":
+                    sim.setBorderKiss(a.get(0).getAsBoolean());
+                    break;
+                case "deep":
+                    sim.setDeep(a.get(0).getAsBoolean());
+                    break;
+                case "crossto":
+                    line = sim.crossTo(a.get(0).getAsInt(), null);
+                    break;
+                case "lodestone":
+                    line = sim.useLodestone(a.get(0).getAsInt(), a.get(1).getAsString());
+                    break;
+                case "shatter":
+                    sim.setShatterNext(a.get(0).getAsBoolean());
+                    break;
+                case "vigil":
+                    sim.setVigil(a.get(0).getAsBoolean());
+                    break;
+                case "rites":
+                    sim.setRites(a.get(0).getAsBoolean());
+                    break;
+                case "rite":
+                    line = sim.performRite(a.get(0).getAsString(), new Tile(a.get(1).getAsInt(), a.get(2).getAsInt()));
+                    break;
+                case "networks":
+                    sim.setNetworks(a.get(0).getAsInt());
+                    break;
+                case "book":
+                    sim.setSpellbook(a.get(0).getAsInt());
+                    break;
+                case "ca":
+                    line = sim.setCaTiers(a.get(0).getAsInt());
+                    break;
+                case "pop":
+                    line = sim.logPop();
+                    break;
+                case "guest":
+                    line = sim.uninvitedGuest();
+                    break;
+                case "superior":
+                    line = sim.superior(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()));
+                    break;
+                case "star":
+                    line = sim.starfall(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()));
+                    break;
+                case "layer":
+                    line = sim.starLayer();
+                    break;
+                case "stargone":
+                    line = sim.starGone();
+                    break;
+                case "tide":
+                    sim.setTide(a.size() == 0 ? null : new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()));
+                    break;
+                case "encore":
+                    line = sim.addEncore();
+                    break;
+                case "useencore":
+                    line = sim.useEncore();
+                    break;
+                case "intermission":
+                    sim.setIntermission(a.get(0).getAsBoolean());
+                    break;
+                case "dockcross":
+                    line = sim.dockCross(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()));
+                    break;
+                case "leyline":
+                    line = sim.leyline(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));
+                    break;
+                case "obelisk":
+                    line = sim.obelisk(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));
+                    break;
+                case "homeward":
+                    line = sim.homeward(new Tile(a.get(0).getAsInt(), a.get(1).getAsInt()), new Tile(a.get(2).getAsInt(), a.get(3).getAsInt()));
+                    break;
                 default:
                     throw new IllegalArgumentException(e.toString());
             }
@@ -275,7 +748,8 @@ public final class SharedVectors
         Tile[] player = {null};
         JsonArray log = new JsonArray();
         JsonArray hours = new JsonArray();
-        for (int minute = 0; minute < MINUTES; minute++)
+        int run = seed == KISS_SEED ? KISS_RUN : MINUTES;
+        for (int minute = 0; minute < run; minute++)
         {
             for (String line : apply(sim, events, minute, player)) log.add(entry(minute, line));
             List<String> lines = sim.step(player[0]);
@@ -284,7 +758,7 @@ public final class SharedVectors
         }
         JsonObject out = new JsonObject();
         out.addProperty("seed", seed);
-        out.addProperty("minutes", MINUTES);
+        out.addProperty("minutes", run);
         out.add("events", events);
         out.add("hours", hours);
         out.add("log", log);

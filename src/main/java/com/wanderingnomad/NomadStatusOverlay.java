@@ -7,8 +7,12 @@ import com.wanderingnomad.sim.Tile;
 import com.wanderingnomad.sim.Waystone;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics2D;
+import java.util.ArrayList;
+import java.util.List;
 import javax.inject.Inject;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.ComponentConstants;
@@ -43,11 +47,16 @@ class NomadStatusOverlay extends OverlayPanel
     public Dimension render(Graphics2D graphics)
     {
         NomadSim sim = plugin.sim();
-        if (sim == null || !plugin.config().statusBox()) return null;
+        if (sim == null || !plugin.config().statusBox() || NomadPlugin.photoMode) return null;
         Circle c = sim.bound();
         Tile at = plugin.surface();
+        // Streamer layout: the key numbers big enough to read on a stream. Backseat shield: no countdowns here.
+        Font big = plugin.config().streamerLayout() ? FontManager.getRunescapeBoldFont().deriveFont(22f) : null;
+        boolean shielded = plugin.shielded();
+        StreamDesk desk = plugin.desk();
+        String voted = desk == null ? null : desk.votedName();
         panelComponent.getChildren().add(TitleComponent.builder()
-            .text(c.name() + " circle").color(NomadPlugin.colour(c, 255)).build());
+            .text((c.isMain() && voted != null ? voted : c.name()) + " circle").color(NomadPlugin.colour(c, 255)).build());
 
         String state;
         Color colour;
@@ -63,37 +72,51 @@ class NomadStatusOverlay extends OverlayPanel
             state = "Stranded";
             colour = STRANDED;
         }
+        else if (plugin.sheltered())
+        {
+            String wild = plugin.wildShelter();
+            state = plugin.kidnapped() ? "Carried off" : sim.intermission() ? "Intermission" : plugin.plotHeld() ? "In a plot"
+                : plugin.delveLeft() > 0 ? "Delving" : wild != null ? wild : "Inside";
+            colour = INSIDE;
+        }
         else
         {
             state = "Inside";
             colour = INSIDE;
         }
-        panelComponent.getChildren().add(LineComponent.builder().left("Status").right(state).rightColor(colour).build());
+        panelComponent.getChildren().add(LineComponent.builder().left("Status").right(state).rightColor(colour).rightFont(big).build());
         if (at != null)
         {
             // Either half of a forked Main counts, so the nearest edge is the one you're inside.
             double toEdge = NomadPlugin.toEdge(sim, at.x, at.y);
             String edge = toEdge >= 0 ? (int) Math.floor(toEdge) + " tiles" : (int) Math.ceil(-toEdge) + " out";
-            panelComponent.getChildren().add(LineComponent.builder().left("To edge").right(edge).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("To edge").right(edge).rightFont(big).build());
         }
-        if (sim.forkWarning() > 0)
+        // With boons and timers shown as infoboxes only, the box leaves them out.
+        boolean boxRows = plugin.config().boonDisplay() != NomadConfig.BoonDisplay.INFOBOXES;
+        if (boxRows && sim.forkWarning() > 0)
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Fork in " + sim.forkWarning() + " min")
                 .right(NomadSim.compass(sim.forkAxis()) + " / " + NomadSim.compass(sim.forkAxis() + Math.PI))
                 .rightColor(FORK).build());
         }
-        else if (sim.twin() != null)
+        else if (boxRows && sim.twin() != null)
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Forked").right("pick a half").rightColor(FORK).build());
         }
-        if (sim.stormWarning() > 0 || sim.stormLeft() > 0)
+        if (sim.hopWarn() > 0)
         {
-            String kind = sim.stormKind() == NomadSim.GALE ? "Gale" : "Squall";
+            panelComponent.getChildren().add(LineComponent.builder().left("Hop in " + sim.hopWarn() + " min")
+                .right(sim.hopTo()).rightColor(FORK).build());
+        }
+        if (boxRows && (sim.stormWarning() > 0 || sim.stormLeft() > 0))
+        {
+            String kind = NomadPlugin.stormName(sim.stormKind() == NomadSim.GALE);
             panelComponent.getChildren().add(LineComponent.builder()
                 .left(sim.stormWarning() > 0 ? kind + " in " + sim.stormWarning() + " min" : kind)
                 .right(sim.stormWarning() > 0 ? "over Main" : sim.stormLeft() + " min left").rightColor(STORM).build());
         }
-        Radar radar = plugin.radar();
+        Radar radar = shielded ? null : plugin.radar();
         boolean hud = plugin.config().hudExtras();
         // A fixed width, so the box doesn't change size as names and numbers come and go.
         panelComponent.setPreferredSize(new Dimension(hud ? WIDTH : ComponentConstants.STANDARD_WIDTH, 0));
@@ -101,7 +124,8 @@ class NomadStatusOverlay extends OverlayPanel
         {
             Color urgency = urgency(radar.edgeIn);
             panelComponent.getChildren().add(LineComponent.builder().left("Edge reaches you")
-                .right("~" + radar.edgeIn + " min").rightColor(hud ? urgency : radar.edgeIn <= NomadPlugin.EDGE_WARNING ? OUTSIDE : STRANDED).build());
+                .right("~" + radar.edgeIn + " min").rightColor(hud ? urgency : radar.edgeIn <= NomadPlugin.EDGE_WARNING ? OUTSIDE : STRANDED)
+                .rightFont(big).build());
             if (hud)
             {
                 // Empties as the edge closes in, shifting from calm to urgent.
@@ -120,15 +144,10 @@ class NomadStatusOverlay extends OverlayPanel
         {
             panelComponent.getChildren().add(new HudParts.Heading(c.heading(), c.moodName(), NomadPlugin.colour(c, 255)));
             HudParts.Chips chips = new HudParts.Chips();
-            if (c.expandLeft() > 0) chips.add(NomadSim.EXPAND + " " + NomadPanel.time(c.expandLeft()));
-            if (c.tailwindLeft() > 0) chips.add(NomadSim.TAILWIND + " " + NomadPanel.time(c.tailwindLeft()));
-            if (c.anchorLeft() > 0) chips.add(NomadSim.ANCHOR + " " + NomadPanel.time(c.anchorLeft()));
-            if (sim.bridgeLeft() > 0) chips.add(NomadSim.BRIDGE + " " + sim.bridgeLeft() + "m");
-            if (sim.calmLeft() > 0) chips.add(NomadSim.CALM + " " + NomadPanel.time(sim.calmLeft()));
-            if (sim.lanternLit()) chips.add(NomadSim.LANTERN + " lit");
+            if (boxRows) for (Effect e : effects(sim, c)) chips.add(e.label.isEmpty() ? e.name : e.name + " " + e.label);
             if (!chips.isEmpty()) panelComponent.getChildren().add(chips);
         }
-        panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").build());
+        panelComponent.getChildren().add(LineComponent.builder().left("Radius").right(Math.round(c.radius()) + " tiles").rightFont(big).build());
         for (int j = 0; j < sim.circles().size(); j++)
         {
             Circle o = sim.circles().get(j);
@@ -152,10 +171,17 @@ class NomadStatusOverlay extends OverlayPanel
         if (near != null)
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Waystone")
-                .right(near.boon() + " " + Math.round(Math.hypot(near.x() - at.x, near.y() - at.y)) + "t ~" + NomadPanel.roughly(sim.minutesLeft(near)))
+                .right(near.boon() + " " + Math.round(Math.hypot(near.x() - at.x, near.y() - at.y)) + "t " + NomadPanel.stoneLeft(sim, near))
                 .rightColor(new Color(0xFFD54F)).build());
         }
-        if (!sim.boons().isEmpty())
+        com.wanderingnomad.sim.Comet comet = sim.comet();
+        if (comet != null)
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Comet")
+                .right(comet.flying() ? "streaking, " + comet.flightLeft() + "m" : "in " + comet.warning() + "m")
+                .rightColor(new Color(0xBFE3FF)).build());
+        }
+        if (boxRows && !sim.boons().isEmpty())
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Boons").right(String.join(", ", sim.boons())).build());
         }
@@ -164,6 +190,52 @@ class NomadStatusOverlay extends OverlayPanel
             panelComponent.getChildren().add(LineComponent.builder().left("Volcano").right("Open").rightColor(INSIDE).build());
         }
         return super.render(graphics);
+    }
+
+    /** An active effect: its name, how it reads beside the name, and minutes left (-1 when it has no clock). */
+    static final class Effect
+    {
+        final String name;
+        final String label;
+        final int minutes;
+
+        Effect(String name, String label, int minutes)
+        {
+            this.name = name;
+            this.label = label;
+            this.minutes = minutes;
+        }
+    }
+
+    private static void timed(List<Effect> out, String name, int minutes)
+    {
+        out.add(new Effect(name, NomadPanel.time(minutes), minutes));
+    }
+
+    /** Every effect running on your circle and the run, in the order the status box shows them. */
+    static List<Effect> effects(NomadSim sim, Circle c)
+    {
+        List<Effect> out = new ArrayList<>();
+        if (c.expandLeft() > 0) timed(out, NomadSim.EXPAND, c.expandLeft());
+        if (c.tailwindLeft() > 0) timed(out, NomadSim.TAILWIND, c.tailwindLeft());
+        if (c.anchorLeft() > 0) timed(out, NomadSim.ANCHOR, c.anchorLeft());
+        if (sim.bridgeLeft() > 0) out.add(new Effect(NomadSim.BRIDGE, sim.bridgeLeft() + "m", sim.bridgeLeft()));
+        if (sim.calmLeft() > 0) timed(out, NomadSim.CALM, sim.calmLeft());
+        if (sim.lanternLit()) out.add(new Effect(NomadSim.LANTERN, "lit", -1));
+        if (c.wakeLeft() > 0) timed(out, NomadSim.WAKE, c.wakeLeft());
+        if (c.lodeLeft() > 0) timed(out, NomadSim.LODESTONE, c.lodeLeft());
+        if (sim.wardLeft() > 0) out.add(new Effect(NomadSim.WARD, sim.wardLeft() + "m", sim.wardLeft()));
+        else if (sim.boons().contains(NomadSim.WARD)) out.add(new Effect(NomadSim.WARD, "held", -1));
+        if (sim.keystoneLeft() > 0) out.add(new Effect(NomadSim.KEYSTONE, sim.keystoneLeft() + "m", sim.keystoneLeft()));
+        else if (sim.keystoneArmed()) out.add(new Effect(NomadSim.KEYSTONE, "armed", -1));
+        if (sim.shatterNext()) out.add(new Effect("Shatter", "next", -1));
+        if (c.pops() > 0) out.add(new Effect("Log pop", "+" + c.pops(), -1));
+        if (c.starHold() > 0) timed(out, "Star hold", c.starHold());
+        if (c.starTiles() > 0) out.add(new Effect("Stardust", "+" + c.starTiles(), -1));
+        if (sim.catchUp() > 0) out.add(new Effect("Catch-up", sim.catchUp() + "m", sim.catchUp()));
+        if (sim.encore() > 0) out.add(new Effect("Encore", sim.encore() + "m", sim.encore()));
+        if (sim.tide() != null) out.add(new Effect("Tide", "", -1));
+        return out;
     }
 
     /** Calm green with a quarter hour to go, through amber, to red as the edge arrives. */

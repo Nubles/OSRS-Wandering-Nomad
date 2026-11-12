@@ -32,6 +32,38 @@ public final class Geography
         new Region("varlamore", "Varlamore", 0xFFA726, 10)
     ));
 
+    /** The Trade road's caravan: a small circle with no kingdom that travels between bank towns. */
+    public static final Region CARAVAN = new Region("caravan", "Caravan", 0xD7A86E, -1);
+
+    /**
+     * The bank towns the caravan travels between, all on the mainland and joined by walks over
+     * land. Each is a Port only so the walk there can be worked out like a port's; no boat sails
+     * from one.
+     */
+    public static final List<Port> TOWNS = Collections.unmodifiableList(Arrays.asList(
+        new Port("Lumbridge", new Tile(3222, 3218)),
+        new Port("Varrock", new Tile(3185, 3436)),
+        new Port("Draynor Village", new Tile(3092, 3245)),
+        new Port("Falador", new Tile(3013, 3355)),
+        new Port("Edgeville", new Tile(3094, 3493)),
+        new Port("Al Kharid", new Tile(3269, 3167)),
+        new Port("Catherby", new Tile(2809, 3441)),
+        new Port("Seers' Village", new Tile(2725, 3491)),
+        new Port("East Ardougne", new Tile(2655, 3283)),
+        new Port("Yanille", new Tile(2612, 3094)),
+        new Port("Canifis", new Tile(3512, 3480)),
+        new Port("Shantay Pass", new Tile(3308, 3120))
+    ));
+
+    public static Port town(String name)
+    {
+        for (Port p : TOWNS)
+        {
+            if (p.name.equals(name)) return p;
+        }
+        return null;
+    }
+
     /** The Main circle's start, and the volcano over TzHaar that only the Main circle opens. */
     public static final Tile LUMBRIDGE = new Tile(3222, 3218);
     public static final Tile VOLCANO = new Tile(2856, 3168);
@@ -52,6 +84,15 @@ public final class Geography
             this.tile = nearestLand(chunkX * 64 + 32, chunkY * 64 + 32);
             this.sailing = sailing;
             this.quest = quest;
+        }
+
+        /** A town on the Trade road, at a tile given exactly. */
+        Port(String name, Tile tile)
+        {
+            this.name = name;
+            this.tile = tile;
+            this.sailing = 0;
+            this.quest = null;
         }
     }
 
@@ -113,7 +154,7 @@ public final class Geography
         {
             if (r.id.equals(id)) return r;
         }
-        return null;
+        return CARAVAN.id.equals(id) ? CARAVAN : null;
     }
 
     /** The kingdom with a region circle that a tile lies in, or null over water or elsewhere. */
@@ -149,6 +190,40 @@ public final class Geography
     public static double[] wayOut(double x, double y, int lookahead)
     {
         return pockets().wayOut(x, y, lookahead);
+    }
+
+    private static Harbours harbours;
+
+    private static Harbours harbours()
+    {
+        if (harbours == null) harbours = new Harbours(WORLD);
+        return harbours;
+    }
+
+    /** Cells of walking over land from a tile to a port, or -1 if no walk leads there. */
+    public static int harbourSteps(Port p, double x, double y)
+    {
+        return harbours().steps(p, x, y);
+    }
+
+    /** A point a few cells along the shortest walk over land to a port, as {x, y}; null if no walk leads there. */
+    public static double[] wayTo(Port p, double x, double y, int lookahead)
+    {
+        return harbours().wayTo(p, x, y, lookahead);
+    }
+
+    /** The middle of the walk's cell nearest a tile (its own or one beside it), as {x, y}; null if none is on the walk. */
+    public static double[] snapToWalk(Port p, double x, double y)
+    {
+        return harbours().snap(p, x, y);
+    }
+
+    private static final java.util.Map<String, Port> HOMES = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** A kingdom's home tile as a destination for a walk over land, so Exodus only heads where Main can walk. */
+    public static Port homeOf(Region r)
+    {
+        return HOMES.computeIfAbsent(r.id, id -> new Port("home:" + id, r.home()));
     }
 
     /** Any land the Main circle may drift over, islands included. */

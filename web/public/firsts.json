@@ -1,0 +1,138 @@
+{
+ "note": "Curated by the mode's author. Claims are checked by hand before they go here.",
+ "claimed": [],
+ "milestones": [
+  {
+   "id": "rank-drifter",
+   "group": "Ranks",
+   "what": "Drifter",
+   "how": "Reach 60 renown."
+  },
+  {
+   "id": "rank-pathfinder",
+   "group": "Ranks",
+   "what": "Pathfinder",
+   "how": "Reach 200 renown."
+  },
+  {
+   "id": "rank-wayfarer",
+   "group": "Ranks",
+   "what": "Wayfarer",
+   "how": "Reach 450 renown."
+  },
+  {
+   "id": "rank-trailblazer",
+   "group": "Ranks",
+   "what": "Trailblazer",
+   "how": "Reach 900 renown."
+  },
+  {
+   "id": "rank-voyager",
+   "group": "Ranks",
+   "what": "Voyager",
+   "how": "Reach 1,600 renown."
+  },
+  {
+   "id": "rank-cartographer",
+   "group": "Ranks",
+   "what": "Cartographer",
+   "how": "Reach 2,600 renown."
+  },
+  {
+   "id": "rank-nomad-sovereign",
+   "group": "Ranks",
+   "what": "Nomad Sovereign",
+   "how": "Reach 4,000 renown."
+  },
+  {
+   "id": "trial-walk-1m",
+   "group": "Legend trials",
+   "what": "A million steps",
+   "how": "Walk 1,000,000 tiles."
+  },
+  {
+   "id": "trial-played-500h",
+   "group": "Legend trials",
+   "what": "Lifer",
+   "how": "Play 500 hours of the run."
+  },
+  {
+   "id": "trial-forks-100",
+   "group": "Legend trials",
+   "what": "Splitter",
+   "how": "Be inside when 100 forks part."
+  },
+  {
+   "id": "trial-wellwishers-100",
+   "group": "Legend trials",
+   "what": "Blessed by 100 strangers",
+   "how": "Have 100 strangers wish you safe travels."
+  },
+  {
+   "id": "trial-landmarks-all",
+   "group": "Legend trials",
+   "what": "Atlas complete",
+   "how": "Stand at every waystone landmark in the world."
+  },
+  {
+   "id": "trial-harbours-all",
+   "group": "Legend trials",
+   "what": "Round the world",
+   "how": "Follow Main into every harbour."
+  },
+  {
+   "id": "trial-bosses-50",
+   "group": "Legend trials",
+   "what": "Bane of bosses",
+   "how": "Get a kill count on 50 different bosses."
+  },
+  {
+   "id": "trial-combat-gm",
+   "group": "Legend trials",
+   "what": "Grandmaster",
+   "how": "Complete a grandmaster combat task."
+  },
+  {
+   "id": "trial-storm-kingdoms",
+   "group": "Legend trials",
+   "what": "Every sky",
+   "how": "See a storm break over Main in all "
+  },
+  {
+   "id": "trial-prophecy-3",
+   "group": "Legend trials",
+   "what": "Seer",
+   "how": "Have all three of the run's prophecies come true."
+  },
+  {
+   "id": "finish-fire-cape",
+   "group": "Finish lines",
+   "what": "Fire cape",
+   "how": "Earn the Fire cape inside Main while it covers the volcano."
+  },
+  {
+   "id": "finish-infernal",
+   "group": "Finish lines",
+   "what": "Infernal cape",
+   "how": "Earn the Infernal cape inside Main: the mode's goal."
+  },
+  {
+   "id": "finish-hc-infernal",
+   "group": "Finish lines",
+   "what": "Hardcore Infernal",
+   "how": "Earn the Infernal cape on Nomad HCUIM without the hardcore life spent."
+  },
+  {
+   "id": "finish-diary-cape",
+   "group": "Finish lines",
+   "what": "Achievement Diary cape",
+   "how": "Finish every Achievement Diary inside your circles."
+  },
+  {
+   "id": "finish-music-cape",
+   "group": "Finish lines",
+   "what": "Music cape",
+   "how": "Unlock every music track inside your circles."
+  }
+ ]
+}

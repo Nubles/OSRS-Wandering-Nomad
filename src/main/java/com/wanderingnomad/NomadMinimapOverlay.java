@@ -1,6 +1,7 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Comet;
 import com.wanderingnomad.sim.Landmarks;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Waystone;
@@ -56,6 +57,8 @@ class NomadMinimapOverlay extends Overlay
     private static final int[] GLOW_ALPHA = {40, 90, 235};
     private static final Color SHADE = new Color(0, 0, 0, 70);
 
+    private static final java.awt.BasicStroke GHOST = new java.awt.BasicStroke(1.5f, java.awt.BasicStroke.CAP_BUTT,
+        java.awt.BasicStroke.JOIN_MITER, 10f, new float[]{2f, 3f}, 0f);
     private final Client client;
     private final NomadPlugin plugin;
 
@@ -72,7 +75,8 @@ class NomadMinimapOverlay extends Overlay
     public Dimension render(Graphics2D graphics)
     {
         NomadSim sim = plugin.sim();
-        if (sim == null || !plugin.config().drawMinimap()) return null;
+        // A fog bank (a wildcard) leaves only the wall to show the circle.
+        if (sim == null || !plugin.config().drawMinimap() || plugin.fogged()) return null;
         Player player = client.getLocalPlayer();
         WorldView view = client.getTopLevelWorldView();
         if (player == null || view == null || view.getScene() == null || view.getScene().isInstance()) return null;
@@ -91,12 +95,29 @@ class NomadMinimapOverlay extends Overlay
         List<Circle> halves = NomadPlugin.halves(sim);
         List<Path2D> rings = new ArrayList<>();
         for (Circle half : halves) rings.add(ring(view, half));
+        // A Wake's trail is still yours: it's left undimmed, with a faint wash of your circle's colour.
+        Area wake = new Area();
+        for (Circle half : halves)
+        {
+            double[] w = half.wake();
+            for (int k = 0; k + 2 < w.length; k += 3)
+            {
+                Path2D r = ring(view, w[k], w[k + 1], w[k + 2], 48);
+                if (r != null) wake.add(new Area(r));
+            }
+        }
         if (!rings.contains(null))
         {
             Area outside = new Area(minimap);
             for (Path2D r : rings) outside.subtract(new Area(r));
+            outside.subtract(wake);
             graphics.setColor(SHADE);
             graphics.fill(outside);
+        }
+        if (!wake.isEmpty())
+        {
+            graphics.setColor(NomadPlugin.colour(yours, 40));
+            graphics.fill(wake);
         }
         for (int j = 0; j < sim.circles().size(); j++)
         {
@@ -107,6 +128,48 @@ class NomadMinimapOverlay extends Overlay
         if (sim.twin() != null && sim.boundIndex() != NomadSim.MAIN && sim.linked(NomadSim.MAIN))
         {
             glow(graphics, arcs(view, sim.twin()), NomadPlugin.colour(sim.twin(), 255), 0.6);
+        }
+        // Shepherd: a rival's circle you're scouting, dotted in their colour.
+        com.wanderingnomad.rival.Rival shepherd = plugin.shepherd();
+        if (shepherd != null)
+        {
+            Circle c = shepherd.latest().sim.bound();
+            Path2D r = Math.hypot(c.x() - at.getX(), c.y() - at.getY()) > c.radius() + 40 ? null : ring(view, c);
+            if (r != null)
+            {
+                Color col = new Color(shepherd.colour);
+                boolean fresh = shepherd.fresh(System.currentTimeMillis());
+                graphics.setStroke(GHOST);
+                graphics.setColor(new Color(col.getRed(), col.getGreen(), col.getBlue(), fresh ? 220 : 110));
+                graphics.draw(r);
+            }
+        }
+        // Fellow travellers: a lantern on your edge toward each friend or clanmate inside your circle.
+        for (int[] f : plugin.fellowsAt())
+        {
+            double a = Math.atan2(f[1] - yours.y(), f[0] - yours.x());
+            Point p = toMinimap(view, yours.x() + Math.cos(a) * yours.radius(), yours.y() + Math.sin(a) * yours.radius());
+            if (p == null) continue;
+            graphics.setColor(new Color(255, 214, 120, 90));
+            graphics.fill(new java.awt.geom.Ellipse2D.Double(p.getX() - 6, p.getY() - 6, 12, 12));
+            graphics.setColor(new Color(0xFFE6A8));
+            graphics.fill(new java.awt.geom.Ellipse2D.Double(p.getX() - 2.5, p.getY() - 2.5, 5, 5));
+        }
+        // Ancestor ghosts nearby: past runs' Main circles, faint and dotted.
+        com.wanderingnomad.journey.Ancestors ancestors = plugin.ancestors();
+        if (ancestors != null)
+        {
+            graphics.setStroke(GHOST);
+            for (com.wanderingnomad.journey.Ancestors.Ghost g : ancestors.ghosts())
+            {
+                Circle c = g.main();
+                if (Math.hypot(c.x() - at.getX(), c.y() - at.getY()) > c.radius() + 40) continue;
+                Path2D r = ring(view, c);
+                if (r == null) continue;
+                Color col = new Color(g.run.colour & 0xFFFFFF);
+                graphics.setColor(new Color(col.getRed(), col.getGreen(), col.getBlue(), 140));
+                graphics.draw(r);
+            }
         }
         // The half that faded at a fork's parting, dissolving.
         long now = System.currentTimeMillis();
@@ -120,6 +183,37 @@ class NomadMinimapOverlay extends Overlay
                 double radius = Math.hypot(rim.getX() - centre2.getX(), rim.getY() - centre2.getY());
                 NomadWorldMapOverlay.drawFade(graphics, fade, centre2.getX(), centre2.getY(), radius, now);
             }
+        }
+        // The fork's lost half, faint, and a comet's path, clipped to the stretch near you.
+        if (sim.ghost() != null) glow(graphics, arcs(view, sim.ghost()), NomadPlugin.colour(sim.ghost(), 255), 0.35);
+        Comet k0 = sim.comet();
+        if (k0 != null)
+        {
+            double len = Math.hypot(k0.endX() - k0.x(), k0.endY() - k0.y());
+            if (len >= 1)
+            {
+                double ux = (k0.endX() - k0.x()) / len;
+                double uy = (k0.endY() - k0.y()) / len;
+                double along = (at.getX() - k0.x()) * ux + (at.getY() - k0.y()) * uy;
+                double t0 = Math.max(0, along - 120);
+                double t1 = Math.min(len, along + 120);
+                Point a = t0 < t1 ? toMinimap(view, k0.x() + ux * t0, k0.y() + uy * t0) : null;
+                Point b = t0 < t1 ? toMinimap(view, k0.x() + ux * t1, k0.y() + uy * t1) : null;
+                if (a != null && b != null)
+                {
+                    Path2D path = new Path2D.Double();
+                    path.moveTo(a.getX(), a.getY());
+                    path.lineTo(b.getX(), b.getY());
+                    glow(graphics, path, new Color(0xBFE3FF), k0.flying() ? 1 : 0.5);
+                }
+            }
+        }
+        // The sea lane Main left behind it, near you.
+        double[] lane = sim.lane();
+        if (lane != null)
+        {
+            Path2D path = segmentNear(view, lane[0], lane[1], lane[2], lane[3], at, 60);
+            if (path != null) glow(graphics, path, new Color(0x6FC3E8), 0.7);
         }
         for (int k = 0; k < halves.size(); k++)
         {
@@ -139,6 +233,17 @@ class NomadMinimapOverlay extends Overlay
                 graphics.fillRect(p.getX() - 2, p.getY() - 2, 5, 5);
             }
         }
+        // Wildcards: the drop, the carrier, embers, the Roamer, a chaos rift, the Chart's nodes and quantum spots.
+        for (NomadPlugin.WildMark m : plugin.wildMarks())
+        {
+            if (m.r > 60) continue;
+            Path2D path = ring(view, m.x, m.y, Math.max(1, m.r), 48);
+            if (path == null) continue;
+            graphics.setStroke(new BasicStroke(m.dashed ? 1.5f : 2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f,
+                m.dashed ? new float[]{3f, 3f} : null, 0f));
+            graphics.setColor(new Color(m.colour.getRed(), m.colour.getGreen(), m.colour.getBlue(), 200));
+            graphics.draw(path);
+        }
         graphics.setClip(before);
 
         if (plugin.config().minimapArrows())
@@ -154,12 +259,17 @@ class NomadMinimapOverlay extends Overlay
     /** A circle's whole edge in minimap pixels, or null if any of it is too far off to place. */
     private Path2D ring(WorldView view, Circle c)
     {
-        int n = Math.max(96, (int) Math.ceil(Math.PI * 2 * c.radius() / 0.75));
+        return ring(view, c.x(), c.y(), c.radius(), Math.max(96, (int) Math.ceil(Math.PI * 2 * c.radius() / 0.75)));
+    }
+
+    /** A ring of radius {@code r} round (x, y) in {@code n} steps, in minimap pixels, or null if any of it is too far off to place. */
+    private Path2D ring(WorldView view, double x, double y, double r, int n)
+    {
         Path2D path = new Path2D.Float();
         for (int i = 0; i < n; i++)
         {
             double a = i * Math.PI * 2 / n;
-            Point p = toMinimap(view, c.x() + Math.cos(a) * c.radius(), c.y() + Math.sin(a) * c.radius());
+            Point p = toMinimap(view, x + Math.cos(a) * r, y + Math.sin(a) * r);
             if (p == null) return null;
             if (i == 0) path.moveTo(p.getX(), p.getY());
             else path.lineTo(p.getX(), p.getY());
@@ -270,6 +380,25 @@ class NomadMinimapOverlay extends Overlay
     }
 
     /** A world position (tile units, tile centres on whole numbers) on the minimap, even when it's off the edge of it. */
+    /** The stretch of a line from (x0, y0) to (x1, y1) within {@code reach} tiles along it of you, on the minimap, or null. */
+    private Path2D segmentNear(WorldView view, double x0, double y0, double x1, double y1, WorldPoint at, double reach)
+    {
+        double len = Math.hypot(x1 - x0, y1 - y0);
+        double ux = len < 1 ? 0 : (x1 - x0) / len;
+        double uy = len < 1 ? 0 : (y1 - y0) / len;
+        double along = (at.getX() - x0) * ux + (at.getY() - y0) * uy;
+        double t0 = Math.max(0, along - reach);
+        double t1 = Math.min(len, along + reach);
+        if (t0 > t1) return null;
+        Point a = toMinimap(view, x0 + ux * t0, y0 + uy * t0);
+        Point b = toMinimap(view, x0 + ux * t1, y0 + uy * t1);
+        if (a == null || b == null) return null;
+        Path2D path = new Path2D.Double();
+        path.moveTo(a.getX(), a.getY());
+        path.lineTo(b.getX(), b.getY());
+        return path;
+    }
+
     private Point toMinimap(WorldView view, double wx, double wy)
     {
         int lx = (int) Math.round((wx - view.getBaseX()) * Perspective.LOCAL_TILE_SIZE) + Perspective.LOCAL_HALF_TILE_SIZE;

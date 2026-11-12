@@ -5,6 +5,21 @@ public final class SavedRun
 {
     public NomadSim sim;
     public Tile surface;
+    /** Delve (a house rule): minutes left counting as inside while underground, and minutes until it works again. */
+    public int delveLeft;
+    public int delveWait;
+    /** Second wind (Hardcore): the one death the run is allowed has happened. */
+    public boolean fallen;
+    /** Plot circles (a house rule): the farming patches that hold your circle, as x, y, minutes-left triples. */
+    public int[] plots;
+    /** The run was laid down: its circles stand still and its epilogue is written. */
+    public boolean retired;
+    /** The run's epithet so far, such as "the Seaborn", for rivals to read; null if none yet. */
+    public String epithet;
+    /** Baton: a relay leg's runner counts as inside until they first reach their circle. */
+    public boolean batonGrace;
+    /** The run's story, only in a code made for the website; null in the save and in live shares. */
+    public Story story;
 
     public SavedRun()
     {

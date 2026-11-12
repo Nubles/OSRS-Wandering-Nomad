@@ -54,6 +54,35 @@ describe('the TypeScript sim matches the plugin', () => {
           else if (e.kind === 'give') sim.state.boons.push(e.args[0] as string);
           else if (e.kind === 'summon') line = sim.summon(e.args[0] as string);
           else if (e.kind === 'boon') line = sim.useBoon(e.args[0] as number, e.args[1] as number, e.args.length >= 4 ? { x: e.args[2] as number, y: e.args[3] as number } : null);
+          else if (e.kind === 'comet') sim.cometSoonForTesting();
+          else if (e.kind === 'helmsman') line = sim.useHelmsman(e.args[0] as number, e.args[1] as string);
+          else if (e.kind === 'homeward') line = sim.homeward({ x: e.args[0] as number, y: e.args[1] as number }, { x: e.args[2] as number, y: e.args[3] as number });
+          else if (e.kind === 'event') sim.eventSoonForTesting(e.args[0] as string);
+          else if (e.kind === 'kiss') sim.setBorderKiss(e.args[0] as boolean);
+          else if (e.kind === 'deep') sim.state.deep = e.args[0] as boolean;
+          else if (e.kind === 'crossto') line = sim.crossTo(e.args[0] as number, null);
+          else if (e.kind === 'lodestone') line = sim.useLodestone(e.args[0] as number, e.args[1] as string);
+          else if (e.kind === 'shatter') sim.setShatterNext(e.args[0] as boolean);
+          else if (e.kind === 'vigil') sim.setVigil(e.args[0] as boolean);
+          else if (e.kind === 'rites') sim.setRites(e.args[0] as boolean);
+          else if (e.kind === 'rite') line = sim.performRite(e.args[0] as string, { x: e.args[1] as number, y: e.args[2] as number });
+          else if (e.kind === 'networks') sim.setNetworks(e.args[0] as number);
+          else if (e.kind === 'book') sim.setSpellbook(e.args[0] as number);
+          else if (e.kind === 'ca') line = sim.setCaTiers(e.args[0] as number);
+          else if (e.kind === 'pop') line = sim.logPop();
+          else if (e.kind === 'guest') line = sim.uninvitedGuest();
+          else if (e.kind === 'superior') line = sim.superior({ x: e.args[0] as number, y: e.args[1] as number });
+          else if (e.kind === 'star') line = sim.starfall({ x: e.args[0] as number, y: e.args[1] as number });
+          else if (e.kind === 'layer') line = sim.starLayer();
+          else if (e.kind === 'stargone') line = sim.starGone();
+          else if (e.kind === 'tide') sim.setTide(e.args.length ? { x: e.args[0] as number, y: e.args[1] as number } : null);
+          else if (e.kind === 'encore') line = sim.addEncore();
+          else if (e.kind === 'useencore') line = sim.useEncore();
+          else if (e.kind === 'intermission') sim.setIntermission(e.args[0] as boolean);
+          else if (e.kind === 'dockcross') line = sim.dockCross({ x: e.args[0] as number, y: e.args[1] as number });
+          else if (e.kind === 'leyline') line = sim.leyline({ x: e.args[0] as number, y: e.args[1] as number }, { x: e.args[2] as number, y: e.args[3] as number });
+          else if (e.kind === 'obelisk') line = sim.obelisk({ x: e.args[0] as number, y: e.args[1] as number }, { x: e.args[2] as number, y: e.args[3] as number });
+          else throw new Error(`unknown event ${e.kind}`);
           if (line != null) log.push([minute, line]);
         }
         for (const line of sim.step(player)) log.push([minute, line]);
@@ -87,8 +116,9 @@ describe('run codes', () => {
     const c = CASES[1];
     const code = await encodeRun({ sim: c.final, surface: { x: 3200, y: 3200 } });
     expect(code.startsWith('N1.')).toBe(true);
-    // Storms, Sailing docks and their fields grew the saved run a little; links stay far under URL limits.
-    expect(code.length).toBeLessThan(2600);
+    // Storms, Sailing docks, comets, the lost half, ports of call and world events grew the saved run;
+    // links stay far under URL limits.
+    expect(code.length).toBeLessThan(3600);
     expect((await decodeRun(code)).sim).toEqual(c.final);
   });
 

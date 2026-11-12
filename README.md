@@ -60,6 +60,74 @@ What works:
 - **Forecast:** the website's 1, 3 and 6 hour cones on the in-game world map, for Main and your circle. Like the website's, it imagines 40 futures with made-up dice, so it shows where a circle could get to, never where it will. It runs off the client thread every 15 played minutes.
 - **Rule guard:** XP, loot, ground pickups and kills while you're outside your circle are noted in the run log and the sidebar. The rules allow fighting back and travelling home, so these are notes for the run's record, not verdicts, and nothing is ever blocked.
 
+### Streaming
+
+Everything here frames the run for streams and videos; nothing changes a rule. It lives in `stream/` (pure rules, with tests) and `StreamDesk.java`, under the **Streaming** settings section and the sidebar's **Streaming...** menu.
+
+- **Episodes:** each play session is an episode. A break under 30 minutes carries it on; a longer one ends it, and the next login opens with **Previously on** (the last episode's three biggest moments and the thread it left hanging). At logout the sidebar shows **Next time on**: what the circles will do in your next session's first 20 minutes if you do nothing.
+- **Session prophecy:** each episode opens with one cryptic line read from the run's own future, true if you follow the circle ("Salt water will carry the circle before the night is out"). It's revealed when the episode ends, or stamped **Fate defied**.
+- **Start recording** times the chapters from now and stamps one **stake** from what the run already shows (a fork's warning, a storm brewing, a waystone's time left, an open dare, the edge's countdown, the Forecast's odds). **Wrap the episode** reveals the prophecy, settles the stake and gives a **drama score** out of 100 with its breakdown, ranked against every episode.
+- **Close calls** (the edge within a tile, moving toward you, then turning away), **Echoes** (back in a kingdom after 10+ hours, a banner recalls what happened there), and **Run wrapped** (every 100 hours, six stat cards picked from a pool of 30, saved as a picture).
+- **Chapters:** YouTube chapters, a marker list and an EDL for your editor, from the episode's biggest moments, with a hotkey to mark your own.
+- **Narrator captions** (off by default): a lower third in a saga, dry or hushed voice, never repeating a line within 20 played hours.
+- **Chat paints the wall:** paste chat's `!colour`, `!tone` and `!name` votes to set the edge colour, narrator and circle name for the episode. **Viewer flags:** paste chat's `!flag 3222 3218` or `!flag Varrock Square` lines; when the circle takes a flag in, a banner names its viewer. Both are pasted, so no relay is needed, and names are filtered.
+- **Photo mode** (a hotkey) hides the Nomad HUD and turns the glow and shade up full. **Backseat shield** moves the Radar's countdowns and the Forecast into the sidebar. **Dead-air cards** (off by default) offer a talking point in the sidebar after 15 quiet minutes. **Stream feed** (off by default) writes text files for OBS to `.runelite/nomad-uim/stream`, and **Streamer layout** enlarges the status box's key numbers.
+
+### How it looks
+
+The pure parts live in `look/` (with tests); the drawing is in the overlays, `EdgeWall3D.java` and the sidebar. Each has its own setting.
+
+- **The 3D wall's motion** follows your circle's mood: quick streaks when it dashes, a slow swell when it lingers, a shimmer when it meanders. **Wall motion** can make it one steady wave or still.
+- **Fork tear:** during a fork's warning, a glowing crack spreads across Main where it will split, on the ground, the wall and the world map.
+- **Standing stones:** each waystone stands as a stone obelisk under a pillar of light you can see from far off. You can't click it, and it goes when claimed.
+- **Storm skies:** while a Gale or Squall blows, rain falls inside Main near you and lightning flickers. Never in instances.
+- **Visible lean:** near your circle's edge, a chevron on the edge shows it turning toward you. The **tide line** fades while you fight.
+- **Comet tails:** the world map draws the last three hours of Main's path and your circle's, thicker where they lingered. Hovering a circle also shows its temperament, and past the Radar it says a touch is "later".
+- **Kingdom title cards:** walking into a kingdom for the first time in a run fades in its name and temperament; after that, a small banner. **Kingdom stingers:** crossing into a circle plays that circle's own chime.
+- **Claim ceremony:** a firework over you and a rising chime, bigger for rares; a rarer claim always takes over a commoner one.
+- **Gains and losses:** when the edge moves past a bank, altar, furnace, range, anvil, fairy ring or spirit tree near you, a banner says "Gained: Furnace" or "Lost: Bank". They're told apart by their own names and menu options, so there's no list to keep.
+- **Black box:** the sidebar's **Replay the black box** plays your last 3 minutes and your circle's edge from above, ten times as fast. After a death, chat points you to it.
+- **Almanac:** past the Radar's 15 minutes, the sidebar reads the Forecast in four vague words (unlikely, possible, likely, almost certain).
+- **Coach marks:** in your first run, a one-time tip the first time each thing happens. **Show tips again** brings them back.
+- **Moment camera** (off by default): a captioned screenshot at each big moment, saved to `.runelite/nomad-uim/moments`, 20 a session at most.
+- **Edge alerts:** RuneLite notifications for the edge reaching you while you stand still, a fork coming and a waystone rising, one setting each.
+- **Boons and timers** can show as RuneLite infoboxes, in the status box, or both.
+- **Clear sight:** one accessibility setting. Colour safe swaps in a colour-blind-safe palette, high contrast makes edges thick and patterned by kind (Main solid, kingdoms dashed, the caravan dotted), and All does both and tells every banner in chat too.
+
+### The website
+
+The site (`web/`) is playable with no account and no server; the shared pages read the relay only when someone opted in.
+
+- **Your run:** a run code copied from the sidebar now carries the run's **story**: an hourly track, hours by kingdom and mood, the smallest circle, each fork's lost half, the acts and the big moments. **The Saga** (`#/saga`) turns it into chapters with a little map each, folding quiet stretches into a line, with a one-screen **report card**, a **footprint sigil** (a pixel crest from the map regions you walked, coloured by the seed) and **the other forks** (the halves you didn't keep, still drifting). The map page draws the lost halves too.
+- **What's in my circle** (`#/circle`): every bank, deposit box, altar, furnace, anvil, range, fairy ring, spinning wheel, loom, potter's wheel, fishing spot, mining site, rare tree, farming patch and dungeon entrance inside a circle right now. `web/scripts/build_places.py` reads them from the game cache and RuneLite's world map tables into `web/public/places.json`.
+- **Side by side** (`#/compare`): up to four run codes on one map, aligned by played hour, with one scrubber.
+- **Wishlist pings:** star landmarks on the map page; on a live run, the tab pings you when the Radar sees your circle reach one in the next 15 minutes.
+- **Together:** the **Nomad lobby** (`#/lobby`, live runs as breathing circles), **the Graveyard** (`#/graveyard`, tombstones with an epitaph from the ledger, each one visitable in the 3D world viewer with `world/?grave=`), the **atlas of wandering** (`#/atlas`, a heatmap of regions walked and the land no Nomad has stood on) and the **Hall of firsts** (`#/firsts`, curated in `web/public/firsts.json`; claims come in as GitHub issues). Each is opt-in in the plugin's **Website** settings, off by default.
+- **Play:** the **Circle Guesser** (`#/guess`, five circles a day, the 3D view turning inside each, a shareable grid), **Seed prophecy** (`#/prophecy`, one vague line about a seed's opening hours, as a card) and the **living rulebook** (each law on the Rules page has a demo to poke).
+- **Link cards:** the sidebar's **Copy Discord card link** gives a relay link that unfurls as a picture of your circles with Main's mood and size and a LIVE badge, cached for an hour.
+
+### Wildcards
+
+Seventeen odd rules borrowed from other games, under the **Wildcards** settings section, each off by default. Turn on only the ones you want in your run: some bend the usual laws. The rules live in `wild/` (pure, with tests); they act on the circles only through fields a run already saves, so run codes and the website need nothing new. What's going on shows in the sidebar's **Wildcards** section, and its **Wildcards...** menu holds what you can do now.
+
+- **Quantum waystones:** half the rare waystones get two more spots in their circle. Out of sight for 3 seconds, one jumps to another spot, so keep it in view as you walk to it. The spots show as ghosts on the maps.
+- **The Drop:** a new run opens with a huge circle over Lumbridge that closes for an hour onto a landing zone up to 150 tiles away, where Main is born. Inside the closing circle counts as inside, and the circles wait until it lands.
+- **Porter's contract:** now and then your next pickup becomes Cargo. Hold it 2 hours, then stand in your circle in another kingdom for 40 renown. A minute to swap it; dropping it only voids the contract.
+- **Meteor shower:** once or twice a run, for 15 minutes, common waystones rain across Main, on every landmark inside it and on open ground, at least six. Three boons in hand still, so you choose.
+- **Redeploy:** after a death, a small carrier circle rises at your respawn and walks you home over land while your circle dashes to meet it. Inside the carrier counts as inside.
+- **Bonfire:** a fire you light inside your circle leaves a 6-tile ember pocket that stays legal for 30 minutes after the circle moves off it. One at a time, 2 hours apart.
+- **Inspiration:** a comeback earns one Inspiration (one at most, outside the boon cap), spent to give your circle a new mood, turn the coming fork to a new axis, or swap the omen.
+- **Egg steps:** every third trial lays an Egg that hatches into a random boon after 1,500 new tiles walked inside your circle.
+- **The Roamer:** a fast wisp roams the land. When it wanders into Main it holds still 5 minutes: step in for a rare boon. After three escapes it lingers an hour.
+- **Visa:** a kingdom's circle stamps a 3-hour visa (30 minutes more per diary tier). Overstay and that circle dashes for Main to deport you. Nothing is blocked.
+- **Fog bank:** every 4 to 12 hours, after 10 minutes' warning, the world map, minimap circles, Radar and Forecast go dark for 30 minutes and Main lingers. Only the wall shows the circle.
+- **Chaos rift:** now and then a rift opens in your circle. Step on it for an hour's handicap (a gale, a dash or a squeeze); stay inside the whole hour for a rare boon. Never while a storm brews or blows.
+- **The Chart:** every 6 hours, pick one of three routes of three nodes (or one is picked after 15 minutes) and Main heads through them. The last node summons a common waystone.
+- **Tide tables:** a 6-hour tide nudges Main's heading toward the nearest coast as it rises, and inland as it falls, every half hour.
+- **Wayguess:** once a day, guess which kingdom Main will be in tomorrow (UTC), settled at your first minute that day, and copy your streak as a grid of squares.
+- **Pasture:** skilling grazes the 64-tile square you're in for a day. Main won't linger on grazed ground, and lingers a while when it reaches fresh pasture.
+- **Altar favour:** Prayer XP from offerings at an altar inside your circle fills Favour; each 500 summons a common waystone, one a played day.
+
 Not yet:
 
 - Campfire (the fourth-circle boon), Forks, Passport, the hash-chained run log and Season mode.
@@ -101,4 +169,6 @@ npx wrangler@latest deploy
 ```
 
 If the workers.dev URL isn't `https://nomad-relay.fatelocked.workers.dev`, update `LiveShare.RELAY` in the plugin and set `VITE_RELAY_URL` for the website build.
+
+The same worker serves the website's shared pages, each written only by players who turned it on: `GET /lobby` (live runs that joined the lobby, read from the live runs' own metadata, so it costs no extra write), `POST /g/<code>` and `GET /g` (tombstones, listed without their codes), `POST /a/<code>` and `GET /a` (kingdoms and map regions walked, summed), and the link cards `GET /c/<live code>` and `GET /r/<run code>` (a page with Open Graph tags, and `/card.png`, drawn in the worker with no image library). Redeploy after pulling so the new routes go live.
 

@@ -41,3 +41,49 @@ export function ago(ms: number): string {
   const h = Math.round(m / 60);
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
 }
+
+/** A live run in the Nomad lobby: its circle and, if the player chose one, a name. */
+export interface LobbyRun {
+  code: string;
+  name: string | null;
+  x: number;
+  y: number;
+  r: number;
+  mood: string | null;
+  online: boolean;
+  at: number;
+}
+
+/** A tombstone from the Graveyard. */
+export interface Grave {
+  name: string | null;
+  x: number;
+  y: number;
+  minutes: number;
+  seed: number;
+  kingdom: string | null;
+  circle: string | null;
+  cx: number;
+  cy: number;
+  r: number;
+  epitaph: string | null;
+  hardcore: boolean;
+  items: number;
+  at: number;
+}
+
+export interface AtlasSummary {
+  runs: number;
+  /** Runs that have been to each kingdom, in the plugin's region order. */
+  kingdoms: number[];
+  /** Runs that have walked each map region, row by row over the grid. */
+  squares: number[];
+  grid: { x0: number; y0: number; cols: number; rows: number };
+}
+
+/** One of the relay's shared lists; an error says the relay couldn't be reached. */
+export async function fetchShared<T>(path: '/lobby' | '/g' | '/a', base = RELAY): Promise<T> {
+  const r = await fetch(`${base}${path}`);
+  if (!r.ok) throw new Error(`The relay answered ${r.status}. Try again in a minute.`);
+  return (await r.json()) as T;
+}

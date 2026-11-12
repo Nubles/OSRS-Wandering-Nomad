@@ -284,11 +284,14 @@ export class NomadOverlay {
         if (this.nomad.volcanoOpen()) this.eruption();
         const p = this.nomad.player;
         if (p) this.pillar(p.x + 0.5, p.y + 0.5, BEAM, 0.35, [1, 0.92, 0.6], 0.85);
+        const g = this.nomad.grave;
+        // The tombstone: a pale beam over the tile, its height the pile's size.
+        if (g) this.pillar(g.x + 0.5, g.y + 0.5, BEAM * (0.3 + Math.min(1, g.items / 39) * 0.7), 0.5, [0.86, 0.84, 0.8], 0.75);
     }
 
     private circle(c: DrawnCircle, cameraX: number, cameraZ: number, flash: number): void {
         const [r, g, b] = rgbOf(c.colour);
-        const strength = (c.yours ? 1 : 0.6) * (1 + 1.5 * flash);
+        const strength = (c.yours ? 1 : 0.6) * (1 + 1.5 * flash) * (c.fade ?? 1);
         const curtain = (c.yours ? CURTAIN_YOURS : CURTAIN_OTHER) * (1 + 0.6 * flash);
         const segments = Math.max(64, Math.min(320, Math.ceil(2 * Math.PI * c.radius)));
         if (this.count + (segments + 1) * 18 > MAX_VERTICES) return;

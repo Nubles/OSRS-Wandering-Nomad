@@ -1,5 +1,8 @@
 package com.wanderingnomad.journey;
 
+import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.NomadSim;
+import com.wanderingnomad.sim.Tile;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -46,6 +49,176 @@ public final class Journey
     List<String> bestiaryOwed = new ArrayList<>();
     /** Renown this run has earned: trials, omens and a kept oath. */
     int earned;
+    /** Circle lineage: the name of Main's line, and the played minute each generation was born (-1 if not known). */
+    String family;
+    List<Integer> births = new ArrayList<>();
+
+    /** Played minutes between samples of Main's path and of where you stood. */
+    public static final int PATH_EVERY = 10;
+    static final int PATH_MAX = 1500;
+    static final int STEPS_MAX = 800;
+    static final int CAIRNS_MAX = 300;
+    static final int SCARS_MAX = 40;
+    /** Path flags: Main at sea, and a fork parted since the last sample. The act is kept above them. */
+    public static final int AT_SEA = 1;
+    public static final int FORKED = 2;
+    public static final int ACT_SHIFT = 4;
+    /** Main's path, a sample every {@link #PATH_EVERY} played minutes: x, y, flags. For the run's sigil. */
+    List<int[]> path = new ArrayList<>();
+    /** Where you stood inside your circle, a sample every {@link #PATH_EVERY} played minutes: x, y, minute. For the Echo omen. */
+    List<int[]> steps = new ArrayList<>();
+    /** The run's acts, oldest first; empty until the first look. */
+    List<Act> acts = new ArrayList<>();
+    /** Played minutes inside each kingdom's circle (by region id) this act. */
+    Map<String, Integer> actKingdoms = new HashMap<>();
+    /** Prophecy oath: the three sealed picks (first diary kingdom, first port, where Main is at 100 hours), what came true, and whether it's revealed. */
+    String[] prophecy;
+    String[] truth = new String[3];
+    boolean revealed;
+    /** The first port you followed Main into. */
+    String firstHarbour;
+    /** Wager oath: the half called (1 the fork's own heading, -1 the other, 0 none), Main's middle and the fork count when called, and the heading. */
+    int wager;
+    double wagerX;
+    double wagerY;
+    double wagerAxis;
+    int wagerForks;
+    /** The closest call of the run, in words, and how close it was (higher is closer). */
+    String closestCall;
+    int closestScore;
+    /** Marks on this run's edge: a death, a missed fork, a long time outside. */
+    List<Scar> scars = new ArrayList<>();
+    /** Where each claimed waystone stood. */
+    List<int[]> cairns = new ArrayList<>();
+    /** Bottle post: bottles pasted and waiting to be reached. */
+    List<com.wanderingnomad.social.Bottle> bottles = new ArrayList<>();
+    /** The Gauntlet: the dare under way, or null. */
+    com.wanderingnomad.social.Dare dare;
+    /** Baton: the relay this run is a leg of (its team and the legs before), and the played minute this leg began. */
+    com.wanderingnomad.social.Baton baton;
+    int legStart;
+    /** Clan omens: the real hour (since the epoch) the last was dealt. */
+    long clanHour = -1;
+    /** Where you last died this run (x, y), for an ancestor's grave; null if you haven't. */
+    int[] grave;
+    /** Fellow travellers: played minutes in a row with three or more friends or clanmates inside your circle. */
+    int fellowsRun;
+    public static final int BOTTLES_MAX = 20;
+    /**
+     * The run's story, for the website's Saga, report card and side-by-side: an hourly track
+     * (minute, Main's x, y and radius, where you stood or -1, the circle you were bound to),
+     * played minutes by the kingdom you stood in and by Main's mood, the smallest your circle got
+     * with you inside it, each fork's lost half (minute, x, y, heading in thousandths, radius, the
+     * kept half's x and y) and the run's big moments.
+     */
+    List<int[]> hours = new ArrayList<>();
+    Map<String, Integer> kingdomMinutes = new HashMap<>();
+    Map<String, Integer> moodMinutes = new HashMap<>();
+    int smallest;
+    List<int[]> partings = new ArrayList<>();
+    List<Moment> moments = new ArrayList<>();
+    static final int HOURS_MAX = 1200;
+    static final int PARTINGS_MAX = 60;
+    static final int MOMENTS_MAX = 150;
+    /** Set by the plugin: a monster species not yet killed this run is near you. Never saved. */
+    public transient boolean strangerNear;
+
+    /** One act of the run: the played minute it began, what opened it, and the kingdom it was lived in most (once it ends). */
+    public static final class Act
+    {
+        int start;
+        String opened;
+        String kingdom;
+
+        Act()
+        {
+        }
+
+        Act(int start, String opened)
+        {
+            this.start = start;
+            this.opened = opened;
+        }
+
+        public int start()
+        {
+            return start;
+        }
+
+        public String opened()
+        {
+            return opened;
+        }
+
+        public String kingdom()
+        {
+            return kingdom;
+        }
+    }
+
+    /** A mark on the edge: which way from the circle's middle, what made it, the ledger's line and when. */
+    public static final class Scar
+    {
+        double angle;
+        String kind;
+        String line;
+        int minute;
+
+        Scar()
+        {
+        }
+
+        Scar(double angle, String kind, String line, int minute)
+        {
+            this.angle = angle;
+            this.kind = kind;
+            this.line = line;
+            this.minute = minute;
+        }
+
+        public double angle()
+        {
+            return angle;
+        }
+
+        public String kind()
+        {
+            return kind;
+        }
+
+        public String line()
+        {
+            return line;
+        }
+
+        public int minute()
+        {
+            return minute;
+        }
+    }
+
+    /** A big moment of the run, for the Saga: when, where you stood (or Main's middle), its title and line. */
+    public static final class Moment
+    {
+        public int minute;
+        public int x;
+        public int y;
+        public String title;
+        public String line;
+
+        Moment()
+        {
+        }
+
+        Moment(int minute, int x, int y, String title, String line)
+        {
+            this.minute = minute;
+            this.x = x;
+            this.y = y;
+            this.title = title;
+            this.line = line;
+        }
+    }
 
     /** Gson leaves fields null when an older save lacks them. */
     public Journey ready()
@@ -56,7 +229,276 @@ public final class Journey
         if (done == null) done = new LinkedHashSet<>();
         if (carried == null) carried = new HashSet<>();
         if (bestiaryOwed == null) bestiaryOwed = new ArrayList<>();
+        if (births == null) births = new ArrayList<>();
+        if (path == null) path = new ArrayList<>();
+        if (steps == null) steps = new ArrayList<>();
+        if (acts == null) acts = new ArrayList<>();
+        if (actKingdoms == null) actKingdoms = new HashMap<>();
+        if (truth == null || truth.length != 3) truth = new String[3];
+        if (scars == null) scars = new ArrayList<>();
+        if (cairns == null) cairns = new ArrayList<>();
+        if (bottles == null) bottles = new ArrayList<>();
+        if (hours == null) hours = new ArrayList<>();
+        if (kingdomMinutes == null) kingdomMinutes = new HashMap<>();
+        if (moodMinutes == null) moodMinutes = new HashMap<>();
+        if (partings == null) partings = new ArrayList<>();
+        if (moments == null) moments = new ArrayList<>();
         return this;
+    }
+
+    /** Samples Main's path and where you stand, once every {@link #PATH_EVERY} played minutes. */
+    public void sample(int minute, double mainX, double mainY, boolean atSea, boolean forked, Integer youX, Integer youY)
+    {
+        if (minute % PATH_EVERY != 0) return;
+        int flags = (atSea ? AT_SEA : 0) | (forked ? FORKED : 0) | (Math.max(0, acts.size() - 1) << ACT_SHIFT);
+        path.add(new int[]{(int) Math.round(mainX), (int) Math.round(mainY), flags});
+        // Long runs keep every other old sample, so the path stays small.
+        if (path.size() > PATH_MAX) thin(path);
+        if (youX != null && youY != null)
+        {
+            steps.add(new int[]{youX, youY, minute});
+            if (steps.size() > STEPS_MAX) thin(steps);
+        }
+    }
+
+    private static void thin(List<int[]> list)
+    {
+        List<int[]> kept = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++)
+        {
+            int[] p = list.get(i);
+            if (i % 2 == 0 || i >= list.size() / 2) kept.add(p);
+            // A dropped sample's fork mark carries onto the one kept before it.
+            else if (p.length > 2 && !kept.isEmpty()) kept.get(kept.size() - 1)[2] |= p[2] & FORKED;
+        }
+        list.clear();
+        list.addAll(kept);
+    }
+
+    /**
+     * The story's tally for one played minute: {@code kingdom} is the kingdom you stood in (null at
+     * sea or unknown), {@code inside} whether you were inside your circle, {@code you} where you
+     * stood or null.
+     */
+    public void tally(int minute, NomadSim sim, String kingdom, boolean inside, Tile you)
+    {
+        if (kingdom != null) kingdomMinutes.merge(kingdom, 1, Integer::sum);
+        Circle m = sim.main();
+        moodMinutes.merge(m.moodName(), 1, Integer::sum);
+        if (inside)
+        {
+            int r = (int) Math.round(sim.bound().radius());
+            if (smallest == 0 || r < smallest) smallest = Math.max(1, r);
+        }
+        if (minute % 60 == 0)
+        {
+            hours.add(new int[]{minute, (int) Math.round(m.x()), (int) Math.round(m.y()), (int) Math.round(m.radius()),
+                you == null ? -1 : you.x, you == null ? -1 : you.y, sim.boundIndex()});
+            if (hours.size() > HOURS_MAX) thinPlain(hours);
+        }
+    }
+
+    /** A fork parted: {@code gone} is the half that faded, {@code kept} the one that lives on as Main. */
+    public void parted(int minute, Circle gone, Circle kept)
+    {
+        partings.add(new int[]{minute, (int) Math.round(gone.x()), (int) Math.round(gone.y()), (int) Math.round(gone.heading() * 1000),
+            (int) Math.round(gone.radius()), (int) Math.round(kept.x()), (int) Math.round(kept.y())});
+        if (partings.size() > PARTINGS_MAX) partings.remove(0);
+    }
+
+    /** A big moment, for the Saga. */
+    public void moment(int minute, int x, int y, String title, String line)
+    {
+        moments.add(new Moment(minute, x, y, title, line == null ? "" : line));
+        if (moments.size() > MOMENTS_MAX) moments.remove(0);
+    }
+
+    public List<int[]> hours()
+    {
+        return java.util.Collections.unmodifiableList(hours);
+    }
+
+    public Map<String, Integer> kingdomMinutes()
+    {
+        return java.util.Collections.unmodifiableMap(kingdomMinutes);
+    }
+
+    public Map<String, Integer> moodMinutes()
+    {
+        return java.util.Collections.unmodifiableMap(moodMinutes);
+    }
+
+    public int smallest()
+    {
+        return smallest;
+    }
+
+    public List<int[]> partings()
+    {
+        return java.util.Collections.unmodifiableList(partings);
+    }
+
+    public List<Moment> moments()
+    {
+        return java.util.Collections.unmodifiableList(moments);
+    }
+
+    /** Keeps every other old sample, with no flags to carry. */
+    private static void thinPlain(List<int[]> list)
+    {
+        List<int[]> kept = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++)
+        {
+            if (i % 2 == 0 || i >= list.size() / 2) kept.add(list.get(i));
+        }
+        list.clear();
+        list.addAll(kept);
+    }
+
+    public List<int[]> path()
+    {
+        return java.util.Collections.unmodifiableList(path);
+    }
+
+    public List<int[]> steps()
+    {
+        return java.util.Collections.unmodifiableList(steps);
+    }
+
+    public List<Act> acts()
+    {
+        return java.util.Collections.unmodifiableList(acts);
+    }
+
+    /** A claimed waystone's spot, for the map's cairns. */
+    public void cairn(int x, int y)
+    {
+        cairns.add(new int[]{x, y});
+        if (cairns.size() > CAIRNS_MAX) cairns.remove(0);
+    }
+
+    public List<int[]> cairns()
+    {
+        return java.util.Collections.unmodifiableList(cairns);
+    }
+
+    /** A mark on the edge, the way you stood from your circle's middle. */
+    public void scar(double angle, String kind, String line, int minute)
+    {
+        scars.add(new Scar(angle, kind, line, minute));
+        if (scars.size() > SCARS_MAX) scars.remove(0);
+    }
+
+    public List<Scar> scars()
+    {
+        return java.util.Collections.unmodifiableList(scars);
+    }
+
+    /** A comeback: counts it, and keeps it as the closest call if it beats the last. */
+    public void comeback(String metric, String words, int score)
+    {
+        add(metric, 1);
+        add(Trials.COMEBACKS, 1);
+        if (closestCall == null || score > closestScore)
+        {
+            closestCall = words;
+            closestScore = score;
+        }
+    }
+
+    /** A pasted bottle to reach; false if it's already waiting or there are too many. */
+    public boolean bottle(com.wanderingnomad.social.Bottle b)
+    {
+        for (com.wanderingnomad.social.Bottle w : bottles) if (w.id.equals(b.id)) return false;
+        if (bottles.size() >= BOTTLES_MAX) return false;
+        bottles.add(b);
+        return true;
+    }
+
+    public List<com.wanderingnomad.social.Bottle> bottles()
+    {
+        return java.util.Collections.unmodifiableList(bottles);
+    }
+
+    /** Takes a reached bottle off the list. */
+    public void opened(com.wanderingnomad.social.Bottle b)
+    {
+        bottles.remove(b);
+    }
+
+    public com.wanderingnomad.social.Dare dare()
+    {
+        return dare;
+    }
+
+    public void dare(com.wanderingnomad.social.Dare d)
+    {
+        dare = d;
+    }
+
+    public com.wanderingnomad.social.Baton baton()
+    {
+        return baton;
+    }
+
+    /** Makes this run a leg of a relay, beginning now. */
+    public void baton(com.wanderingnomad.social.Baton b, int now)
+    {
+        baton = b;
+        legStart = now;
+    }
+
+    public int legStart()
+    {
+        return legStart;
+    }
+
+    public void died(int x, int y)
+    {
+        grave = new int[]{x, y};
+    }
+
+    public int[] grave()
+    {
+        return grave;
+    }
+
+    /** A played minute with {@code fellows} friends or clanmates inside your circle; returns the run in a row. */
+    public int fellows(int fellows)
+    {
+        fellowsRun = fellows >= 3 ? fellowsRun + 1 : 0;
+        atLeast(Trials.FELLOWS_TRAVEL, fellowsRun);
+        return fellowsRun;
+    }
+
+    public String closestCall()
+    {
+        return closestCall;
+    }
+
+    public String[] prophecy()
+    {
+        return prophecy == null ? null : prophecy.clone();
+    }
+
+    public String[] truth()
+    {
+        return truth.clone();
+    }
+
+    public boolean revealed()
+    {
+        return revealed;
+    }
+
+    public int wager()
+    {
+        return wager;
+    }
+
+    public double wagerAxis()
+    {
+        return wagerAxis;
     }
 
     public void race(String name, int seed)

@@ -203,6 +203,17 @@ public class JourneyTest
             JourneyChat.read("Your Zulrah kill count is: 9.", j);
             r = Omens.minute(j, sim, home, true);
         }
+        else if (o.kind().equals(Omen.EDGEWALKER))
+        {
+            j.add(Trials.EDGE_XP, Omens.EDGE_MINUTES);
+            r = Omens.minute(j, sim, home, true);
+        }
+        else if (o.kind().equals(Omen.WISP))
+        {
+            while (sim.minutes() < o.deadline() - Omens.WISP_MINUTES + Omens.WISP_WARN + 1) sim.step(home);
+            double[] w = Omens.wisp(o, sim);
+            r = Omens.minute(j, sim, new Tile((int) Math.round(w[0]), (int) Math.round(w[1])), true);
+        }
         else
         {
             while (sim.minutes() < o.deadline()) sim.step(home);

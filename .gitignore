@@ -14,3 +14,5 @@ web/public/world.dat
 workers/nomad-relay/node_modules/
 workers/nomad-relay/.wrangler/
 __pycache__/
+# Downloaded by web/scripts/build_places.py
+web/build-cache/

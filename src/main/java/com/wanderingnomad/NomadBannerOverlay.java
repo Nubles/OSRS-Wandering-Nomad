@@ -44,6 +44,14 @@ class NomadBannerOverlay extends Overlay
     private final Deque<Moments.Banner> queue = new ArrayDeque<>();
     private Moments.Banner showing;
     private long shownAt;
+    /** A kingdom's title card: its name, the line under it, its colour and when it came up. */
+    private String cardTitle;
+    private String cardLine;
+    private Color cardColour;
+    private long cardAt;
+    private static final long CARD_IN_MS = 700;
+    private static final long CARD_HOLD_MS = 2600;
+    private static final long CARD_OUT_MS = 1000;
 
     @Inject
     NomadBannerOverlay(Client client)
@@ -65,26 +73,88 @@ class NomadBannerOverlay extends Overlay
     {
         queue.clear();
         showing = null;
+        cardTitle = null;
+    }
+
+    /** A kingdom title card in the middle of the view: a big name fading in with a line under it, then fading out. */
+    synchronized void titleCard(String title, String line, Color colour)
+    {
+        cardTitle = title;
+        cardLine = line;
+        cardColour = colour;
+        cardAt = System.currentTimeMillis();
+    }
+
+    private void drawCard(Graphics2D graphics, String title, String line, Color colour, long age)
+    {
+        float in = Math.min(1f, age / (float) CARD_IN_MS);
+        float out = age > CARD_IN_MS + CARD_HOLD_MS ? Math.max(0f, 1 - (age - CARD_IN_MS - CARD_HOLD_MS) / (float) CARD_OUT_MS) : 1f;
+        float alpha = Math.min(in, out);
+        if (alpha <= 0) return;
+        Composite composite = graphics.getComposite();
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+        Font big = FontManager.getRunescapeBoldFont().deriveFont(40f);
+        Font small = FontManager.getRunescapeFont().deriveFont(18f);
+        FontMetrics bm = graphics.getFontMetrics(big);
+        FontMetrics sm = graphics.getFontMetrics(small);
+        // The letters spread a little as it fades in.
+        float spacing = 2 + 4 * (1 - in);
+        int tw = 0;
+        for (char ch : title.toCharArray()) tw += bm.charWidth(ch) + spacing;
+        int cx = client.getViewportXOffset() + client.getViewportWidth() / 2;
+        int cy = client.getViewportYOffset() + client.getViewportHeight() * 3 / 10;
+        // A thin rule either side of the line under the name.
+        int lw = sm.stringWidth(line);
+        graphics.setColor(NomadSceneOverlay.alpha(colour, 200));
+        graphics.fillRect(cx - lw / 2 - 46, cy + 14, 36, 2);
+        graphics.fillRect(cx + lw / 2 + 10, cy + 14, 36, 2);
+        float x = cx - tw / 2f;
+        graphics.setFont(big);
+        for (char ch : title.toCharArray())
+        {
+            String c = String.valueOf(ch);
+            graphics.setColor(new Color(0, 0, 0, 200));
+            graphics.drawString(c, x + 2, cy + 2);
+            graphics.setColor(colour);
+            graphics.drawString(c, x, cy);
+            x += bm.charWidth(ch) + spacing;
+        }
+        shadowed(graphics, small, line, cx - lw / 2, cy + 20 + sm.getAscent() / 2, SUB);
+        graphics.setComposite(composite);
     }
 
     @Override
     public Dimension render(Graphics2D graphics)
     {
+        // Photo mode hides the HUD; banners wait until it's off.
+        if (NomadPlugin.photoMode) return null;
         Moments.Banner b;
         long age;
+        String card;
+        String cardSub;
+        Color cardTint;
+        long cardAge;
         synchronized (this)
         {
             long now = System.currentTimeMillis();
+            if (cardTitle != null && now - cardAt > CARD_IN_MS + CARD_HOLD_MS + CARD_OUT_MS) cardTitle = null;
+            card = cardTitle;
+            cardSub = cardLine;
+            cardTint = cardColour;
+            cardAge = now - cardAt;
             if (showing != null && now - shownAt > SLIDE_MS + HOLD_MS + FADE_MS) showing = null;
             if (showing == null && !queue.isEmpty())
             {
                 showing = queue.pollFirst();
                 shownAt = now;
             }
-            if (showing == null) return null;
             b = showing;
             age = now - shownAt;
         }
+        if (card != null) drawCard(graphics, card, cardSub, cardTint, cardAge);
+        if (b == null) return null;
 
         // Slides down while fading in, holds, then fades out where it stands.
         float in = Math.min(1f, age / (float) SLIDE_MS);

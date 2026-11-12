@@ -76,6 +76,30 @@ const BOATS: string[][] = [
   ['Port Sarim', 'Musa Point', 'Brimhaven', 'Catherby', 'Port Khazard', 'Corsair Cove', 'Port Piscarilius', "Land's End"],
 ];
 
+/** A kingdom's name from its id ("misthalin" is "Misthalin"); text that isn't an id comes back as it is. */
+export function regionName(id: string): string {
+  return REGIONS.find((r) => r.id === id)?.name ?? id;
+}
+
+/** The Trade road's caravan: a small circle with no kingdom that travels between bank towns. As in Geography.java. */
+export const CARAVAN: Region = { id: 'caravan', name: 'Caravan', colour: 0xd7a86e, index: -1, diaries: [], home: { x: 0, y: 0 } };
+
+/** The bank towns the caravan travels between, in the order of Geography.java. */
+export const TOWNS: Port[] = ([
+  ['Lumbridge', 3222, 3218],
+  ['Varrock', 3185, 3436],
+  ['Draynor Village', 3092, 3245],
+  ['Falador', 3013, 3355],
+  ['Edgeville', 3094, 3493],
+  ['Al Kharid', 3269, 3167],
+  ['Catherby', 2809, 3441],
+  ["Seers' Village", 2725, 3491],
+  ['East Ardougne', 2655, 3283],
+  ['Yanille', 2612, 3094],
+  ['Canifis', 3512, 3480],
+  ['Shantay Pass', 3308, 3120],
+] as [string, number, number][]).map(([name, x, y]) => ({ name, tile: { x, y }, sailing: 0, quest: null }));
+
 export const LUMBRIDGE: Tile = { x: 3222, y: 3218 };
 export const VOLCANO: Tile = { x: 2856, y: 3168 };
 
@@ -96,7 +120,49 @@ export class Geography {
   }
 
   region(id: string): Region | undefined {
-    return this.regions.find((r) => r.id === id);
+    return this.regions.find((r) => r.id === id) ?? (id === CARAVAN.id ? CARAVAN : undefined);
+  }
+
+  town(name: string): Port | undefined {
+    return TOWNS.find((p) => p.name === name);
+  }
+
+  private homes = new Map<string, Port>();
+
+  /** A kingdom's home tile as a destination for a walk over land. As in Geography.java. */
+  homeOf(r: Region): Port {
+    let p = this.homes.get(r.id);
+    if (!p) {
+      p = { name: `home:${r.id}`, tile: r.home, sailing: 0, quest: null };
+      this.homes.set(r.id, p);
+    }
+    return p;
+  }
+
+  /** The middle of the walk's cell nearest a tile (its own or one beside it); null if none is on the walk. Mirrors Harbours.snap. */
+  snapToWalk(p: Port, x: number, y: number): Tile | null {
+    const w = this.world;
+    const i = cellIndex(w, x, y);
+    if (i < 0) return null;
+    const field = this.harbourField(p);
+    const row = Math.floor(i / w.cols);
+    const col = i - row * w.cols;
+    let best: Tile | null = null;
+    let bestD = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const c = col + dc;
+        const r = row + dr;
+        if (c < 0 || r < 0 || c >= w.cols || r >= w.rows || field[r * w.cols + c] < 0) continue;
+        const at = { x: w.x0 + (c + 0.5) * w.cell, y: w.y0 + (r + 0.5) * w.cell };
+        const d = dist(at.x - x, at.y - y);
+        if (best == null || d < bestD) {
+          best = at;
+          bestD = d;
+        }
+      }
+    }
+    return best;
   }
 
   /** The kingdom with a region circle that a tile lies in, or undefined. */
@@ -154,7 +220,60 @@ export class Geography {
     return { x: w.x0 + (col + 0.5) * w.cell, y: w.y0 + (row + 0.5) * w.cell };
   }
 
+  private harbours = new Map<string, Int16Array>();
+
+  private harbourField(p: Port): Int16Array {
+    let f = this.harbours.get(p.name);
+    if (!f) {
+      f = harbourField(this.world, p.tile);
+      this.harbours.set(p.name, f);
+    }
+    return f;
+  }
+
+  /** Cells of walking over land from a tile to a port, or -1 if no walk leads there. Mirrors Harbours.java. */
+  harbourSteps(p: Port, x: number, y: number): number {
+    const i = cellIndex(this.world, x, y);
+    return i < 0 ? -1 : this.harbourField(p)[i];
+  }
+
+  /**
+   * Where to head for next on the shortest walk over land to a port: the furthest of the next few
+   * cells along it that can be reached in a straight line over land. Null if no walk leads there.
+   */
+  wayTo(p: Port, x: number, y: number, lookahead: number): Tile | null {
+    const w = this.world;
+    const i = cellIndex(w, x, y);
+    const field = this.harbourField(p);
+    if (i < 0 || field[i] < 0) return null;
+    let row = Math.floor(i / w.cols);
+    let col = i - row * w.cols;
+    const centre = (c: number, r: number): Tile => ({ x: w.x0 + (c + 0.5) * w.cell, y: w.y0 + (r + 0.5) * w.cell });
+    let best = centre(col, row);
+    for (let step = 0; step < lookahead; step++) {
+      const here = field[row * w.cols + col];
+      if (here === 0) break;
+      for (const [dc, dr] of NEIGHBOURS) {
+        const c = col + dc;
+        const r = row + dr;
+        if (c < 0 || r < 0 || c >= w.cols || r >= w.rows) continue;
+        const there = field[r * w.cols + c];
+        if (there >= 0 && there < here) {
+          col = c;
+          row = r;
+          break;
+        }
+      }
+      const next = centre(col, row);
+      if (!inSight(w, x, y, next.x, next.y)) break;
+      best = next;
+    }
+    return best;
+  }
+
   inRegion(r: Region, x: number, y: number): boolean {
+    // The caravan has no kingdom: it may go anywhere on land.
+    if (r.index < 0) return this.world.land(x, y);
     return this.world.kingdom(x, y) === r.index && this.world.land(x, y);
   }
 
@@ -247,6 +366,56 @@ export function dist(dx: number, dy: number): number {
 const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 const OPEN_RADIUS = 8;
 const OPEN_SHARE = 0.7;
+
+function cellIndex(w: World, x: number, y: number): number {
+  const col = Math.floor((x - w.x0) / w.cell);
+  const row = Math.floor((y - w.y0) / w.cell);
+  if (col < 0 || row < 0 || col >= w.cols || row >= w.rows) return -1;
+  return row * w.cols + col;
+}
+
+/** Whether the straight line between two points stays over land, checked every half tile. */
+function inSight(w: World, ax: number, ay: number, bx: number, by: number): boolean {
+  const n = Math.ceil(dist(bx - ax, by - ay) * 2);
+  for (let k = 1; k <= n; k++) {
+    if (!w.land(ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n)) return false;
+  }
+  return true;
+}
+
+/** Steps (in cells) over land from each land cell to a port's cell; -1 for water or no way there. */
+function harbourField(w: World, t: Tile): Int16Array {
+  const { cols, rows, cell, x0, y0 } = w;
+  const field = new Int16Array(cols * rows).fill(-1);
+  const start = cellIndex(w, t.x, t.y);
+  const land = (i: number) => {
+    const r = Math.floor(i / cols);
+    const c = i - r * cols;
+    return w.land(x0 + (c + 0.5) * cell, y0 + (r + 0.5) * cell);
+  };
+  if (start < 0 || !land(start)) return field;
+  const queue = new Int32Array(cols * rows);
+  let head = 0;
+  let tail = 0;
+  field[start] = 0;
+  queue[tail++] = start;
+  while (head < tail) {
+    const i = queue[head++];
+    if (field[i] >= 32767) continue;
+    const r = Math.floor(i / cols);
+    const c = i - r * cols;
+    for (const [dc, dr] of NEIGHBOURS) {
+      const cc = c + dc;
+      const rr = r + dr;
+      if (cc < 0 || rr < 0 || cc >= cols || rr >= rows) continue;
+      const j = rr * cols + cc;
+      if (field[j] >= 0 || !land(j)) continue;
+      field[j] = field[i] + 1;
+      queue[tail++] = j;
+    }
+  }
+  return field;
+}
 
 /** Steps (in cells) from each land cell to the nearest open land: 0 in open land, -1 for water or no way out. */
 function pocketField(w: World): Int32Array {

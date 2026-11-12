@@ -1,7 +1,9 @@
 package com.wanderingnomad;
 
 import com.wanderingnomad.sim.Circle;
+import com.wanderingnomad.sim.Comet;
 import com.wanderingnomad.sim.Forecast;
+import com.wanderingnomad.sim.Geography;
 import com.wanderingnomad.sim.Landmarks;
 import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Radar;
@@ -19,6 +21,7 @@ import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
 import java.awt.geom.Path2D;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -90,6 +93,19 @@ class NomadWorldMapOverlay extends Overlay
         Shape before = graphics.getClip();
         graphics.clip(bounds);
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // A fog bank (a wildcard): the map goes dark, and only the wall shows the circle.
+        if (plugin.fogged())
+        {
+            Font was = graphics.getFont();
+            graphics.setColor(new Color(150, 156, 160, 235));
+            graphics.fill(bounds);
+            graphics.setFont(FontManager.getRunescapeBoldFont());
+            outlined(graphics, "Fog bank: the map is dark for " + plugin.fogLeft() + " more minutes", (float) bounds.getCenterX(),
+                (float) bounds.getCenterY(), Color.WHITE, true);
+            graphics.setFont(was);
+            graphics.setClip(before);
+            return null;
+        }
         // Focus: a dark veil over the map and its icons, so the circles drawn on top stand out.
         int focus = plugin.config().mapFocus();
         if (focus > 0)
@@ -97,14 +113,19 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setColor(new Color(0, 0, 0, Math.min(255, focus * 255 / 100)));
             graphics.fill(bounds);
         }
+        drawClanAtlas(graphics, bounds, west, south, zoom);
         if (plugin.config().footprint()) drawFootprint(graphics, sim, bounds, west, south, zoom);
         List<Circle> circles = sim.circles();
         Forecast forecast = plugin.forecast();
-        if (forecast != null && plugin.config().forecast())
+        // The backseat shield moves the Forecast into the sidebar.
+        if (forecast != null && plugin.config().forecast() && !plugin.shielded())
         {
             drawForecast(graphics, forecast, circles, sim.boundIndex(), bounds, west, south, zoom);
         }
         int yours = sim.boundIndex();
+        if (plugin.config().cometTails()) drawTrails(graphics, sim, bounds, west, south, zoom);
+        drawWakes(graphics, sim, bounds, west, south, zoom);
+        drawGhosts(graphics, bounds, west, south, zoom);
         Ellipse2D[] rings = new Ellipse2D[circles.size()];
         for (int j = 0; j < circles.size(); j++)
         {
@@ -130,6 +151,32 @@ class NomadWorldMapOverlay extends Overlay
             double pr = Math.max(MIN_RADIUS_PX, twin.radius() * zoom);
             drawCircle(graphics, twin, new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2), yours == NomadSim.MAIN, sim.linked(NomadSim.MAIN));
         }
+        // An open rift's far half is Main too, drawn like it with a label saying how long it stays open.
+        Circle rift = sim.rift();
+        if (rift != null)
+        {
+            double px = bounds.x + (rift.x() - west) * zoom;
+            double py = bounds.y + bounds.height - (rift.y() - south) * zoom;
+            double pr = Math.max(MIN_RADIUS_PX, rift.radius() * zoom);
+            Ellipse2D ring = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
+            drawCircle(graphics, rift, ring, yours == NomadSim.MAIN, sim.linked(NomadSim.MAIN));
+            Font f = graphics.getFont();
+            graphics.setFont(FontManager.getRunescapeSmallFont());
+            pill(graphics, "Rift: Main, " + sim.riftLeft() + " min", (float) px, (float) (ring.getMinY() - 4), new Color(0xC08BFF));
+            graphics.setFont(f);
+        }
+        // The sea lane Main left in its wake: a ribbon that counts as Main for a while.
+        double[] lane = sim.lane();
+        if (lane != null)
+        {
+            Path2D.Double ribbon = new Path2D.Double();
+            ribbon.moveTo(bounds.x + (lane[0] - west) * zoom, bounds.y + bounds.height - (lane[1] - south) * zoom);
+            ribbon.lineTo(bounds.x + (lane[2] - west) * zoom, bounds.y + bounds.height - (lane[3] - south) * zoom);
+            float width = (float) Math.max(3, NomadSim.LANE_HALF * 2 * zoom);
+            graphics.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            graphics.setColor(NomadPlugin.colour(sim.main(), 70));
+            graphics.draw(ribbon);
+        }
         Fade fade = plugin.fade(now);
         if (fade != null)
         {
@@ -139,25 +186,36 @@ class NomadWorldMapOverlay extends Overlay
         }
         drawCircle(graphics, circles.get(yours), rings[yours], true, false);
         drawOverlaps(graphics, sim, rings, now);
+        if (sim.forkWarning() > 0 && plugin.config().forkTear()) drawTear(graphics, sim, bounds, west, south, zoom, now);
         if (sim.forkWarning() > 0) drawForkArrows(graphics, sim, rings[NomadSim.MAIN]);
+        if (plugin.config().legacyMarks()) drawLegacy(graphics, sim, rings[yours], rings[NomadSim.MAIN], bounds, west, south, zoom);
 
         Font font = graphics.getFont();
         graphics.setFont(FontManager.getRunescapeSmallFont());
+        String heir = plugin.heir();
         for (int j = 0; j < circles.size(); j++)
         {
             Circle c = circles.get(j);
             Ellipse2D ring = rings[j];
             if (!ring.intersects(bounds)) continue;
-            String name = j == yours ? c.name() + " (you)" : c.name();
+            String name = c.name();
+            if (j == NomadSim.MAIN && heir != null) name += ", " + heir;
+            if (j == yours) name += " (you)";
             Color colour = NomadPlugin.colour(c, 255);
             double top = ring.getMinY() - 4;
             if (top < bounds.y + 12) top = ring.getMaxY() + 12;
             pill(graphics, name, (float) ring.getCenterX(), (float) top, colour);
         }
         drawWaystones(graphics, sim, bounds, west, south, zoom);
+        drawWanderings(graphics, sim, bounds, west, south, zoom, now);
+        drawWorldWays(graphics, sim, plugin.config().plotCircles() ? plugin.plots() : java.util.Collections.emptyList(), bounds, west, south,
+            zoom, now);
+        drawWild(graphics, bounds, west, south, zoom);
         if (plugin.spots().on()) drawSpots(graphics, bounds, west, south, zoom);
         drawOmen(graphics, bounds, west, south, zoom);
         drawRivals(graphics, bounds, west, south, zoom);
+        drawFellowship(graphics, bounds, west, south, zoom);
+        drawFlags(graphics, bounds, west, south, zoom);
         drawPointers(graphics, sim, rings, bounds);
         drawHover(graphics, sim, rings, bounds);
         graphics.setFont(font);
@@ -171,10 +229,11 @@ class NomadWorldMapOverlay extends Overlay
         graphics.setColor(NomadPlugin.colour(c, yours ? 60 : c.isMain() ? 40 : linked ? 34 : 24));
         graphics.fill(ring);
         // A dark band under the rim keeps it readable over busy parts of the map.
-        graphics.setStroke(yours ? YOURS_SHADOW : SHADOW);
-        graphics.setColor(new Color(0, 0, 0, 150));
+        boolean contrast = NomadPlugin.highContrast();
+        graphics.setStroke(contrast ? new BasicStroke((yours ? YOURS_SHADOW : SHADOW).getLineWidth() * 1.8f) : yours ? YOURS_SHADOW : SHADOW);
+        graphics.setColor(new Color(0, 0, 0, contrast ? 220 : 150));
         graphics.draw(ring);
-        graphics.setStroke(yours ? YOURS : c.isMain() ? MAIN : REGION);
+        graphics.setStroke(contrast ? NomadSceneOverlay.stroke(c, yours ? YOURS : REGION) : yours ? YOURS : c.isMain() ? MAIN : REGION);
         graphics.setColor(NomadPlugin.colour(c, yours || c.isMain() ? 255 : linked ? 235 : 200));
         graphics.draw(ring);
 
@@ -364,22 +423,282 @@ class NomadWorldMapOverlay extends Overlay
     private void drawOmen(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
     {
         com.wanderingnomad.journey.Omen o = plugin.omen();
-        if (o == null || !com.wanderingnomad.journey.Omen.PILGRIMAGE.equals(o.kind())) return;
-        double px = bounds.x + (o.x() - west) * zoom;
-        double py = bounds.y + bounds.height - (o.y() - south) * zoom;
+        NomadSim sim = plugin.sim();
+        double[] target = sim == null ? null : NomadSceneOverlay.omenTarget(o, sim);
+        if (target == null) return;
+        double px = bounds.x + (target[0] - west) * zoom;
+        double py = bounds.y + bounds.height - (target[1] - south) * zoom;
         if (!bounds.contains(px, py)) return;
         Color colour = new Color(0x9FE9FF);
-        double r = Math.max(6, com.wanderingnomad.journey.JourneyWatch.AT_LANDMARK * zoom);
+        double r = Math.max(6, NomadSceneOverlay.omenReach(o) * zoom);
         graphics.setStroke(new BasicStroke(2f));
         graphics.setColor(colour);
         graphics.draw(new Ellipse2D.Double(px - r, py - r, 2 * r, 2 * r));
-        outlined(graphics, "Omen: " + o.landmark(), (float) (px + r + 4), (float) py + 4, colour, false);
+        String name = com.wanderingnomad.journey.Omen.WISP.equals(o.kind()) ? "the wisp"
+            : com.wanderingnomad.journey.Omen.ECHO.equals(o.kind()) ? "your echo, " + o.landmark() + " ago" : o.landmark();
+        outlined(graphics, "Omen: " + name, (float) (px + r + 4), (float) py + 4, colour, false);
     }
 
+    private static final BasicStroke GHOST = new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f,
+        new float[]{2f, 4f}, 0f);
+
+    /** Ancestor ghosts: the Main circles of past runs, faint dotted rings in each run's colour. */
+    private void drawGhosts(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        com.wanderingnomad.journey.Ancestors a = plugin.ancestors();
+        if (a == null) return;
+        Font font = graphics.getFont();
+        graphics.setFont(FontManager.getRunescapeSmallFont());
+        for (com.wanderingnomad.journey.Ancestors.Ghost g : a.ghosts())
+        {
+            Circle c = g.main();
+            double px = bounds.x + (c.x() - west) * zoom;
+            double py = bounds.y + bounds.height - (c.y() - south) * zoom;
+            double pr = Math.max(MIN_RADIUS_PX, c.radius() * zoom);
+            Ellipse2D ring = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
+            if (!ring.intersects(bounds)) continue;
+            Color colour = new Color(g.run.colour & 0xFFFFFF);
+            graphics.setStroke(GHOST);
+            graphics.setColor(new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 110));
+            graphics.draw(ring);
+            if (pr >= 18) outlined(graphics, "Ghost of gen " + g.run.generation, (float) px, (float) (ring.getMaxY() + 11),
+                new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 170), true);
+        }
+        graphics.setFont(font);
+    }
+
+    private static final Color SCAR = new Color(0xFF6E61);
+    private static final Color CAIRN = new Color(0xC9C2B0);
+
     /**
-     * The footprint: every 64-tile map region you've walked in inside your circle, filled faintly
-     * in Main's colour, so the world map shows the run's whole journey at a glance.
+     * Legacy marks: the rings of lineage just inside your edge (one band per long past run), scars
+     * notched into it with their story on hover, the act's crests on Main with Heraldry, and cairns
+     * where you claimed waystones once you zoom in.
      */
+    private void drawLegacy(Graphics2D graphics, NomadSim sim, Ellipse2D yours, Ellipse2D main, Rectangle bounds, int west, int south,
+        float zoom)
+    {
+        double cx = yours.getCenterX();
+        double cy = yours.getCenterY();
+        double pr = yours.getWidth() / 2;
+        List<Integer> bands = plugin.lineageBands();
+        if (pr > 24)
+        {
+            graphics.setStroke(new BasicStroke(1.5f));
+            for (int k = 0; k < bands.size(); k++)
+            {
+                Color c = new Color(bands.get(k) & 0xFFFFFF);
+                double r = pr - 4 - k * 3;
+                if (r < pr * 0.6) break;
+                graphics.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 120));
+                graphics.draw(new Ellipse2D.Double(cx - r, cy - r, 2 * r, 2 * r));
+            }
+        }
+        com.wanderingnomad.journey.Journey j = plugin.journey();
+        if (j == null) return;
+        Point mouse = client.getMouseCanvasPosition();
+        String hovered = null;
+        double hx = 0;
+        double hy = 0;
+        graphics.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        for (com.wanderingnomad.journey.Journey.Scar scar : j.scars())
+        {
+            double ex = cx + Math.cos(scar.angle()) * pr;
+            double ey = cy - Math.sin(scar.angle()) * pr;
+            double nx = Math.cos(scar.angle());
+            double ny = -Math.sin(scar.angle());
+            // A notch across the edge: a short slash with a tick either side.
+            double tx = -ny;
+            double ty = nx;
+            graphics.setColor(new Color(0, 0, 0, 140));
+            graphics.draw(new java.awt.geom.Line2D.Double(ex - nx * 6, ey - ny * 6, ex + nx * 6, ey + ny * 6));
+            graphics.setColor(SCAR);
+            graphics.draw(new java.awt.geom.Line2D.Double(ex - nx * 5 - tx * 2, ey - ny * 5 - ty * 2, ex + nx * 5 + tx * 2, ey + ny * 5 + ty * 2));
+            if (mouse != null && Math.hypot(mouse.getX() - ex, mouse.getY() - ey) <= 7)
+            {
+                hovered = "Scar: " + scar.line();
+                hx = ex;
+                hy = ey;
+            }
+        }
+        com.wanderingnomad.sim.Region crest = plugin.crest();
+        if (crest != null && main.getWidth() > 30)
+        {
+            double mx = main.getCenterX();
+            double my = main.getCenterY();
+            double mr = main.getWidth() / 2;
+            for (int k = 0; k < 4; k++)
+            {
+                double a = Math.PI / 4 + k * Math.PI / 2;
+                drawCrest(graphics, mx + Math.cos(a) * mr, my - Math.sin(a) * mr, crest);
+            }
+        }
+        if (zoom >= 3)
+        {
+            for (int[] c : j.cairns())
+            {
+                double px = bounds.x + (c[0] - west) * zoom;
+                double py = bounds.y + bounds.height - (c[1] - south) * zoom;
+                if (!bounds.contains(px, py)) continue;
+                // Three stacked stones.
+                graphics.setColor(new Color(0, 0, 0, 150));
+                graphics.fill(new Ellipse2D.Double(px - 5, py - 2, 10, 5));
+                graphics.setColor(CAIRN);
+                graphics.fill(new Ellipse2D.Double(px - 4.5, py - 1.5, 9, 4));
+                graphics.fill(new Ellipse2D.Double(px - 3.5, py - 4.5, 7, 3.5));
+                graphics.fill(new Ellipse2D.Double(px - 2, py - 7, 4, 3));
+            }
+        }
+        if (hovered != null) pill(graphics, hovered, (float) hx, (float) hy - 10, SCAR);
+    }
+
+    /** A small shield in a kingdom's colour with its initial, for Heraldry. */
+    private static void drawCrest(Graphics2D graphics, double x, double y, com.wanderingnomad.sim.Region region)
+    {
+        Path2D.Double shield = new Path2D.Double();
+        shield.moveTo(x - 6, y - 7);
+        shield.lineTo(x + 6, y - 7);
+        shield.lineTo(x + 6, y);
+        shield.quadTo(x + 6, y + 5, x, y + 8);
+        shield.quadTo(x - 6, y + 5, x - 6, y);
+        shield.closePath();
+        graphics.setColor(new Color(region.colour & 0xFFFFFF));
+        graphics.fill(shield);
+        graphics.setStroke(new BasicStroke(1.2f));
+        graphics.setColor(new Color(0, 0, 0, 200));
+        graphics.draw(shield);
+        String initial = region.name.substring(0, 1);
+        java.awt.FontMetrics fm = graphics.getFontMetrics();
+        graphics.setColor(Color.BLACK);
+        graphics.drawString(initial, (float) (x - fm.stringWidth(initial) / 2.0), (float) (y + 4));
+    }
+
+    /** Clan atlas: the squares your clan's footprints have lit, a pale wash under your own. */
+    private void drawClanAtlas(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        java.util.Set<Integer> squares = plugin.clanSquares();
+        if (squares.isEmpty()) return;
+        graphics.setColor(new Color(255, 230, 168, 34));
+        double size = 64 * zoom;
+        for (int region : squares)
+        {
+            int x0 = (region >> 8) << 6;
+            int y0 = (region & 0xFF) << 6;
+            double px = bounds.x + (x0 - west) * zoom;
+            double py = bounds.y + bounds.height - (y0 + 64 - south) * zoom;
+            if (px > bounds.getMaxX() || py > bounds.getMaxY() || px + size < bounds.x || py + size < bounds.y) continue;
+            graphics.fill(new java.awt.geom.Rectangle2D.Double(px, py, size, size));
+        }
+    }
+
+    private static final Color LODESTAR = new Color(0xFFD54F);
+    private static final Color BOTTLE = new Color(0x9FE0D0);
+    private static final Color GRAVE = new Color(0xC9C2B0);
+
+    private static final Color FLAG = new Color(0xB89CFF);
+
+    /** Viewer flags still standing: a pennant each, named once you zoom in. */
+    private void drawFlags(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        StreamDesk desk = plugin.desk();
+        if (desk == null) return;
+        for (com.wanderingnomad.stream.Flags.Flag f : desk.standingFlags())
+        {
+            double px = bounds.x + (f.x - west) * zoom;
+            double py = bounds.y + bounds.height - (f.y - south) * zoom;
+            if (!bounds.contains(px, py)) continue;
+            graphics.setStroke(new BasicStroke(1.5f));
+            graphics.setColor(Color.BLACK);
+            graphics.draw(new java.awt.geom.Line2D.Double(px + 1, py, px + 1, py - 13));
+            graphics.setColor(new Color(0xE8E2D4));
+            graphics.draw(new java.awt.geom.Line2D.Double(px, py, px, py - 13));
+            Path2D.Double pennant = new Path2D.Double();
+            pennant.moveTo(px, py - 13);
+            pennant.lineTo(px + 9, py - 10);
+            pennant.lineTo(px, py - 7);
+            pennant.closePath();
+            graphics.setColor(FLAG);
+            graphics.fill(pennant);
+            if (zoom >= 2) outlined(graphics, f.name, (float) px + 10, (float) py - 6, FLAG, false);
+        }
+    }
+
+    /** The Lodestar when it's near or shining, bottles drifting your way, and ancestors' graves near your circle. */
+    private void drawFellowship(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        long now = System.currentTimeMillis();
+        com.wanderingnomad.social.Lodestar.Event e = plugin.lodestar();
+        if (e != null && (e.shining(now) || e.rises - now < 24 * com.wanderingnomad.social.Lodestar.HOUR_MS))
+        {
+            double px = bounds.x + (e.landmark.x - west) * zoom;
+            double py = bounds.y + bounds.height - (e.landmark.y - south) * zoom;
+            if (bounds.contains(px, py))
+            {
+                boolean shining = e.shining(now);
+                drawStar(graphics, px, py, shining ? 9 : 6, shining ? LODESTAR : new Color(255, 213, 79, 150));
+                String when = shining ? "Lodestar, shining" : "Lodestar, " + java.time.Instant.ofEpochMilli(e.rises)
+                    .atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("EEE HH:mm"));
+                outlined(graphics, when, (float) px + 12, (float) py + 4, LODESTAR, false);
+                if (shining)
+                {
+                    double r = com.wanderingnomad.social.Lodestar.REACH * zoom;
+                    graphics.setStroke(GHOST);
+                    graphics.setColor(new Color(255, 213, 79, 70));
+                    graphics.draw(new Ellipse2D.Double(px - r, py - r, 2 * r, 2 * r));
+                }
+            }
+        }
+        for (com.wanderingnomad.social.Bottle b : plugin.bottles())
+        {
+            double px = bounds.x + (b.x - west) * zoom;
+            double py = bounds.y + bounds.height - (b.y - south) * zoom;
+            if (!bounds.contains(px, py)) continue;
+            graphics.setColor(Color.BLACK);
+            graphics.fill(new java.awt.geom.RoundRectangle2D.Double(px - 3.5, py - 7.5, 7, 13, 4, 4));
+            graphics.setColor(BOTTLE);
+            graphics.fill(new java.awt.geom.RoundRectangle2D.Double(px - 2.5, py - 6.5, 5, 11, 3, 3));
+            outlined(graphics, "Bottle from " + b.from, (float) px + 8, (float) py + 4, BOTTLE, false);
+        }
+        for (Object[] g : plugin.graveMarks())
+        {
+            double px = bounds.x + ((int) g[0] - west) * zoom;
+            double py = bounds.y + bounds.height - ((int) g[1] - south) * zoom;
+            if (!bounds.contains(px, py)) continue;
+            Path2D.Double stone = new Path2D.Double();
+            stone.moveTo(px - 4, py + 5);
+            stone.lineTo(px - 4, py - 2);
+            stone.quadTo(px - 4, py - 6, px, py - 6);
+            stone.quadTo(px + 4, py - 6, px + 4, py - 2);
+            stone.lineTo(px + 4, py + 5);
+            stone.closePath();
+            graphics.setColor(Color.BLACK);
+            graphics.setStroke(new BasicStroke(2f));
+            graphics.draw(stone);
+            graphics.setColor(GRAVE);
+            graphics.fill(stone);
+            if (zoom >= 2) outlined(graphics, "Grave: " + g[2], (float) px + 8, (float) py + 4, GRAVE, false);
+        }
+    }
+
+    /** A five-pointed star. */
+    private static void drawStar(Graphics2D graphics, double x, double y, double r, Color colour)
+    {
+        Path2D.Double star = new Path2D.Double();
+        for (int k = 0; k < 10; k++)
+        {
+            double a = -Math.PI / 2 + k * Math.PI / 5;
+            double rr = k % 2 == 0 ? r : r * 0.45;
+            if (k == 0) star.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+            else star.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+        }
+        star.closePath();
+        graphics.setColor(Color.BLACK);
+        graphics.setStroke(new BasicStroke(2f));
+        graphics.draw(star);
+        graphics.setColor(colour);
+        graphics.fill(star);
+    }
+
     private void drawFootprint(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)
     {
         java.util.Set<String> squares = plugin.footprint();
@@ -473,7 +792,9 @@ class NomadWorldMapOverlay extends Overlay
         Circle c = sim.circles().get(pick);
         List<String> lines = new ArrayList<>();
         lines.add(c.name() + (pick == sim.boundIndex() ? " · your circle" : c.isMain() ? " · Main" : ""));
-        lines.add("Radius " + Math.round(c.radius()) + " tiles");
+        com.wanderingnomad.sim.Region over = com.wanderingnomad.sim.Geography.regionAt(c.x(), c.y());
+        if (c.isMain() && over != null) lines.add("Over " + over.name);
+        lines.add("Temperament: " + c.temperament().toLowerCase() + " · radius " + Math.round(c.radius()) + " tiles");
         lines.add("Mood: " + c.moodName().toLowerCase() + (c.sailing() ? ", at sea to " + c.voyageTo() : ""));
         String effects = NomadPanel.effects(c);
         if (!effects.isEmpty()) lines.add(effects.substring("<br>".length()));
@@ -486,12 +807,13 @@ class NomadWorldMapOverlay extends Overlay
         }
         if (sim.linked(pick))
         {
-            Radar radar = plugin.radar();
+            Radar radar = plugin.shielded() ? null : plugin.radar();
             int in = radar == null || pick >= radar.crossingIn.length ? -1 : radar.crossingIn[pick];
             double gap = sim.bound().gap(c);
+            // Past the Radar's 15 minutes nothing is sure, so it only says "later".
             lines.add(gap <= 0 ? "Touching yours: you can cross in the overlap"
                 : in > 0 ? "Touches yours in about " + in + " min"
-                : Math.round(gap) + " tiles from yours");
+                : Math.round(gap) + " tiles from yours; any touch is later");
         }
         else if (pick != sim.boundIndex())
         {
@@ -516,6 +838,58 @@ class NomadWorldMapOverlay extends Overlay
             Color colour = k == 0 ? NomadPlugin.colour(c, 255) : Color.WHITE;
             outlined(graphics, lines.get(k), x + 7, y + 5 + (k + 1) * lineH - fm.getDescent(), colour, false);
         }
+    }
+
+    /** Comet tails: the last three hours of Main's path and your circle's, fading with age, thicker where they lingered. */
+    private void drawTrails(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)
+    {
+        java.util.Set<Integer> which = new java.util.LinkedHashSet<>();
+        which.add(NomadSim.MAIN);
+        which.add(sim.boundIndex());
+        for (int j : which)
+        {
+            if (j >= sim.circles().size()) continue;
+            List<double[]> pts = plugin.trails().of(j);
+            Color colour = NomadPlugin.colour(sim.circles().get(j), 255);
+            for (int k = 1; k < pts.size(); k++)
+            {
+                double[] a = pts.get(k - 1);
+                double[] b = pts.get(k);
+                double moved = Math.hypot(b[0] - a[0], b[1] - a[1]);
+                // A jump of more than a few tiles is a fork, a hop or a sailing, not drift: no line across it.
+                if (moved > 12) continue;
+                double age = k / (double) pts.size();
+                graphics.setStroke(new BasicStroke(com.wanderingnomad.look.Trails.width(moved), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                graphics.setColor(NomadSceneOverlay.alpha(colour, (int) (20 + 170 * age)));
+                graphics.draw(new Line2D.Double(
+                    bounds.x + (a[0] - west) * zoom, bounds.y + bounds.height - (a[1] - south) * zoom,
+                    bounds.x + (b[0] - west) * zoom, bounds.y + bounds.height - (b[1] - south) * zoom));
+            }
+        }
+    }
+
+    /** The fork tear across Main on the map, spreading from the middle as the warning runs out. */
+    private static void drawTear(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom, long now)
+    {
+        Circle main = sim.main();
+        double progress = com.wanderingnomad.look.ForkTear.progress(sim.forkWarning(), NomadSim.FORK_WARN);
+        double[][] pts = com.wanderingnomad.look.ForkTear.crack(main.x(), main.y(), main.radius(), sim.forkAxis(), progress,
+            sim.seed() * 7 + sim.forks());
+        Path2D.Double path = new Path2D.Double();
+        for (int k = 0; k < pts.length; k++)
+        {
+            double x = bounds.x + (pts[k][0] - west) * zoom;
+            double y = bounds.y + bounds.height - (pts[k][1] - south) * zoom;
+            if (k == 0) path.moveTo(x, y);
+            else path.lineTo(x, y);
+        }
+        double flicker = 0.75 + 0.25 * Math.sin(now / 90.0);
+        graphics.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.setColor(NomadSceneOverlay.alpha(NomadStatusOverlay.FORK, (int) (90 * flicker)));
+        graphics.draw(path);
+        graphics.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.setColor(NomadSceneOverlay.alpha(Color.WHITE, (int) (230 * flicker)));
+        graphics.draw(path);
     }
 
     /** A name on a dark rounded tag edged in the circle's colour, so it can't be mistaken for a map label. */
@@ -600,7 +974,8 @@ class NomadWorldMapOverlay extends Overlay
             double px = bounds.x + (w.x() - west) * zoom;
             double py = bounds.y + bounds.height - (w.y() - south) * zoom;
             boolean yours = w.circle() == sim.boundIndex();
-            Color colour = yours ? new Color(0xFFD54F) : NomadPlugin.colour(sim.circles().get(w.circle()), 255);
+            Color colour = !yours ? NomadPlugin.colour(sim.circles().get(w.circle()), 255)
+                : w.legendary() ? SidebarParts.LEGEND : w.pilgrim() ? SidebarParts.RARE : new Color(0xFFD54F);
             Path2D.Double diamond = new Path2D.Double();
             diamond.moveTo(px, py - 7);
             diamond.lineTo(px + 5, py);
@@ -612,11 +987,230 @@ class NomadWorldMapOverlay extends Overlay
             graphics.setStroke(new BasicStroke(1f));
             graphics.setColor(Color.BLACK);
             graphics.draw(diamond);
-            String text = w.boon() + " ~" + NomadPanel.roughly(sim.minutesLeft(w));
+            if (w.wanders())
+            {
+                // Where it hops next, so you can head it off.
+                double[] hop = sim.nextHop(w);
+                if (hop != null)
+                {
+                    double hx = bounds.x + (hop[0] - west) * zoom;
+                    double hy = bounds.y + bounds.height - (hop[1] - south) * zoom;
+                    graphics.setStroke(DASHED);
+                    graphics.setColor(colour);
+                    graphics.draw(new Line2D.Double(px, py, hx, hy));
+                    graphics.draw(new Ellipse2D.Double(hx - 3, hy - 3, 6, 6));
+                }
+            }
+            String text = NomadPanel.stoneName(w) + " " + NomadPanel.stoneLeft(sim, w);
             graphics.setColor(Color.BLACK);
             graphics.drawString(text, (float) px + 8, (float) py + 5);
             graphics.setColor(colour);
             graphics.drawString(text, (float) px + 7, (float) py + 4);
+        }
+    }
+
+    /** A Wake: the ground each circle left in the last few minutes that still counts as it, as a faint wash. */
+    private static void drawWakes(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom)
+    {
+        List<Circle> all = new java.util.ArrayList<>(sim.circles());
+        if (sim.twin() != null) all.add(sim.twin());
+        for (Circle c : all)
+        {
+            double[] w = c.wake();
+            if (w.length == 0) continue;
+            java.awt.geom.Area area = new java.awt.geom.Area();
+            for (int k = 0; k + 2 < w.length; k += 3)
+            {
+                double px = bounds.x + (w[k] - west) * zoom;
+                double py = bounds.y + bounds.height - (w[k + 1] - south) * zoom;
+                double pr = Math.max(2, w[k + 2] * zoom);
+                area.add(new java.awt.geom.Area(new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2)));
+            }
+            graphics.setColor(NomadPlugin.colour(c, 45));
+            graphics.fill(area);
+            graphics.setStroke(DASHED);
+            graphics.setColor(NomadPlugin.colour(c, 110));
+            graphics.draw(area);
+        }
+    }
+
+    private static final Color SKY = new Color(0xBFE3FF);
+    private static final Color SEA = new Color(0x6FC3E8);
+    private static final BasicStroke DOTTED = new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{2f, 6f}, 0f);
+    private static final BasicStroke DASHED = new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{6f, 5f}, 0f);
+
+    /**
+     * What wanders besides the circles: a fork's lost half (dashed), a comet's path and the comet
+     * itself, and dotted lines to where Main is sailing or the port it's heading for.
+     */
+    private static void drawWanderings(Graphics2D graphics, NomadSim sim, Rectangle bounds, int west, int south, float zoom, long now)
+    {
+        Circle ghost = sim.ghost();
+        if (ghost != null)
+        {
+            double px = bounds.x + (ghost.x() - west) * zoom;
+            double py = bounds.y + bounds.height - (ghost.y() - south) * zoom;
+            double pr = Math.max(MIN_RADIUS_PX, ghost.radius() * zoom);
+            Color colour = NomadPlugin.colour(ghost, 150);
+            graphics.setStroke(DASHED);
+            graphics.setColor(colour);
+            graphics.draw(new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2));
+            outlined(graphics, "Lost half · " + NomadPanel.time(sim.ghostLeft()), (float) px, (float) (py - pr - 4), colour, true);
+        }
+        // A Lodestone's pull: a dotted line from your circle to the landmark it leans toward.
+        Circle yours = sim.bound();
+        com.wanderingnomad.sim.Tile lode = yours.lode();
+        if (lode != null)
+        {
+            double ax = bounds.x + (yours.x() - west) * zoom;
+            double ay = bounds.y + bounds.height - (yours.y() - south) * zoom;
+            double bx = bounds.x + (lode.x - west) * zoom;
+            double by = bounds.y + bounds.height - (lode.y - south) * zoom;
+            graphics.setStroke(DOTTED);
+            graphics.setColor(Moments.GOLD);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            String name = sim.lodestoneTo();
+            outlined(graphics, "Lodestone" + (name == null ? "" : ": " + name) + " · " + NomadPanel.time(yours.lodeLeft()),
+                (float) bx, (float) by - 6, Moments.GOLD, true);
+        }
+        Circle main = sim.main();
+        String to = main.sailing() ? main.voyageTo() : main.portOfCall();
+        Geography.Port port = to == null ? null : Geography.port(to);
+        if (port != null)
+        {
+            double ax = bounds.x + (main.x() - west) * zoom;
+            double ay = bounds.y + bounds.height - (main.y() - south) * zoom;
+            double bx = bounds.x + (port.tile.x - west) * zoom;
+            double by = bounds.y + bounds.height - (port.tile.y - south) * zoom;
+            graphics.setStroke(DOTTED);
+            graphics.setColor(SEA);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            graphics.fill(new Ellipse2D.Double(bx - 4, by - 4, 8, 8));
+            outlined(graphics, (main.sailing() ? "Sailing to " : "Bound for ") + to, (float) bx + 7, (float) by + 4, SEA, false);
+        }
+        Comet k = sim.comet();
+        if (k != null)
+        {
+            double ax = bounds.x + (k.x() - west) * zoom;
+            double ay = bounds.y + bounds.height - (k.y() - south) * zoom;
+            double bx = bounds.x + (k.endX() - west) * zoom;
+            double by = bounds.y + bounds.height - (k.endY() - south) * zoom;
+            double pulse = 0.5 + 0.5 * Math.sin(now / 250.0);
+            float width = (float) Math.max(2, 2 * NomadSim.COMET_RADIUS * zoom);
+            graphics.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            graphics.setColor(NomadSceneOverlay.alpha(SKY, k.flying() ? 110 : (int) (40 + 50 * pulse)));
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            graphics.setStroke(THIN);
+            graphics.setColor(SKY);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            graphics.setColor(Color.WHITE);
+            graphics.fill(new Ellipse2D.Double(ax - 5, ay - 5, 10, 10));
+            outlined(graphics, k.flying() ? "Comet · " + k.flightLeft() + "m" : "Comet in " + k.warning() + "m", (float) ax + 8, (float) ay - 6, SKY, false);
+        }
+    }
+
+    private static final Color TRAVEL = new Color(0xA8E6A1);
+    private static final Color STAR = new Color(0xFFF1A8);
+    private static final Color PLOT = new Color(0x8FE0A2);
+
+    /**
+     * The world's own ways on the map: the travel hop Main is about to make, the coordinate
+     * tide's pull, the fallen star holding your circle, and your plot circles.
+     */
+    private static void drawWorldWays(Graphics2D graphics, NomadSim sim, List<int[]> plots, Rectangle bounds, int west, int south,
+        float zoom, long now)
+    {
+        com.wanderingnomad.sim.Networks.Node from = sim.hopFrom() == null ? null : com.wanderingnomad.sim.Networks.byName(sim.hopFrom());
+        com.wanderingnomad.sim.Networks.Node to = sim.hopTo() == null ? null : com.wanderingnomad.sim.Networks.byName(sim.hopTo());
+        if (from != null && to != null)
+        {
+            double ax = bounds.x + (from.x - west) * zoom;
+            double ay = bounds.y + bounds.height - (from.y - south) * zoom;
+            double bx = bounds.x + (to.x - west) * zoom;
+            double by = bounds.y + bounds.height - (to.y - south) * zoom;
+            graphics.setStroke(DOTTED);
+            graphics.setColor(TRAVEL);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            graphics.fill(new Ellipse2D.Double(bx - 4, by - 4, 8, 8));
+            outlined(graphics, "Hop by " + com.wanderingnomad.sim.Networks.NAMES[to.network] + " in " + sim.hopWarn() + "m: " + to.name,
+                (float) bx + 7, (float) by + 4, TRAVEL, false);
+        }
+        Circle yours = sim.bound();
+        com.wanderingnomad.sim.Tile tide = sim.tide();
+        if (tide != null)
+        {
+            double ax = bounds.x + (yours.x() - west) * zoom;
+            double ay = bounds.y + bounds.height - (yours.y() - south) * zoom;
+            double bx = bounds.x + (tide.x - west) * zoom;
+            double by = bounds.y + bounds.height - (tide.y - south) * zoom;
+            graphics.setStroke(DOTTED);
+            graphics.setColor(SEA);
+            graphics.draw(new Line2D.Double(ax, ay, bx, by));
+            // An X marks the dig spot.
+            graphics.setStroke(THIN);
+            graphics.draw(new Line2D.Double(bx - 4, by - 4, bx + 4, by + 4));
+            graphics.draw(new Line2D.Double(bx - 4, by + 4, bx + 4, by - 4));
+            outlined(graphics, "Tide: your clue", (float) bx + 7, (float) by + 4, SEA, false);
+        }
+        com.wanderingnomad.sim.Tile star = sim.star();
+        if (star != null)
+        {
+            double px = bounds.x + (star.x - west) * zoom;
+            double py = bounds.y + bounds.height - (star.y - south) * zoom;
+            double pulse = 0.5 + 0.5 * Math.sin(now / 300.0);
+            double r = 4 + 2 * pulse;
+            Path2D.Double spark = new Path2D.Double();
+            for (int k = 0; k < 8; k++)
+            {
+                double a = k * Math.PI / 4;
+                double d = k % 2 == 0 ? r * 1.6 : r * 0.6;
+                if (k == 0) spark.moveTo(px + Math.cos(a) * d, py - Math.sin(a) * d);
+                else spark.lineTo(px + Math.cos(a) * d, py - Math.sin(a) * d);
+            }
+            spark.closePath();
+            graphics.setColor(STAR);
+            graphics.fill(spark);
+            outlined(graphics, "Fallen star · " + NomadPanel.time(yours.starHold()), (float) px + 9, (float) py + 4, STAR, false);
+        }
+        for (int[] p : plots)
+        {
+            double px = bounds.x + (p[0] - west) * zoom;
+            double py = bounds.y + bounds.height - (p[1] - south) * zoom;
+            double pr = Math.max(3, com.wanderingnomad.sim.Plots.RADIUS * zoom);
+            graphics.setStroke(THIN);
+            graphics.setColor(NomadSceneOverlay.alpha(PLOT, 200));
+            graphics.draw(new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2));
+            if (zoom >= 2) outlined(graphics, "Plot · " + NomadPanel.time(p[2]), (float) px, (float) (py - pr - 3), PLOT, true);
+        }
+    }
+
+    /** Wildcards: the drop, the carrier, embers, the Roamer, a chaos rift, the Chart's nodes, quantum spots and grazed ground. */
+    private void drawWild(Graphics2D graphics, Rectangle bounds, int west, int south, float zoom)
+    {
+        for (NomadPlugin.WildMark m : plugin.wildMarks())
+        {
+            double px = bounds.x + (m.x - west) * zoom;
+            double py = bounds.y + bounds.height - (m.y - south) * zoom;
+            double pr = Math.max(3, m.r * zoom);
+            if (px + pr < bounds.x || px - pr > bounds.getMaxX() || py + pr < bounds.y || py - pr > bounds.getMaxY()) continue;
+            Ellipse2D ring = new Ellipse2D.Double(px - pr, py - pr, pr * 2, pr * 2);
+            if (m.fill)
+            {
+                graphics.setColor(NomadSceneOverlay.alpha(m.colour, 40));
+                graphics.fill(ring);
+            }
+            graphics.setStroke(m.dashed ? DOTTED : THIN);
+            graphics.setColor(NomadSceneOverlay.alpha(m.colour, 220));
+            graphics.draw(ring);
+            if (m.label != null && (zoom >= 2 || m.r * zoom >= 12)) outlined(graphics, m.label, (float) px, (float) (py - pr - 3), m.colour, true);
+        }
+        for (int[] g : plugin.grazedSquares())
+        {
+            double gx = bounds.x + (g[0] - west) * zoom;
+            double gy = bounds.y + bounds.height - (g[1] + com.wanderingnomad.wild.Pasture.SQUARE - south) * zoom;
+            double size = com.wanderingnomad.wild.Pasture.SQUARE * zoom;
+            graphics.setColor(new Color(170, 200, 90, (int) (60.0 * g[2] / com.wanderingnomad.wild.Pasture.FADE) + 10));
+            graphics.fill(new Rectangle2D.Double(gx, gy, size, size));
         }
     }
 

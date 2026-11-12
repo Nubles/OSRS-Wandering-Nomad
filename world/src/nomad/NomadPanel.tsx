@@ -78,6 +78,8 @@ export function NomadPanel({ mapViewer, nomad }: NomadPanelProps): JSX.Element |
         title = nomad.isLivePlaying()
             ? "Live: playing now"
             : `Live: last seen ${ago(Date.now() - nomad.liveAt)}`;
+    } else if (nomad.mode === "grave" && nomad.grave) {
+        title = `A grave, fallen at ${played(nomad.grave.minutes)} played`;
     } else if (nomad.mode === "run") {
         title = "Your run, from the plugin";
     } else {
@@ -105,7 +107,7 @@ export function NomadPanel({ mapViewer, nomad }: NomadPanelProps): JSX.Element |
                 </button>
             </div>
             <div className="nomad-line">{title}</div>
-            <div className="nomad-line">Played {played(sim.state.minutes)}</div>
+            {nomad.mode !== "grave" && <div className="nomad-line">Played {played(sim.state.minutes)}</div>}
             <div className="nomad-line">
                 Bound to <span className="nomad-dot" style={{ background: hex(yours.colour) }} />
                 <span style={{ color: hex(yours.colour) }}>{yours.name}</span>
@@ -122,7 +124,7 @@ export function NomadPanel({ mapViewer, nomad }: NomadPanelProps): JSX.Element |
                 </button>
             </div>
 
-            {nomad.mode !== "live" && (
+            {nomad.mode !== "live" && nomad.mode !== "grave" && (
                 <div className="nomad-row">
                     {SPEEDS.map((s, i) => (
                         <button
