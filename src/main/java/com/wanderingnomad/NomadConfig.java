@@ -1211,8 +1211,8 @@ public interface NomadConfig extends Config
     @ConfigItem(
         keyName = "wildMeteors",
         name = "Meteor shower",
-        description = "Once or twice a run, for 15 minutes, a common waystone lands on every landmark inside Main. Your hands "
-            + "still hold three boons, so you choose.",
+        description = "Once or twice a run, for 15 minutes, common waystones rain across Main: on every landmark inside it and "
+            + "on open ground, at least six. Your hands still hold three boons, so you choose.",
         section = WILDCARDS,
         position = 83
     )

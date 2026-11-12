@@ -4,8 +4,9 @@ import com.wanderingnomad.sim.NomadSim;
 import com.wanderingnomad.sim.Rng;
 
 /**
- * Meteor shower (a wildcard): once or twice a run, for 15 minutes, a common waystone lands on
- * every landmark inside Main. The three-boon cap still holds, so you choose.
+ * Meteor shower (a wildcard): once or twice a run, for 15 minutes, common waystones rain across
+ * Main: on every landmark inside it and on open ground, at least six. The three-boon cap still
+ * holds, so you choose.
  */
 public final class Meteors
 {
@@ -36,8 +37,8 @@ public final class Meteors
             return;
         }
         done++;
-        out.banner("Meteor shower", n == 1 ? "A waystone fell on Main's one landmark. It burns out in " + LIFE + " minutes."
-            : n + " waystones fell on Main's landmarks. They burn out in " + LIFE + " minutes; your hands hold three.", true);
+        out.banner("Meteor shower", n == 1 ? "A waystone fell inside Main. It burns out in " + LIFE + " minutes."
+            : n + " waystones fell across Main. They burn out in " + LIFE + " minutes; your hands hold three.", true);
     }
 
     /** Played minutes until the next shower, or -1 if none is left. */

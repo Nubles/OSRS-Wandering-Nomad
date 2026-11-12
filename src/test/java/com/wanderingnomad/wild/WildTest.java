@@ -98,7 +98,7 @@ public class WildTest
     }
 
     @Test
-    public void aMeteorShowerDropsShortLivedStonesOnMainsLandmarks()
+    public void aMeteorShowerDropsShortLivedStonesAcrossMain()
     {
         NomadSim sim = NomadSim.start(55);
         Meteors m = new Meteors();
@@ -106,7 +106,9 @@ public class WildTest
         Out out = new Out();
         int before = sim.waystones().size();
         m.minute(sim, out);
-        assertTrue(sim.waystones().size() > before);
+        // Landmarks are sparse, so the shower also lands on open ground: at least six fall.
+        assertTrue(sim.waystones().size() - before >= 6);
+        for (Waystone w : sim.waystones()) assertTrue(sim.main().contains(w.x(), w.y()));
         for (Waystone w : sim.waystones()) assertEquals(Meteors.LIFE, w.life());
         assertEquals(-1, m.next(sim.minutes()));
         Tile far = new Tile(3222 + 2, 3218);

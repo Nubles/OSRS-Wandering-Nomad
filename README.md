@@ -113,7 +113,7 @@ Seventeen odd rules borrowed from other games, under the **Wildcards** settings 
 - **Quantum waystones:** half the rare waystones get two more spots in their circle. Out of sight for 3 seconds, one jumps to another spot, so keep it in view as you walk to it. The spots show as ghosts on the maps.
 - **The Drop:** a new run opens with a huge circle over Lumbridge that closes for an hour onto a landing zone up to 150 tiles away, where Main is born. Inside the closing circle counts as inside, and the circles wait until it lands.
 - **Porter's contract:** now and then your next pickup becomes Cargo. Hold it 2 hours, then stand in your circle in another kingdom for 40 renown. A minute to swap it; dropping it only voids the contract.
-- **Meteor shower:** once or twice a run, for 15 minutes, a common waystone lands on every landmark inside Main. Three boons in hand still, so you choose.
+- **Meteor shower:** once or twice a run, for 15 minutes, common waystones rain across Main, on every landmark inside it and on open ground, at least six. Three boons in hand still, so you choose.
 - **Redeploy:** after a death, a small carrier circle rises at your respawn and walks you home over land while your circle dashes to meet it. Inside the carrier counts as inside.
 - **Bonfire:** a fire you light inside your circle leaves a 6-tile ember pocket that stays legal for 30 minutes after the circle moves off it. One at a time, 2 hours apart.
 - **Inspiration:** a comeback earns one Inspiration (one at most, outside the boon cap), spent to give your circle a new mood, turn the coming fork to a new axis, or swap the omen.

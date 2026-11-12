@@ -1315,26 +1315,53 @@ public final class NomadSim
     }
 
     /**
-     * Meteor shower: a common waystone lands on every free landmark inside Main (up to {@link #METEORS}),
-     * each lasting {@code life} minutes. Returns how many landed.
+     * Meteor shower: a common waystone lands on every free landmark inside Main, then on open
+     * ground across it until at least {@link #METEORS_MIN} have fallen (up to {@link #METEORS}), each
+     * lasting {@code life} minutes. Landmarks are sparse, so most of a shower lands between them.
+     * Returns how many landed.
      */
     public int meteorShower(int life)
     {
         Circle m = main();
         if (m.voyage != null) return 0;
         Rng dice = new Rng(seed ^ (minutes * 0x7FEB352D) ^ 0x3E7E0);
-        int n = 0;
+        List<Waystone> fell = new ArrayList<>();
         for (Landmarks.Landmark l : Landmarks.ALL)
         {
-            if (n >= METEORS) break;
+            if (fell.size() >= METEORS) break;
             if (!m.contains(l.x, l.y) || !Geography.onLand(l.x, l.y) || taken(l)) continue;
             Waystone w = stone(l, MAIN, COMMON, COMMON_BOONS[(int) (dice.next() * COMMON_BOONS.length)]);
             w.life = life;
-            n++;
+            fell.add(w);
         }
-        return n;
+        for (int k = 0; k < 120 && fell.size() < METEORS_MIN; k++)
+        {
+            double a = dice.next() * Math.PI * 2;
+            double d = m.radius * StrictMath.sqrt(dice.next()) * 0.92;
+            int x = (int) round(m.x + StrictMath.cos(a) * d);
+            int y = (int) round(m.y + StrictMath.sin(a) * d);
+            if (!m.contains(x, y) || !Geography.onLand(x, y) || takenAt(x, y)) continue;
+            boolean crowded = false;
+            for (Waystone o : fell) crowded |= Circle.dist(o.x - x, o.y - y) < METEOR_GAP;
+            if (crowded) continue;
+            Waystone w = new Waystone();
+            w.landmark = METEOR;
+            w.x = x;
+            w.y = y;
+            w.circle = MAIN;
+            w.tier = COMMON;
+            w.boon = COMMON_BOONS[(int) (dice.next() * COMMON_BOONS.length)];
+            w.life = life;
+            waystones.add(w);
+            fell.add(w);
+        }
+        return fell.size();
     }
 
+    static final int METEORS_MIN = 6;
+    /** Meteors land at least this many tiles apart. */
+    static final int METEOR_GAP = 5;
+    public static final String METEOR = "a meteor's crater";
     static final int METEORS = 12;
 
     /**
