@@ -27,9 +27,10 @@ public final class Skies
     public static double[] drop(int i, long now)
     {
         double clock = now / FALL_MS + ForkTear.hash(i * 17 + 5);
-        int fall = (int) Math.floor(clock);
-        double x = (ForkTear.hash(i * 31 + fall * 7) * 2 - 1) * REACH;
-        double y = (ForkTear.hash(i * 43 + fall * 11 + 1) * 2 - 1) * REACH;
+        // A long: the wall clock in fall lengths (about 2.5 billion) is past an int.
+        long fall = (long) Math.floor(clock);
+        double x = (ForkTear.hash((int) (i * 31 + fall * 7)) * 2 - 1) * REACH;
+        double y = (ForkTear.hash((int) (i * 43 + fall * 11 + 1)) * 2 - 1) * REACH;
         return new double[]{x, y, clock - fall};
     }
 

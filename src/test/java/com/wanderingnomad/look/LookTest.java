@@ -240,6 +240,14 @@ public class LookTest
             assertTrue(Math.abs(d[0]) <= Skies.REACH && Math.abs(d[1]) <= Skies.REACH);
             assertTrue(d[2] >= 0 && d[2] < 1);
         }
+        // At today's wall-clock time too, not just near zero: the drops still fall from 0 to 1.
+        long today = 1_794_000_000_000L;
+        for (int i = 0; i < Skies.DROPS; i++)
+        {
+            double[] d = Skies.drop(i, today + i * 13L);
+            assertTrue(Math.abs(d[0]) <= Skies.REACH && Math.abs(d[1]) <= Skies.REACH);
+            assertTrue(d[2] >= 0 && d[2] < 1);
+        }
         int lit = 0;
         for (long now = 0; now < 700_000; now += 20) if (Skies.flash(now) > 0) lit++;
         assertTrue(lit > 0);
